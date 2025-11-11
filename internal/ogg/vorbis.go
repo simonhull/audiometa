@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/simonhull/audiometa"
+	"github.com/simonhull/audiometa/internal/types"
 	"github.com/simonhull/audiometa/internal/vorbis"
 )
 
@@ -16,7 +16,7 @@ import (
 //   - Bitrate (nominal, maximum, minimum)
 //
 // Returns an error if the header is invalid or too short.
-func parseVorbisIdentification(data []byte, file *audiometa.File) error {
+func parseVorbisIdentification(data []byte, file *types.File) error {
 	if len(data) < 30 {
 		return fmt.Errorf("identification header too short: %d bytes", len(data))
 	}
@@ -67,7 +67,7 @@ func parseVorbisIdentification(data []byte, file *audiometa.File) error {
 //   - Each comment: length + UTF-8 string
 //
 // Returns an error if the header is invalid or truncated.
-func parseVorbisComment(data []byte, file *audiometa.File) error {
+func parseVorbisComment(data []byte, file *types.File) error {
 	if len(data) < 8 {
 		return fmt.Errorf("comment header too short: %d bytes", len(data))
 	}
@@ -111,7 +111,7 @@ func parseVorbisComment(data []byte, file *audiometa.File) error {
 	for i := uint32(0); i < commentCount; i++ {
 		if offset+4 > len(data) {
 			// Truncated, but don't fail - just stop reading
-			file.Warnings = append(file.Warnings, audiometa.Warning{
+			file.Warnings = append(file.Warnings, types.Warning{
 				Stage:   "metadata",
 				Message: fmt.Sprintf("truncated comment %d", i),
 			})
@@ -123,7 +123,7 @@ func parseVorbisComment(data []byte, file *audiometa.File) error {
 
 		if offset+int(commentLen) > len(data) {
 			// Truncated comment
-			file.Warnings = append(file.Warnings, audiometa.Warning{
+			file.Warnings = append(file.Warnings, types.Warning{
 				Stage:   "metadata",
 				Message: fmt.Sprintf("truncated comment %d data", i),
 			})
@@ -139,7 +139,7 @@ func parseVorbisComment(data []byte, file *audiometa.File) error {
 		// Parse comment using shared Vorbis comment parser
 		if err := vorbis.ParseComment(comment, &file.Tags); err != nil {
 			// Non-fatal - add warning and continue
-			file.Warnings = append(file.Warnings, audiometa.Warning{
+			file.Warnings = append(file.Warnings, types.Warning{
 				Stage:   "metadata",
 				Message: fmt.Sprintf("invalid Vorbis comment: %s", err),
 			})

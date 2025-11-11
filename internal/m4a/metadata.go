@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/simonhull/audiometa"
 	"github.com/simonhull/audiometa/internal/binary"
+	"github.com/simonhull/audiometa/internal/types"
 )
 
 // parseMetadataTag extracts the string value from an iTunes metadata tag atom
@@ -48,7 +48,7 @@ func parseMetadataTag(sr *binary.SafeReader, tagAtom *Atom) (string, error) {
 }
 
 // extractIlstMetadata parses all metadata items from the ilst atom
-func extractIlstMetadata(sr *binary.SafeReader, ilstAtom *Atom, file *audiometa.File) error {
+func extractIlstMetadata(sr *binary.SafeReader, ilstAtom *Atom, file *types.File) error {
 	offset := ilstAtom.DataOffset()
 	end := offset + int64(ilstAtom.DataSize())
 
@@ -71,7 +71,7 @@ func extractIlstMetadata(sr *binary.SafeReader, ilstAtom *Atom, file *audiometa.
 			// Parse as text tag
 			value, err := parseMetadataTag(sr, tagAtom)
 			if err != nil {
-				file.Warnings = append(file.Warnings, audiometa.Warning{
+				file.Warnings = append(file.Warnings, types.Warning{
 					Stage:   "metadata",
 					Message: fmt.Sprintf("failed to parse tag %s: %v", tagAtom.Type, err),
 				})
@@ -90,7 +90,7 @@ func extractIlstMetadata(sr *binary.SafeReader, ilstAtom *Atom, file *audiometa.
 
 // mapTagToField maps an iTunes tag to the appropriate metadata field
 // Note: In MP4, © is represented as byte 0xA9, so "©nam" is "\xA9nam" in Go strings
-func mapTagToField(tag string, value string, file *audiometa.File) {
+func mapTagToField(tag string, value string, file *types.File) {
 	switch tag {
 	case "\xA9nam": // Title (©nam)
 		file.Tags.Title = value

@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"github.com/simonhull/audiometa"
+	"github.com/simonhull/audiometa/internal/types"
 	audiobinary "github.com/simonhull/audiometa/internal/binary"
 )
 
@@ -113,7 +113,7 @@ func TestExtractIlstMetadata(t *testing.T) {
 	sr := audiobinary.NewSafeReader(bytes.NewReader(ilst), int64(len(ilst)), "test.m4b")
 	ilstAtom, _ := readAtomHeader(sr, 0)
 
-	file := &audiometa.File{}
+	file := &types.File{}
 	err := extractIlstMetadata(sr, ilstAtom, file)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -136,23 +136,23 @@ func TestMapTagToField(t *testing.T) {
 	tests := []struct {
 		tag      string
 		value    string
-		checkFn  func(*audiometa.File) string
+		checkFn  func(*types.File) string
 		expected string
 	}{
-		{"\xA9nam", "Title", func(f *audiometa.File) string { return f.Tags.Title }, "Title"},       // ©nam
-		{"\xA9ART", "Artist", func(f *audiometa.File) string { return f.Tags.Artist }, "Artist"},    // ©ART
-		{"\xA9alb", "Album", func(f *audiometa.File) string { return f.Tags.Album }, "Album"},       // ©alb
-		{"\xA9gen", "Genre", func(f *audiometa.File) string {
+		{"\xA9nam", "Title", func(f *types.File) string { return f.Tags.Title }, "Title"},       // ©nam
+		{"\xA9ART", "Artist", func(f *types.File) string { return f.Tags.Artist }, "Artist"},    // ©ART
+		{"\xA9alb", "Album", func(f *types.File) string { return f.Tags.Album }, "Album"},       // ©alb
+		{"\xA9gen", "Genre", func(f *types.File) string {
 			if len(f.Tags.Genres) > 0 {
 				return f.Tags.Genres[0]
 			}
 			return ""
 		}, "Genre"}, // ©gen
-		{"\xA9cmt", "Comment", func(f *audiometa.File) string { return f.Tags.Comment }, "Comment"}, // ©cmt
+		{"\xA9cmt", "Comment", func(f *types.File) string { return f.Tags.Comment }, "Comment"}, // ©cmt
 	}
 
 	for _, tt := range tests {
-		file := &audiometa.File{}
+		file := &types.File{}
 		mapTagToField(tt.tag, tt.value, file)
 
 		got := tt.checkFn(file)

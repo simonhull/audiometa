@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/simonhull/audiometa"
+	"github.com/simonhull/audiometa/internal/types"
 	audiobinary "github.com/simonhull/audiometa/internal/binary"
 )
 
@@ -42,7 +42,7 @@ func TestParseTechnicalInfo_Duration(t *testing.T) {
 	sr := audiobinary.NewSafeReader(bytes.NewReader(moov), int64(len(moov)), "test.m4b")
 	moovAtom, _ := readAtomHeader(sr, 0)
 
-	file := &audiometa.File{}
+	file := &types.File{}
 	err := parseTechnicalInfo(sr, moovAtom, file)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -63,7 +63,7 @@ func TestParseTechnicalInfo_NonStandardTimescale(t *testing.T) {
 	sr := audiobinary.NewSafeReader(bytes.NewReader(moov), int64(len(moov)), "test.m4b")
 	moovAtom, _ := readAtomHeader(sr, 0)
 
-	file := &audiometa.File{}
+	file := &types.File{}
 	err := parseTechnicalInfo(sr, moovAtom, file)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -87,7 +87,7 @@ func TestParseTechnicalInfo_NoMvhd(t *testing.T) {
 	sr := audiobinary.NewSafeReader(bytes.NewReader(moov), int64(len(moov)), "test.m4b")
 	moovAtom, _ := readAtomHeader(sr, 0)
 
-	file := &audiometa.File{}
+	file := &types.File{}
 	err := parseTechnicalInfo(sr, moovAtom, file)
 
 	// Should not error, just leave duration as 0

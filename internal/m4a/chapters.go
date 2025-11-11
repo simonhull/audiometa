@@ -3,13 +3,13 @@ package m4a
 import (
 	"time"
 
-	"github.com/simonhull/audiometa"
 	"github.com/simonhull/audiometa/internal/binary"
+	"github.com/simonhull/audiometa/internal/types"
 )
 
 // parseChapters extracts chapter markers using multiple formats
 // Tries in order: QuickTime chapter tracks (tref) -> Nero chapters (chpl)
-func parseChapters(sr *binary.SafeReader, moovAtom *Atom, fileDuration time.Duration) ([]audiometa.Chapter, error) {
+func parseChapters(sr *binary.SafeReader, moovAtom *Atom, fileDuration time.Duration) ([]types.Chapter, error) {
 	// Try QuickTime chapter tracks first (most common in professional audiobooks)
 	qtChapters, qtErr := parseQuickTimeChapters(sr, moovAtom, fileDuration)
 	if qtErr == nil && len(qtChapters) > 0 {
@@ -35,7 +35,7 @@ func parseChapters(sr *binary.SafeReader, moovAtom *Atom, fileDuration time.Dura
 }
 
 // parseChplChapters extracts chapter markers from the chpl atom (Nero format)
-func parseChplChapters(sr *binary.SafeReader, moovAtom *Atom, fileDuration time.Duration) ([]audiometa.Chapter, error) {
+func parseChplChapters(sr *binary.SafeReader, moovAtom *Atom, fileDuration time.Duration) ([]types.Chapter, error) {
 	// Find udta atom (user data)
 	// Path: moov -> udta
 	udtaAtom, err := findAtom(sr, moovAtom.DataOffset(), moovAtom.DataOffset()+int64(moovAtom.DataSize()), "udta")
@@ -79,7 +79,7 @@ func parseChplChapters(sr *binary.SafeReader, moovAtom *Atom, fileDuration time.
 		return nil, nil
 	}
 
-	chapters := make([]audiometa.Chapter, 0, chapterCount)
+	chapters := make([]types.Chapter, 0, chapterCount)
 
 	// Read each chapter
 	for i := uint8(0); i < chapterCount; i++ {
@@ -111,7 +111,7 @@ func parseChplChapters(sr *binary.SafeReader, moovAtom *Atom, fileDuration time.
 			title = string(titleBytes)
 		}
 
-		chapter := audiometa.Chapter{
+		chapter := types.Chapter{
 			Index:     int(i + 1),
 			Title:     title,
 			StartTime: startTime,
@@ -139,7 +139,7 @@ func parseChplChapters(sr *binary.SafeReader, moovAtom *Atom, fileDuration time.
 
 // parseQuickTimeChapters extracts chapters from QuickTime chapter tracks
 // Format: trak -> tref -> chap references a text track with chapter names
-func parseQuickTimeChapters(sr *binary.SafeReader, moovAtom *Atom, fileDuration time.Duration) ([]audiometa.Chapter, error) {
+func parseQuickTimeChapters(sr *binary.SafeReader, moovAtom *Atom, fileDuration time.Duration) ([]types.Chapter, error) {
 	// Find all trak atoms
 	offset := moovAtom.DataOffset()
 	end := offset + int64(moovAtom.DataSize())
@@ -216,7 +216,7 @@ func parseQuickTimeChapters(sr *binary.SafeReader, moovAtom *Atom, fileDuration 
 }
 
 // parseTextTrackChapters extracts chapter information from a text track
-func parseTextTrackChapters(sr *binary.SafeReader, trakAtom *Atom, fileDuration time.Duration) ([]audiometa.Chapter, error) {
+func parseTextTrackChapters(sr *binary.SafeReader, trakAtom *Atom, fileDuration time.Duration) ([]types.Chapter, error) {
 	// Find mdia -> minf -> stbl (sample table)
 	mdiaAtom, err := findAtom(sr, trakAtom.DataOffset(), trakAtom.DataOffset()+int64(trakAtom.DataSize()), "mdia")
 	if err != nil {
@@ -324,7 +324,7 @@ func parseTextTrackChapters(sr *binary.SafeReader, trakAtom *Atom, fileDuration 
 	stcoOffset += 4
 
 	// For simplicity, assume 1 sample per chunk (common for text tracks)
-	chapters := make([]audiometa.Chapter, 0, sampleCount)
+	chapters := make([]types.Chapter, 0, sampleCount)
 
 	for i := uint32(0); i < chunkCount && i < sampleCount; i++ {
 		var chunkOffset uint64
@@ -352,7 +352,7 @@ func parseTextTrackChapters(sr *binary.SafeReader, trakAtom *Atom, fileDuration 
 					}
 				}
 
-				chapter := audiometa.Chapter{
+				chapter := types.Chapter{
 					Index:     int(i + 1),
 					Title:     title,
 					StartTime: chapterTimes[i],

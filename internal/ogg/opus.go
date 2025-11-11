@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/simonhull/audiometa"
+	"github.com/simonhull/audiometa/internal/types"
 	"github.com/simonhull/audiometa/internal/vorbis"
 )
 
@@ -21,7 +21,7 @@ import (
 // Note: Opus always outputs at 48kHz regardless of input sample rate.
 //
 // Returns an error if the header is invalid or unsupported.
-func parseOpusHead(data []byte, file *audiometa.File) error {
+func parseOpusHead(data []byte, file *types.File) error {
 	if len(data) < 19 {
 		return fmt.Errorf("OpusHead packet too short: %d bytes (need at least 19)", len(data))
 	}
@@ -54,7 +54,7 @@ func parseOpusHead(data []byte, file *audiometa.File) error {
 
 	// Add informational warnings for non-default values
 	if inputSampleRate != 48000 && inputSampleRate > 0 {
-		file.Warnings = append(file.Warnings, audiometa.Warning{
+		file.Warnings = append(file.Warnings, types.Warning{
 			Stage:   "technical",
 			Message: fmt.Sprintf("original sample rate was %d Hz (Opus outputs at 48 kHz)", inputSampleRate),
 		})
@@ -62,7 +62,7 @@ func parseOpusHead(data []byte, file *audiometa.File) error {
 
 	if outputGain != 0 {
 		gainDB := float64(outputGain) / 256.0
-		file.Warnings = append(file.Warnings, audiometa.Warning{
+		file.Warnings = append(file.Warnings, types.Warning{
 			Stage:   "technical",
 			Message: fmt.Sprintf("output gain: %.2f dB", gainDB),
 		})
@@ -85,7 +85,7 @@ func parseOpusHead(data []byte, file *audiometa.File) error {
 // The only difference from Vorbis comments is the "OpusTags" magic marker.
 //
 // Returns an error if the header is invalid or truncated.
-func parseOpusTags(data []byte, file *audiometa.File) error {
+func parseOpusTags(data []byte, file *types.File) error {
 	if len(data) < 12 {
 		return fmt.Errorf("OpusTags packet too short: %d bytes (need at least 12)", len(data))
 	}
@@ -124,7 +124,7 @@ func parseOpusTags(data []byte, file *audiometa.File) error {
 	for i := uint32(0); i < commentCount; i++ {
 		if offset+4 > len(data) {
 			// Truncated, but don't fail - just stop reading
-			file.Warnings = append(file.Warnings, audiometa.Warning{
+			file.Warnings = append(file.Warnings, types.Warning{
 				Stage:   "metadata",
 				Message: fmt.Sprintf("truncated comment %d (missing length field)", i),
 			})
@@ -136,7 +136,7 @@ func parseOpusTags(data []byte, file *audiometa.File) error {
 
 		if offset+int(commentLen) > len(data) {
 			// Truncated comment data
-			file.Warnings = append(file.Warnings, audiometa.Warning{
+			file.Warnings = append(file.Warnings, types.Warning{
 				Stage:   "metadata",
 				Message: fmt.Sprintf("truncated comment %d data (expected %d bytes)", i, commentLen),
 			})
@@ -153,7 +153,7 @@ func parseOpusTags(data []byte, file *audiometa.File) error {
 		// (OpusTags uses identical format to Vorbis comments)
 		if err := vorbis.ParseComment(comment, &file.Tags); err != nil {
 			// Non-fatal - add warning and continue
-			file.Warnings = append(file.Warnings, audiometa.Warning{
+			file.Warnings = append(file.Warnings, types.Warning{
 				Stage:   "metadata",
 				Message: fmt.Sprintf("invalid Opus tag: %s", err),
 			})

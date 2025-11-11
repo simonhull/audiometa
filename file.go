@@ -8,50 +8,21 @@ import (
 	"runtime"
 
 	"golang.org/x/sync/errgroup"
+
+	"github.com/simonhull/audiometa/internal/registry"
+	"github.com/simonhull/audiometa/internal/types"
+
+	// Register built-in format parsers
+	_ "github.com/simonhull/audiometa/internal/flac"
+	_ "github.com/simonhull/audiometa/internal/m4a"
+	_ "github.com/simonhull/audiometa/internal/mp3"
+	_ "github.com/simonhull/audiometa/internal/ogg"
 )
 
 // File represents an opened audio file with parsed metadata.
-//
-// File provides access to format-agnostic metadata (Tags), technical
-// audio properties (AudioInfo), and optional embedded artwork.
-//
-// File uses lazy loading - opening a file reads only metadata, not
-// audio content or artwork. Call ExtractArtwork() to load images.
-//
-// Always call Close() when done to release file resources:
-//
-//	file, err := audiometa.Open("song.flac")
-//	if err != nil {
-//		return err
-//	}
-//	defer file.Close()
+// Embeds types.File and adds methods.
 type File struct {
-	// Path to the audio file
-	Path string
-
-	// Detected format (FLAC, MP3, M4A, M4B, etc.)
-	Format Format
-
-	// File size in bytes
-	Size int64
-
-	// Parsed metadata (format-agnostic)
-	Tags Tags
-
-	// Audio technical properties
-	Audio AudioInfo
-
-	// Chapters (for audiobooks, CD tracks, etc.)
-	Chapters []Chapter
-
-	// Warnings encountered during parsing (non-fatal issues)
-	Warnings []Warning
-
-	// Internal state (unexported)
-	reader  io.ReaderAt // File handle or other reader
-	parser  FormatParser // Format-specific parser
-	artwork []Artwork // Cached artwork (nil until ExtractArtwork called)
-	rawTags map[string][]RawTag // Format-specific raw tags
+	types.File
 }
 
 // Open opens an audio file and reads its metadata.
@@ -101,14 +72,17 @@ func Open(path string, opts ...Option) (*File, error) {
 	size := stat.Size()
 
 	// Parse with the reader
-	file, err := openReader(f, size, path, options)
+	typesFile, err := openReader(f, size, path, options)
 	if err != nil {
 		f.Close()
 		return nil, err
 	}
 
+	// Wrap in File struct
+	file := &File{File: *typesFile}
+
 	// Keep the file handle for lazy operations (artwork, etc.)
-	file.reader = f
+	file.Reader_ = f
 
 	// Check strict parsing mode
 	if options.strictParsing && len(file.Warnings) > 0 {
@@ -131,9 +105,9 @@ func Open(path string, opts ...Option) (*File, error) {
 }
 
 // openReader opens from an io.ReaderAt (internal, for testing)
-func openReader(r io.ReaderAt, size int64, path string, options *openOptions) (*File, error) {
+func openReader(r io.ReaderAt, size int64, path string, options *openOptions) (*types.File, error) {
 	// Detect format
-	format, err := DetectFormat(r, size, path)
+	format, err := types.DetectFormat(r, size, path)
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +115,7 @@ func openReader(r io.ReaderAt, size int64, path string, options *openOptions) (*
 	// Find parser for this format
 	parser := findParser(format)
 	if parser == nil {
-		return nil, &UnsupportedFormatError{
+		return nil, &types.UnsupportedFormatError{
 			Path:   path,
 			Reason: fmt.Sprintf("no parser available for format %s", format),
 		}
@@ -160,7 +134,7 @@ func openReader(r io.ReaderAt, size int64, path string, options *openOptions) (*
 	file.Path = path
 	file.Format = format
 	file.Size = size
-	file.parser = parser
+	file.Parser_ = parser
 
 	// Apply option: ignore warnings
 	if options.ignoreWarnings {
@@ -174,7 +148,7 @@ func openReader(r io.ReaderAt, size int64, path string, options *openOptions) (*
 //
 // After Close is called, the File should not be used.
 func (f *File) Close() error {
-	if closer, ok := f.reader.(io.Closer); ok {
+	if closer, ok := f.Reader_.(io.Closer); ok {
 		return closer.Close()
 	}
 	return nil
@@ -200,25 +174,25 @@ func (f *File) Close() error {
 //	}
 func (f *File) ExtractArtwork() ([]Artwork, error) {
 	// Return cached artwork if already loaded
-	if f.artwork != nil {
-		return f.artwork, nil
+	if f.Artwork_ != nil {
+		return f.Artwork_, nil
 	}
 
 	// Check if parser supports artwork extraction
-	extractor, ok := f.parser.(ArtworkExtractor)
+	extractor, ok := f.Parser_.(ArtworkExtractor)
 	if !ok {
 		// Format doesn't support artwork
 		return nil, nil
 	}
 
 	// Extract artwork
-	artwork, err := extractor.ExtractArtwork(f.reader, f.Size, f.Path)
+	artwork, err := extractor.ExtractArtwork(f.Reader_, f.Size, f.Path)
 	if err != nil {
 		return nil, fmt.Errorf("extract artwork: %w", err)
 	}
 
 	// Cache for future calls
-	f.artwork = artwork
+	f.Artwork_ = artwork
 
 	return artwork, nil
 }
@@ -230,7 +204,7 @@ func (f *File) ExtractArtwork() ([]Artwork, error) {
 //
 // The returned map should not be modified.
 func (f *File) RawTags() map[string][]RawTag {
-	return f.rawTags
+	return f.RawTags_
 }
 
 // OpenContext opens a file with context support for cancellation.
@@ -332,40 +306,26 @@ func OpenMany(ctx context.Context, paths ...string) ([]*File, error) {
 	return results, nil
 }
 
-// FormatParser is the interface all format parsers implement.
-//
-// This interface is public to allow internal format packages to implement it,
-// but it's not intended for external use. Do not implement custom parsers.
-type FormatParser interface {
-	// Parse extracts metadata from an audio file.
-	// Returns a partially initialized File (Path, Format, Size set by caller).
-	Parse(r io.ReaderAt, size int64, path string) (*File, error)
-}
+// FormatParser is an alias to registry.FormatParser for backwards compatibility.
+// Re-exporting from internal/registry to maintain public API.
+type FormatParser = registry.FormatParser
 
-// ArtworkExtractor is an optional interface for parsers that support artwork extraction.
-type ArtworkExtractor interface {
-	// ExtractArtwork extracts embedded artwork from the file.
-	ExtractArtwork(r io.ReaderAt, size int64, path string) ([]Artwork, error)
-}
+// ArtworkExtractor is an alias to registry.ArtworkExtractor for backwards compatibility.
+// Re-exporting from internal/registry to maintain public API.
+type ArtworkExtractor = registry.ArtworkExtractor
 
 // findParser returns the parser for a given format.
 //
 // Returns nil if no parser is registered for the format.
-func findParser(format Format) FormatParser {
-	// Parser registry will be populated as formats are implemented
-	// For now, return nil (Phase 1A foundation)
-	return parsers[format]
+func findParser(format types.Format) FormatParser {
+	return registry.Get(format)
 }
-
-// parsers maps formats to their parsers.
-// This will be populated in each format package's init() function.
-var parsers = make(map[Format]FormatParser)
 
 // RegisterParser registers a parser for a format.
 // This is called by format packages during initialization (init functions).
 //
 // This function is public to allow internal format packages to register themselves,
 // but it's not intended for external use. Do not call this function.
-func RegisterParser(format Format, parser FormatParser) {
-	parsers[format] = parser
+func RegisterParser(format types.Format, parser FormatParser) {
+	registry.Register(format, parser)
 }

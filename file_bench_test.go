@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/simonhull/audiometa"
+	"github.com/simonhull/audiometa/internal/types"
 	_ "github.com/simonhull/audiometa/internal/flac" // Register FLAC parser
 	_ "github.com/simonhull/audiometa/internal/m4a"  // Register M4A/M4B parser
 	_ "github.com/simonhull/audiometa/internal/mp3"  // Register MP3 parser
@@ -189,19 +190,21 @@ func BenchmarkFileAllocation(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		_ = &audiometa.File{
-			Path:   "/test/path.m4b",
-			Format: audiometa.FormatM4B,
-			Size:   1024,
-			Tags: audiometa.Tags{
-				Title:  "Test Title",
-				Artist: "Test Artist",
-				Album:  "Test Album",
-			},
-			Audio: audiometa.AudioInfo{
-				Duration:   3600000000000, // 1 hour in nanoseconds
-				Bitrate:    128000,
-				SampleRate: 44100,
-				Channels:   2,
+			File: types.File{
+				Path:   "/test/path.m4b",
+				Format: audiometa.FormatM4B,
+				Size:   1024,
+				Tags: audiometa.Tags{
+					Title:  "Test Title",
+					Artist: "Test Artist",
+					Album:  "Test Album",
+				},
+				Audio: audiometa.AudioInfo{
+					Duration:   3600000000000, // 1 hour in nanoseconds
+					Bitrate:    128000,
+					SampleRate: 44100,
+					Channels:   2,
+				},
 			},
 		}
 	}

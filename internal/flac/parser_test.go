@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/simonhull/audiometa"
+	"github.com/simonhull/audiometa/internal/types"
 )
 
 // createMinimalFLAC creates a minimal FLAC file with STREAMINFO and VORBIS_COMMENT blocks
@@ -118,19 +118,31 @@ func TestParse_Success(t *testing.T) {
 	}
 	tmpFile.Close()
 
+	// Open file for parsing
+	f, err := os.Open(tmpFile.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	stat, err := f.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Parse the file
-	file, err := audiometa.Open(tmpFile.Name())
+	p := &parser{}
+	file, err := p.Parse(f, stat.Size(), tmpFile.Name())
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
 	}
-	defer file.Close()
 
 	if file == nil {
 		t.Fatal("expected file, got nil")
 	}
 
 	// Check format
-	if file.Format != audiometa.FormatFLAC {
+	if file.Format != types.FormatFLAC {
 		t.Errorf("expected format FLAC, got %v", file.Format)
 	}
 
@@ -196,16 +208,29 @@ func TestParse_InvalidMagic(t *testing.T) {
 	}
 	tmpFile.Close()
 
+	// Open file for parsing
+	f, err := os.Open(tmpFile.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	stat, err := f.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Parse should fail
-	_, err = audiometa.Open(tmpFile.Name())
+	p := &parser{}
+	_, err = p.Parse(f, stat.Size(), tmpFile.Name())
 	if err == nil {
 		t.Fatal("expected error for invalid magic, got nil")
 	}
 
-	// Should be an UnsupportedFormatError (format detection fails first)
-	var unsupportedErr *audiometa.UnsupportedFormatError
-	if !errors.As(err, &unsupportedErr) {
-		t.Errorf("expected UnsupportedFormatError, got %T: %v", err, err)
+	// Should be a CorruptedFileError (invalid FLAC magic bytes)
+	var corruptedErr *types.CorruptedFileError
+	if !errors.As(err, &corruptedErr) {
+		t.Errorf("expected CorruptedFileError, got %T: %v", err, err)
 	}
 }
 
@@ -225,15 +250,21 @@ func TestExtractArtwork_NoPictures(t *testing.T) {
 	}
 	tmpFile.Close()
 
-	// Open file
-	file, err := audiometa.Open(tmpFile.Name())
+	// Open file for parsing
+	f, err := os.Open(tmpFile.Name())
 	if err != nil {
-		t.Fatalf("Open failed: %v", err)
+		t.Fatal(err)
 	}
-	defer file.Close()
+	defer f.Close()
+
+	stat, err := f.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Extract artwork should return empty slice
-	artwork, err := file.ExtractArtwork()
+	p := &parser{}
+	artwork, err := p.ExtractArtwork(f, stat.Size(), tmpFile.Name())
 	if err != nil {
 		t.Fatalf("ExtractArtwork failed: %v", err)
 	}
@@ -259,12 +290,24 @@ func TestParse_EmptyTags(t *testing.T) {
 	}
 	tmpFile.Close()
 
+	// Open file for parsing
+	f, err := os.Open(tmpFile.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	stat, err := f.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Parse should succeed
-	file, err := audiometa.Open(tmpFile.Name())
+	p := &parser{}
+	file, err := p.Parse(f, stat.Size(), tmpFile.Name())
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
 	}
-	defer file.Close()
 
 	// Tags should be empty
 	if file.Tags.Title != "" {
@@ -301,11 +344,22 @@ func BenchmarkParseFLAC(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		file, err := audiometa.Open(path)
+		f, err := os.Open(path)
 		if err != nil {
 			b.Fatal(err)
 		}
-		file.Close()
+		stat, err := f.Stat()
+		if err != nil {
+			f.Close()
+			b.Fatal(err)
+		}
+		p := &parser{}
+		_, err = p.Parse(f, stat.Size(), path)
+		if err != nil {
+			f.Close()
+			b.Fatal(err)
+		}
+		f.Close()
 	}
 }
 
@@ -328,8 +382,19 @@ func BenchmarkParseStreamInfo(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		file, err := audiometa.Open(path)
+		f, err := os.Open(path)
 		if err != nil {
+			b.Fatal(err)
+		}
+		stat, err := f.Stat()
+		if err != nil {
+			f.Close()
+			b.Fatal(err)
+		}
+		p := &parser{}
+		file, err := p.Parse(f, stat.Size(), path)
+		if err != nil {
+			f.Close()
 			b.Fatal(err)
 		}
 		// Access audio info to ensure STREAMINFO was parsed
@@ -337,7 +402,7 @@ func BenchmarkParseStreamInfo(b *testing.B) {
 		_ = file.Audio.Channels
 		_ = file.Audio.BitDepth
 		_ = file.Audio.Duration
-		file.Close()
+		f.Close()
 	}
 }
 
@@ -360,15 +425,26 @@ func BenchmarkParseVorbisComment(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		file, err := audiometa.Open(path)
+		f, err := os.Open(path)
 		if err != nil {
+			b.Fatal(err)
+		}
+		stat, err := f.Stat()
+		if err != nil {
+			f.Close()
+			b.Fatal(err)
+		}
+		p := &parser{}
+		file, err := p.Parse(f, stat.Size(), path)
+		if err != nil {
+			f.Close()
 			b.Fatal(err)
 		}
 		// Access tags to ensure Vorbis comments were parsed
 		_ = file.Tags.Title
 		_ = file.Tags.Artist
 		_ = file.Tags.Album
-		file.Close()
+		f.Close()
 	}
 }
 
@@ -387,17 +463,24 @@ func BenchmarkExtractArtwork(b *testing.B) {
 
 	path := tmpFile.Name()
 
-	file, err := audiometa.Open(path)
+	f, err := os.Open(path)
 	if err != nil {
 		b.Fatal(err)
 	}
-	defer file.Close()
+	defer f.Close()
+
+	stat, err := f.Stat()
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	p := &parser{}
 
 	b.ResetTimer()
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		_, err := file.ExtractArtwork()
+		_, err := p.ExtractArtwork(f, stat.Size(), path)
 		if err != nil {
 			b.Fatal(err)
 		}

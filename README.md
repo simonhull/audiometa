@@ -248,6 +248,16 @@ audiometa follows modern Go best practices:
 - **Performance first**: Optimized hot paths, lazy loading
 - **Graceful degradation**: Warnings instead of errors where possible
 
+### Format Parser Registration
+
+All supported format parsers (FLAC, MP3, M4A, M4B, Ogg Vorbis, Opus) are automatically
+registered when you import the audiometa package. No additional imports or initialization
+code is required.
+
+This differs from Go's `database/sql` pattern where drivers must be explicitly imported.
+For audiometa, supporting all common audio formats is considered a core feature rather
+than an optional dependency, following the same pattern as Go's `image` package.
+
 ## Development
 
 ```bash

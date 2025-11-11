@@ -5,8 +5,9 @@ import (
 	"io"
 	"time"
 
-	"github.com/simonhull/audiometa"
 	"github.com/simonhull/audiometa/internal/binary"
+	"github.com/simonhull/audiometa/internal/registry"
+	"github.com/simonhull/audiometa/internal/types"
 	"github.com/simonhull/audiometa/internal/vorbis"
 )
 
@@ -25,7 +26,7 @@ const (
 type parser struct{}
 
 // Parse parses a FLAC file and extracts metadata
-func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*audiometa.File, error) {
+func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, error) {
 	// Create safe reader
 	sr := binary.NewSafeReader(r, size, path)
 
@@ -35,7 +36,7 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*audiometa.File,
 		return nil, fmt.Errorf("read FLAC magic: %w", err)
 	}
 	if string(magic) != "fLaC" {
-		return nil, &audiometa.CorruptedFileError{
+		return nil, &types.CorruptedFileError{
 			Path:   path,
 			Offset: 0,
 			Reason: "invalid FLAC magic bytes",
@@ -43,12 +44,12 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*audiometa.File,
 	}
 
 	// Initialize file
-	file := &audiometa.File{
+	file := &types.File{
 		Path:   path,
-		Format: audiometa.FormatFLAC,
+		Format: types.FormatFLAC,
 		Size:   size,
-		Tags:   audiometa.Tags{},
-		Audio:  audiometa.AudioInfo{},
+		Tags:   types.Tags{},
+		Audio:  types.AudioInfo{},
 	}
 
 	// Parse metadata blocks
@@ -61,7 +62,7 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*audiometa.File,
 		// Read metadata block header (4 bytes)
 		header, err := binary.Read[uint32](sr, offset, "metadata block header")
 		if err != nil {
-			file.Warnings = append(file.Warnings, audiometa.Warning{
+			file.Warnings = append(file.Warnings, types.Warning{
 				Stage:   "metadata",
 				Message: fmt.Sprintf("failed to read metadata block header at offset %d: %v", offset, err),
 				Offset:  offset,
@@ -80,7 +81,7 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*audiometa.File,
 		switch blockType {
 		case blockTypeStreamInfo:
 			if err := parseStreamInfo(sr, offset, blockLength, file); err != nil {
-				file.Warnings = append(file.Warnings, audiometa.Warning{
+				file.Warnings = append(file.Warnings, types.Warning{
 					Stage:   "metadata",
 					Message: fmt.Sprintf("failed to parse STREAMINFO: %v", err),
 					Offset:  offset,
@@ -89,7 +90,7 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*audiometa.File,
 
 		case blockTypeVorbisComment:
 			if err := parseVorbisComment(sr, offset, blockLength, file); err != nil {
-				file.Warnings = append(file.Warnings, audiometa.Warning{
+				file.Warnings = append(file.Warnings, types.Warning{
 					Stage:   "metadata",
 					Message: fmt.Sprintf("failed to parse Vorbis comments: %v", err),
 					Offset:  offset,
@@ -111,7 +112,7 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*audiometa.File,
 
 		case blockTypeCueSheet:
 			if err := parseCueSheet(sr, offset, uint32(blockLength), file); err != nil {
-				file.Warnings = append(file.Warnings, audiometa.Warning{
+				file.Warnings = append(file.Warnings, types.Warning{
 					Stage:   "chapters",
 					Message: fmt.Sprintf("failed to parse CUESHEET: %v", err),
 					Offset:  offset,
@@ -140,10 +141,10 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*audiometa.File,
 }
 
 // ExtractArtwork extracts embedded artwork from FLAC files
-func (p *parser) ExtractArtwork(r io.ReaderAt, size int64, path string) ([]audiometa.Artwork, error) {
+func (p *parser) ExtractArtwork(r io.ReaderAt, size int64, path string) ([]types.Artwork, error) {
 	sr := binary.NewSafeReader(r, size, path)
 
-	var artwork []audiometa.Artwork
+	var artwork []types.Artwork
 
 	// Skip FLAC magic
 	offset := int64(4)
@@ -184,7 +185,7 @@ func (p *parser) ExtractArtwork(r io.ReaderAt, size int64, path string) ([]audio
 }
 
 // parseStreamInfo extracts audio info from STREAMINFO block
-func parseStreamInfo(sr *binary.SafeReader, offset, blockLength int64, file *audiometa.File) error {
+func parseStreamInfo(sr *binary.SafeReader, offset, blockLength int64, file *types.File) error {
 	// STREAMINFO is exactly 34 bytes
 	if blockLength != 34 {
 		return fmt.Errorf("invalid STREAMINFO size: %d (expected 34)", blockLength)
@@ -235,7 +236,7 @@ func parseStreamInfo(sr *binary.SafeReader, offset, blockLength int64, file *aud
 }
 
 // parseVorbisComment extracts tags from VORBIS_COMMENT block
-func parseVorbisComment(sr *binary.SafeReader, offset, blockLength int64, file *audiometa.File) error {
+func parseVorbisComment(sr *binary.SafeReader, offset, blockLength int64, file *types.File) error {
 	currentOffset := offset
 
 	// Read vendor string length (32-bit little-endian)
@@ -275,7 +276,7 @@ func parseVorbisComment(sr *binary.SafeReader, offset, blockLength int64, file *
 		comment := string(commentData)
 		if err := vorbis.ParseComment(comment, &file.Tags); err != nil {
 			// Non-fatal - add warning and continue
-			file.Warnings = append(file.Warnings, audiometa.Warning{
+			file.Warnings = append(file.Warnings, types.Warning{
 				Stage:   "metadata",
 				Message: fmt.Sprintf("invalid Vorbis comment: %s", err),
 			})
@@ -286,27 +287,27 @@ func parseVorbisComment(sr *binary.SafeReader, offset, blockLength int64, file *
 }
 
 // parsePicture extracts artwork from PICTURE block
-func parsePicture(sr *binary.SafeReader, offset, blockLength int64) (audiometa.Artwork, error) {
+func parsePicture(sr *binary.SafeReader, offset, blockLength int64) (types.Artwork, error) {
 	currentOffset := offset
 
 	// Read picture type (32-bit big-endian)
 	pictureType, err := binary.Read[uint32](sr, currentOffset, "picture type")
 	if err != nil {
-		return audiometa.Artwork{}, err
+		return types.Artwork{}, err
 	}
 	currentOffset += 4
 
 	// Read MIME type length (32-bit big-endian)
 	mimeLength, err := binary.Read[uint32](sr, currentOffset, "MIME type length")
 	if err != nil {
-		return audiometa.Artwork{}, err
+		return types.Artwork{}, err
 	}
 	currentOffset += 4
 
 	// Read MIME type string
 	mimeData := make([]byte, mimeLength)
 	if err := sr.ReadAt(mimeData, currentOffset, "MIME type"); err != nil {
-		return audiometa.Artwork{}, err
+		return types.Artwork{}, err
 	}
 	mimeType := string(mimeData)
 	currentOffset += int64(mimeLength)
@@ -314,7 +315,7 @@ func parsePicture(sr *binary.SafeReader, offset, blockLength int64) (audiometa.A
 	// Read description length (32-bit big-endian)
 	descLength, err := binary.Read[uint32](sr, currentOffset, "description length")
 	if err != nil {
-		return audiometa.Artwork{}, err
+		return types.Artwork{}, err
 	}
 	currentOffset += 4
 
@@ -322,7 +323,7 @@ func parsePicture(sr *binary.SafeReader, offset, blockLength int64) (audiometa.A
 	descData := make([]byte, descLength)
 	if descLength > 0 {
 		if err := sr.ReadAt(descData, currentOffset, "description"); err != nil {
-			return audiometa.Artwork{}, err
+			return types.Artwork{}, err
 		}
 	}
 	description := string(descData)
@@ -331,13 +332,13 @@ func parsePicture(sr *binary.SafeReader, offset, blockLength int64) (audiometa.A
 	// Read width, height, color depth, indexed colors (4 × 32-bit big-endian)
 	width, err := binary.Read[uint32](sr, currentOffset, "width")
 	if err != nil {
-		return audiometa.Artwork{}, err
+		return types.Artwork{}, err
 	}
 	currentOffset += 4
 
 	height, err := binary.Read[uint32](sr, currentOffset, "height")
 	if err != nil {
-		return audiometa.Artwork{}, err
+		return types.Artwork{}, err
 	}
 	currentOffset += 4
 
@@ -347,28 +348,28 @@ func parsePicture(sr *binary.SafeReader, offset, blockLength int64) (audiometa.A
 	// Read picture data length (32-bit big-endian)
 	dataLength, err := binary.Read[uint32](sr, currentOffset, "picture data length")
 	if err != nil {
-		return audiometa.Artwork{}, err
+		return types.Artwork{}, err
 	}
 	currentOffset += 4
 
 	// Read picture data
 	pictureData := make([]byte, dataLength)
 	if err := sr.ReadAt(pictureData, currentOffset, "picture data"); err != nil {
-		return audiometa.Artwork{}, err
+		return types.Artwork{}, err
 	}
 
-	// Map FLAC picture type to audiometa.ArtworkType
-	var artType audiometa.ArtworkType
+	// Map FLAC picture type to types.ArtworkType
+	var artType types.ArtworkType
 	switch pictureType {
 	case 3:
-		artType = audiometa.ArtworkFrontCover
+		artType = types.ArtworkFrontCover
 	case 4:
-		artType = audiometa.ArtworkBackCover
+		artType = types.ArtworkBackCover
 	default:
-		artType = audiometa.ArtworkOther
+		artType = types.ArtworkOther
 	}
 
-	return audiometa.Artwork{
+	return types.Artwork{
 		Data:        pictureData,
 		MIMEType:    mimeType,
 		Type:        artType,
@@ -380,5 +381,5 @@ func parsePicture(sr *binary.SafeReader, offset, blockLength int64) (audiometa.A
 
 // init registers the FLAC parser
 func init() {
-	audiometa.RegisterParser(audiometa.FormatFLAC, &parser{})
+	registry.Register(types.FormatFLAC, &parser{})
 }

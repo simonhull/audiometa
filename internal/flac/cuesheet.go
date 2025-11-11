@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/simonhull/audiometa"
 	"github.com/simonhull/audiometa/internal/binary"
+	"github.com/simonhull/audiometa/internal/types"
 )
 
 // CueSheet represents a FLAC CUESHEET metadata block
@@ -34,7 +34,7 @@ type CueIndex struct {
 }
 
 // parseCueSheet parses a FLAC CUESHEET metadata block
-func parseCueSheet(sr *binary.SafeReader, offset int64, length uint32, file *audiometa.File) error {
+func parseCueSheet(sr *binary.SafeReader, offset int64, length uint32, file *types.File) error {
 	if length < 396 { // Minimum size: 128+8+1+259+1 = 397 bytes (but some fields can be smaller)
 		return fmt.Errorf("CUESHEET block too short: %d bytes (need at least 396)", length)
 	}
@@ -203,8 +203,8 @@ func parseCueIndex(sr *binary.SafeReader, offset int64) (*CueIndex, int64, error
 	}, offset, nil
 }
 
-// cuesheetToChapters converts a CUESHEET to audiometa.Chapter slice
-func cuesheetToChapters(cuesheet *CueSheet, sampleRate int) []audiometa.Chapter {
+// cuesheetToChapters converts a CUESHEET to types.Chapter slice
+func cuesheetToChapters(cuesheet *CueSheet, sampleRate int) []types.Chapter {
 	if len(cuesheet.Tracks) == 0 {
 		return nil
 	}
@@ -235,7 +235,7 @@ func cuesheetToChapters(cuesheet *CueSheet, sampleRate int) []audiometa.Chapter 
 	}
 
 	// Convert tracks to chapters
-	chapters := make([]audiometa.Chapter, len(audioTracks))
+	chapters := make([]types.Chapter, len(audioTracks))
 
 	for i, track := range audioTracks {
 		// Calculate start time (samples / sample_rate = seconds)
@@ -262,7 +262,7 @@ func cuesheetToChapters(cuesheet *CueSheet, sampleRate int) []audiometa.Chapter 
 			title = fmt.Sprintf("Track %02d (%s)", track.Number, track.ISRC)
 		}
 
-		chapters[i] = audiometa.Chapter{
+		chapters[i] = types.Chapter{
 			Index:     i + 1,
 			Title:     title,
 			StartTime: startTime,
