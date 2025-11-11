@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/simonhull/audiometa"
+	"github.com/simonhull/audiometa/internal/types"
 )
 
 func TestParse_ValidMP3(t *testing.T) {
@@ -21,13 +21,26 @@ func TestParse_ValidMP3(t *testing.T) {
 	tmpFile.Write(data)
 	tmpFile.Close()
 
-	file, err := audiometa.Open(tmpFile.Name())
+	// Open file for parsing
+	f, err := os.Open(tmpFile.Name())
 	if err != nil {
-		t.Fatalf("Open failed: %v", err)
+		t.Fatal(err)
 	}
-	defer file.Close()
+	defer f.Close()
 
-	if file.Format != audiometa.FormatMP3 {
+	stat, err := f.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Parse the file
+	p := &parser{}
+	file, err := p.Parse(f, stat.Size(), tmpFile.Name())
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	if file.Format != types.FormatMP3 {
 		t.Errorf("expected FormatMP3, got %v", file.Format)
 	}
 
@@ -41,7 +54,7 @@ func TestParse_ValidMP3(t *testing.T) {
 }
 
 func TestParse_FileNotFound(t *testing.T) {
-	_, err := audiometa.Open("/nonexistent/path.mp3")
+	_, err := os.Open("/nonexistent/path.mp3")
 	if err == nil {
 		t.Error("expected error for nonexistent file")
 	}
@@ -55,7 +68,21 @@ func TestParse_EmptyFile(t *testing.T) {
 	defer os.Remove(tmpFile.Name())
 	tmpFile.Close()
 
-	file, err := audiometa.Open(tmpFile.Name())
+	// Open file for parsing
+	f, err := os.Open(tmpFile.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	stat, err := f.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Parse the file
+	p := &parser{}
+	file, err := p.Parse(f, stat.Size(), tmpFile.Name())
 	// Empty file doesn't necessarily error - it just returns minimal metadata with warnings
 	if err != nil {
 		// Error is acceptable
@@ -64,9 +91,6 @@ func TestParse_EmptyFile(t *testing.T) {
 	// If no error, should have warnings
 	if file != nil && len(file.Warnings) == 0 {
 		t.Error("expected warnings for empty file")
-	}
-	if file != nil {
-		file.Close()
 	}
 }
 
@@ -172,8 +196,8 @@ func TestParseTrackNumber(t *testing.T) {
 }
 
 func TestParseTextFrame(t *testing.T) {
-	file := &audiometa.File{
-		Tags: audiometa.Tags{},
+	file := &types.File{
+		Tags: types.Tags{},
 	}
 
 	// TIT2 (Title) frame
@@ -211,8 +235,8 @@ func TestParseTextFrame(t *testing.T) {
 }
 
 func TestParseTXXXFrame(t *testing.T) {
-	file := &audiometa.File{
-		Tags: audiometa.Tags{},
+	file := &types.File{
+		Tags: types.Tags{},
 	}
 
 	// TXXX frame with Narrator field

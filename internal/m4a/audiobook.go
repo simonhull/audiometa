@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/simonhull/audiometa"
 	"github.com/simonhull/audiometa/internal/binary"
 	"github.com/simonhull/audiometa/internal/parsing"
+	"github.com/simonhull/audiometa/internal/types"
 )
 
 // parseAudiobookTags extracts narrator, series, publisher, etc. from custom atoms
-func parseAudiobookTags(sr *binary.SafeReader, ilstAtom *Atom, file *audiometa.File) error {
+func parseAudiobookTags(sr *binary.SafeReader, ilstAtom *Atom, file *types.File) error {
 	offset := ilstAtom.DataOffset()
 	end := offset + int64(ilstAtom.DataSize())
 
@@ -53,7 +53,7 @@ func parseAudiobookTags(sr *binary.SafeReader, ilstAtom *Atom, file *audiometa.F
 }
 
 // parseCustomAtomWithTags parses a ---- custom atom and returns the field name and value
-func parseCustomAtomWithTags(sr *binary.SafeReader, customAtom *Atom, file *audiometa.File) (string, string, error) {
+func parseCustomAtomWithTags(sr *binary.SafeReader, customAtom *Atom, file *types.File) (string, string, error) {
 	offset := customAtom.DataOffset()
 	end := offset + int64(customAtom.DataSize())
 
@@ -119,7 +119,7 @@ func parseCustomAtomWithTags(sr *binary.SafeReader, customAtom *Atom, file *audi
 // mapAudiobookField maps custom field names to metadata fields
 // NOTE: Series Part is NOT set here - it's resolved via resolveSeriesPart()
 // to allow multi-source validation and fallback
-func mapAudiobookField(fieldName, value string, file *audiometa.File) {
+func mapAudiobookField(fieldName, value string, file *types.File) {
 	// Normalize field name (case-insensitive)
 	fieldName = strings.ToLower(fieldName)
 
@@ -141,7 +141,7 @@ func mapAudiobookField(fieldName, value string, file *audiometa.File) {
 
 // resolveSeriesPart determines series part from multiple sources
 // Priority: Custom atoms > Track number > Title parsing > Album parsing > Path parsing
-func resolveSeriesPart(sr *binary.SafeReader, file *audiometa.File, customTags map[string]string) string {
+func resolveSeriesPart(sr *binary.SafeReader, file *types.File, customTags map[string]string) string {
 	// Priority 1: Custom iTunes atoms
 	if part := customTags["Series Part"]; part != "" {
 		return part

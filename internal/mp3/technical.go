@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/simonhull/audiometa"
 	binutil "github.com/simonhull/audiometa/internal/binary"
+	"github.com/simonhull/audiometa/internal/types"
 )
 
 // MP3 bitrate table (MPEG1 Layer III) in kbps
@@ -20,7 +20,7 @@ var sampleRateTable = []int{
 }
 
 // parseTechnicalInfo extracts bitrate, sample rate, codec, and duration from MP3 frames
-func parseTechnicalInfo(sr *binutil.SafeReader, tagSize int64, fileSize int64, file *audiometa.File) error {
+func parseTechnicalInfo(sr *binutil.SafeReader, tagSize int64, fileSize int64, file *types.File) error {
 	// Find first MP3 frame (after ID3 tag)
 	frameOffset := tagSize
 

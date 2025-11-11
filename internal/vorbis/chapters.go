@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/simonhull/audiometa"
+	"github.com/simonhull/audiometa/internal/types"
 )
 
 // ParseChapters extracts chapters from Vorbis CHAPTER comments.
@@ -26,7 +26,7 @@ import (
 //	CHAPTER001NAME=Introduction
 //	CHAPTER002=00:05:23.500
 //	CHAPTER002NAME=Chapter 1: The Beginning
-func ParseChapters(comments []string, fileDuration time.Duration) []audiometa.Chapter {
+func ParseChapters(comments []string, fileDuration time.Duration) []types.Chapter {
 	// Map to collect chapter data by chapter number
 	type chapterData struct {
 		number    int
@@ -100,8 +100,8 @@ func ParseChapters(comments []string, fileDuration time.Duration) []audiometa.Ch
 		return cmp.Compare(a.number, b.number)
 	})
 
-	// Convert to audiometa.Chapter
-	chapters := make([]audiometa.Chapter, len(chapterList))
+	// Convert to types.Chapter
+	chapters := make([]types.Chapter, len(chapterList))
 	for i, chap := range chapterList {
 		startTime, err := parseChapterTimestamp(chap.timestamp)
 		if err != nil {
@@ -125,7 +125,7 @@ func ParseChapters(comments []string, fileDuration time.Duration) []audiometa.Ch
 			title = fmt.Sprintf("Chapter %d", chap.number)
 		}
 
-		chapters[i] = audiometa.Chapter{
+		chapters[i] = types.Chapter{
 			Index:     i + 1,
 			Title:     title,
 			StartTime: startTime,

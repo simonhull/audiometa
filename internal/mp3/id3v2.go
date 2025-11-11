@@ -11,8 +11,8 @@ import (
 	"unicode/utf16"
 	"unicode/utf8"
 
-	"github.com/simonhull/audiometa"
 	binutil "github.com/simonhull/audiometa/internal/binary"
+	"github.com/simonhull/audiometa/internal/types"
 )
 
 // ID3v2Header represents an ID3v2 tag header
@@ -33,11 +33,11 @@ type ID3v2Frame struct {
 }
 
 // parseID3v2 parses ID3v2 tags and extracts metadata
-func parseID3v2(sr *binutil.SafeReader, file *audiometa.File) (int64, error) {
+func parseID3v2(sr *binutil.SafeReader, file *types.File) (int64, error) {
 	// Read ID3v2 header (10 bytes)
 	buf := make([]byte, 10)
 	if err := sr.ReadAt(buf, 0, "ID3v2 header"); err != nil {
-		return 0, &audiometa.UnsupportedFormatError{
+		return 0, &types.UnsupportedFormatError{
 			Path:   sr.Path(),
 			Reason: "failed to read ID3v2 header",
 		}
@@ -45,7 +45,7 @@ func parseID3v2(sr *binutil.SafeReader, file *audiometa.File) (int64, error) {
 
 	// Verify "ID3" magic bytes
 	if string(buf[0:3]) != "ID3" {
-		return 0, &audiometa.UnsupportedFormatError{
+		return 0, &types.UnsupportedFormatError{
 			Path:   sr.Path(),
 			Reason: "not an ID3v2 file (missing ID3 header)",
 		}
@@ -61,7 +61,7 @@ func parseID3v2(sr *binutil.SafeReader, file *audiometa.File) (int64, error) {
 
 	// Only support ID3v2.3 and ID3v2.4
 	if header.Version != 3 && header.Version != 4 {
-		return 0, &audiometa.UnsupportedFormatError{
+		return 0, &types.UnsupportedFormatError{
 			Path:   sr.Path(),
 			Reason: fmt.Sprintf("unsupported ID3v2 version: 2.%d", header.Version),
 		}
@@ -119,7 +119,7 @@ func parseID3v2(sr *binutil.SafeReader, file *audiometa.File) (int64, error) {
 		// Read frame data
 		frameData := make([]byte, frameSize)
 		if err := sr.ReadAt(frameData, offset+10, fmt.Sprintf("frame %s data", frameID)); err != nil {
-			file.Warnings = append(file.Warnings, audiometa.Warning{
+			file.Warnings = append(file.Warnings, types.Warning{
 				Stage:   "metadata",
 				Message: fmt.Sprintf("failed to read frame %s: %v", frameID, err),
 			})
@@ -174,7 +174,7 @@ func decodeSynchsafe(b []byte) uint32 {
 }
 
 // parseTextFrame parses standard text frames (TIT2, TPE1, TALB, etc.)
-func parseTextFrame(frame ID3v2Frame, file *audiometa.File) {
+func parseTextFrame(frame ID3v2Frame, file *types.File) {
 	if len(frame.Data) < 1 {
 		return
 	}
@@ -216,7 +216,7 @@ func parseTextFrame(frame ID3v2Frame, file *audiometa.File) {
 
 // parseTXXXFrame parses custom text frames (TXXX)
 // Format: [encoding][description\0][value]
-func parseTXXXFrame(frame ID3v2Frame, file *audiometa.File) {
+func parseTXXXFrame(frame ID3v2Frame, file *types.File) {
 	if len(frame.Data) < 2 {
 		return
 	}
@@ -255,7 +255,7 @@ func parseTXXXFrame(frame ID3v2Frame, file *audiometa.File) {
 
 // parseCommentFrame parses comment frames (COMM)
 // Format: [encoding][language(3)][short description\0][text]
-func parseCommentFrame(frame ID3v2Frame, file *audiometa.File) {
+func parseCommentFrame(frame ID3v2Frame, file *types.File) {
 	if len(frame.Data) < 4 {
 		return
 	}
@@ -281,7 +281,7 @@ func parseCommentFrame(frame ID3v2Frame, file *audiometa.File) {
 // CHAP frame format:
 //
 //	[encoding][element_id\0][start_time(4)][end_time(4)][start_offset(4)][end_offset(4)][subframes...]
-func parseChapterFrames(frames []ID3v2Frame, totalDuration time.Duration) []audiometa.Chapter {
+func parseChapterFrames(frames []ID3v2Frame, totalDuration time.Duration) []types.Chapter {
 	type chapterData struct {
 		Index     int
 		ElementID string
@@ -359,10 +359,10 @@ func parseChapterFrames(frames []ID3v2Frame, totalDuration time.Duration) []audi
 		return cmp.Compare(a.StartTime, b.StartTime)
 	})
 
-	// Convert to audiometa.Chapter
-	result := make([]audiometa.Chapter, len(chapters))
+	// Convert to types.Chapter
+	result := make([]types.Chapter, len(chapters))
 	for i, ch := range chapters {
-		result[i] = audiometa.Chapter{
+		result[i] = types.Chapter{
 			Index:     i + 1,
 			Title:     ch.Title,
 			StartTime: time.Duration(ch.StartTime) * time.Millisecond,

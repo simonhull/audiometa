@@ -5,15 +5,16 @@ import (
 	"io"
 	"time"
 
-	"github.com/simonhull/audiometa"
 	"github.com/simonhull/audiometa/internal/binary"
+	"github.com/simonhull/audiometa/internal/registry"
+	"github.com/simonhull/audiometa/internal/types"
 )
 
 // parser implements the audiometa.FormatParser interface for Ogg Vorbis files
 type parser struct{}
 
 // Parse parses an Ogg Vorbis file and extracts metadata
-func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*audiometa.File, error) {
+func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, error) {
 	// Create safe reader
 	sr := binary.NewSafeReader(r, size, path)
 
@@ -23,7 +24,7 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*audiometa.File,
 		return nil, fmt.Errorf("read Ogg magic: %w", err)
 	}
 	if string(magic) != "OggS" {
-		return nil, &audiometa.CorruptedFileError{
+		return nil, &types.CorruptedFileError{
 			Path:   path,
 			Offset: 0,
 			Reason: "invalid Ogg magic bytes",
@@ -31,12 +32,12 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*audiometa.File,
 	}
 
 	// Initialize file
-	file := &audiometa.File{
+	file := &types.File{
 		Path:   path,
-		Format: audiometa.FormatOgg,
+		Format: types.FormatOgg,
 		Size:   size,
-		Tags:   audiometa.Tags{},
-		Audio:  audiometa.AudioInfo{},
+		Tags:   types.Tags{},
+		Audio:  types.AudioInfo{},
 	}
 
 	// Read first few pages (Vorbis headers are always in the first pages)
@@ -52,7 +53,7 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*audiometa.File,
 				return nil, fmt.Errorf("failed to read first Ogg page: %w", err)
 			}
 			// Subsequent pages - add warning and stop
-			file.Warnings = append(file.Warnings, audiometa.Warning{
+			file.Warnings = append(file.Warnings, types.Warning{
 				Stage:   "metadata",
 				Message: fmt.Sprintf("failed to read Ogg page %d: %v", i, err),
 				Offset:  offset,
@@ -87,7 +88,7 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*audiometa.File,
 		// Parse Vorbis comment header (packet 1)
 		if err := parseVorbisComment(packets[1], file); err != nil {
 			// Non-fatal - add warning
-			file.Warnings = append(file.Warnings, audiometa.Warning{
+			file.Warnings = append(file.Warnings, types.Warning{
 				Stage:   "metadata",
 				Message: fmt.Sprintf("failed to parse Vorbis comment header: %v", err),
 			})
@@ -98,7 +99,7 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*audiometa.File,
 			duration, err := calculateDuration(sr, size, file.Audio.SampleRate)
 			if err != nil {
 				// Non-fatal - add warning
-				file.Warnings = append(file.Warnings, audiometa.Warning{
+				file.Warnings = append(file.Warnings, types.Warning{
 					Stage:   "technical",
 					Message: fmt.Sprintf("failed to calculate duration: %v", err),
 				})
@@ -116,7 +117,7 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*audiometa.File,
 		// Parse OpusTags comment header (packet 1)
 		if err := parseOpusTags(packets[1], file); err != nil {
 			// Non-fatal - add warning
-			file.Warnings = append(file.Warnings, audiometa.Warning{
+			file.Warnings = append(file.Warnings, types.Warning{
 				Stage:   "metadata",
 				Message: fmt.Sprintf("failed to parse OpusTags header: %v", err),
 			})
@@ -126,7 +127,7 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*audiometa.File,
 		duration, err := calculateDuration(sr, size, 48000)
 		if err != nil {
 			// Non-fatal - add warning
-			file.Warnings = append(file.Warnings, audiometa.Warning{
+			file.Warnings = append(file.Warnings, types.Warning{
 				Stage:   "technical",
 				Message: fmt.Sprintf("failed to calculate duration: %v", err),
 			})
@@ -221,5 +222,5 @@ func calculateDuration(sr *binary.SafeReader, fileSize int64, sampleRate int) (t
 
 // init registers the Ogg Vorbis parser
 func init() {
-	audiometa.RegisterParser(audiometa.FormatOgg, &parser{})
+	registry.Register(types.FormatOgg, &parser{})
 }

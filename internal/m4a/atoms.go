@@ -4,8 +4,8 @@ package m4a
 import (
 	"fmt"
 
-	"github.com/simonhull/audiometa"
 	"github.com/simonhull/audiometa/internal/binary"
+	"github.com/simonhull/audiometa/internal/types"
 )
 
 // Atom represents an MP4/M4A/M4B atom (box)
@@ -87,7 +87,7 @@ func readAtomHeader(sr *binary.SafeReader, offset int64) (*Atom, error) {
 
 	// Validate atom size
 	if atom.Size < 8 {
-		return nil, &audiometa.CorruptedFileError{
+		return nil, &types.CorruptedFileError{
 			Offset: offset,
 			Reason: fmt.Sprintf("invalid atom size %d (minimum is 8)", atom.Size),
 		}
@@ -116,7 +116,7 @@ func findAtom(sr *binary.SafeReader, start, end int64, atomType string) (*Atom, 
 
 		// Prevent infinite loop on corrupted files
 		if atom.Size == 0 {
-			return nil, &audiometa.CorruptedFileError{
+			return nil, &types.CorruptedFileError{
 				Offset: offset,
 				Reason: "atom with zero size",
 			}

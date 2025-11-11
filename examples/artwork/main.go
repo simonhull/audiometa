@@ -19,10 +19,6 @@ import (
 	"strings"
 
 	"github.com/simonhull/audiometa"
-	_ "github.com/simonhull/audiometa/internal/flac"
-	_ "github.com/simonhull/audiometa/internal/m4a"
-	_ "github.com/simonhull/audiometa/internal/mp3"
-	_ "github.com/simonhull/audiometa/internal/ogg"
 )
 
 func main() {

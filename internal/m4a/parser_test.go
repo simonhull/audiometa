@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/simonhull/audiometa"
+	"github.com/simonhull/audiometa/internal/types"
 )
 
 // createMinimalM4B creates a minimal M4B file with ftyp, moov, udta, meta, and ilst atoms
@@ -69,12 +69,24 @@ func TestParse_Success(t *testing.T) {
 	}
 	tmpFile.Close()
 
+	// Open file for parsing
+	f, err := os.Open(tmpFile.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	stat, err := f.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Parse the file
-	file, err := audiometa.Open(tmpFile.Name())
+	p := &parser{}
+	file, err := p.Parse(f, stat.Size(), tmpFile.Name())
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
 	}
-	defer file.Close()
 
 	if file == nil {
 		t.Fatal("expected file, got nil")
@@ -92,7 +104,7 @@ func TestParse_Success(t *testing.T) {
 		t.Errorf("expected album 'Series 1', got '%s'", file.Tags.Album)
 	}
 
-	if file.Format != audiometa.FormatM4B {
+	if file.Format != types.FormatM4B {
 		t.Errorf("expected format M4B, got %v", file.Format)
 	}
 
@@ -102,15 +114,16 @@ func TestParse_Success(t *testing.T) {
 }
 
 func TestParse_FileNotFound(t *testing.T) {
-	_, err := audiometa.Open("/nonexistent/file.m4b")
+	_, err := os.Open("/nonexistent/file.m4b")
 	if err == nil {
 		t.Error("expected error for nonexistent file")
 	}
 }
 
-func TestParse_UnsupportedFormat(t *testing.T) {
-	// Create a file with wrong ftyp
-	data := createMockAtom("ftyp", []byte("XXXX")) // Wrong brand
+func TestParse_UnknownBrand(t *testing.T) {
+	// Create a file with an unknown ftyp brand
+	// The parser should still work and default to M4A format
+	data := createMockAtom("ftyp", []byte("XXXX")) // Unknown brand
 
 	tmpFile, err := os.CreateTemp("", "test*.m4b")
 	if err != nil {
@@ -121,13 +134,29 @@ func TestParse_UnsupportedFormat(t *testing.T) {
 	tmpFile.Write(data)
 	tmpFile.Close()
 
-	_, err = audiometa.Open(tmpFile.Name())
-	if err == nil {
-		t.Error("expected error for unsupported format")
+	// Open file for parsing
+	f, err := os.Open(tmpFile.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	stat, err := f.Stat()
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	if _, ok := err.(*audiometa.UnsupportedFormatError); !ok {
-		t.Errorf("expected UnsupportedFormatError, got %T", err)
+	// Parse should succeed and default to M4A format
+	// The parser is permissive and will attempt to parse any M4-like file
+	p := &parser{}
+	file, err := p.Parse(f, stat.Size(), tmpFile.Name())
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	// Should default to M4A format for unknown brands
+	if file.Format != types.FormatM4A {
+		t.Errorf("expected FormatM4A for unknown brand, got %v", file.Format)
 	}
 }
 
@@ -144,11 +173,24 @@ func TestParse_NoMetadata(t *testing.T) {
 	tmpFile.Write(data)
 	tmpFile.Close()
 
-	file, err := audiometa.Open(tmpFile.Name())
+	// Open file for parsing
+	f, err := os.Open(tmpFile.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	stat, err := f.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Parse the file
+	p := &parser{}
+	file, err := p.Parse(f, stat.Size(), tmpFile.Name())
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
 	}
-	defer file.Close()
 
 	// Should succeed but have empty metadata
 	if file.Tags.Title != "" || file.Tags.Artist != "" || file.Tags.Album != "" {

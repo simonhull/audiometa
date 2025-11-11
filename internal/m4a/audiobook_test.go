@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"github.com/simonhull/audiometa"
+	"github.com/simonhull/audiometa/internal/types"
 	audiobinary "github.com/simonhull/audiometa/internal/binary"
 )
 
@@ -62,7 +62,7 @@ func TestParseAudiobookTags_Narrator(t *testing.T) {
 	sr := audiobinary.NewSafeReader(bytes.NewReader(ilst), int64(len(ilst)), "test.m4b")
 	ilstAtom, _ := readAtomHeader(sr, 0)
 
-	file := &audiometa.File{}
+	file := &types.File{}
 	err := parseAudiobookTags(sr, ilstAtom, file)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -80,7 +80,7 @@ func TestParseAudiobookTags_Series(t *testing.T) {
 	sr := audiobinary.NewSafeReader(bytes.NewReader(ilst), int64(len(ilst)), "test.m4b")
 	ilstAtom, _ := readAtomHeader(sr, 0)
 
-	file := &audiometa.File{}
+	file := &types.File{}
 	err := parseAudiobookTags(sr, ilstAtom, file)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -104,7 +104,7 @@ func TestParseAudiobookTags_MultipleFields(t *testing.T) {
 	sr := audiobinary.NewSafeReader(bytes.NewReader(ilst), int64(len(ilst)), "test.m4b")
 	ilstAtom, _ := readAtomHeader(sr, 0)
 
-	file := &audiometa.File{}
+	file := &types.File{}
 	err := parseAudiobookTags(sr, ilstAtom, file)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -132,8 +132,8 @@ func TestParseAudiobookTags_NarratorFallback(t *testing.T) {
 	sr := audiobinary.NewSafeReader(bytes.NewReader(ilst), int64(len(ilst)), "test.m4b")
 	ilstAtom, _ := readAtomHeader(sr, 0)
 
-	file := &audiometa.File{
-		Tags: audiometa.Tags{
+	file := &types.File{
+		Tags: types.Tags{
 			Composers: []string{"Stephen Fry"}, // Already parsed in main metadata
 		},
 	}
@@ -159,7 +159,7 @@ func TestParseAudiobookTags_NoCustomAtoms(t *testing.T) {
 	sr := audiobinary.NewSafeReader(bytes.NewReader(ilst), int64(len(ilst)), "test.m4b")
 	ilstAtom, _ := readAtomHeader(sr, 0)
 
-	file := &audiometa.File{}
+	file := &types.File{}
 	err := parseAudiobookTags(sr, ilstAtom, file)
 
 	// Should not error, just no audiobook tags extracted
@@ -176,37 +176,37 @@ func TestResolveSeriesPart_FromCustomAtom(t *testing.T) {
 	tests := []struct {
 		name       string
 		customTags map[string]string
-		file       *audiometa.File
+		file       *types.File
 		expected   string
 	}{
 		{
 			name:       "Series Part custom atom",
 			customTags: map[string]string{"Series Part": "2"},
-			file:       &audiometa.File{},
+			file:       &types.File{},
 			expected:   "2",
 		},
 		{
 			name:       "Series Position custom atom",
 			customTags: map[string]string{"Series Position": "3"},
-			file:       &audiometa.File{},
+			file:       &types.File{},
 			expected:   "3",
 		},
 		{
 			name:       "Part custom atom",
 			customTags: map[string]string{"Part": "4"},
-			file:       &audiometa.File{},
+			file:       &types.File{},
 			expected:   "4",
 		},
 		{
 			name:       "Volume custom atom",
 			customTags: map[string]string{"Volume": "5"},
-			file:       &audiometa.File{},
+			file:       &types.File{},
 			expected:   "5",
 		},
 		{
 			name:       "Priority: Series Part wins",
 			customTags: map[string]string{"Series Part": "2", "Part": "99"},
-			file:       &audiometa.File{Tags: audiometa.Tags{TrackNumber: 3, TrackTotal: 4}},
+			file:       &types.File{Tags: types.Tags{TrackNumber: 3, TrackTotal: 4}},
 			expected:   "2",
 		},
 	}
@@ -225,14 +225,14 @@ func TestResolveSeriesPart_FromCustomAtom(t *testing.T) {
 func TestResolveSeriesPart_FromTrackNumber(t *testing.T) {
 	tests := []struct {
 		name       string
-		file       *audiometa.File
+		file       *types.File
 		customTags map[string]string
 		expected   string
 	}{
 		{
 			name: "Track 2 of 4 (likely series)",
-			file: &audiometa.File{
-				Tags: audiometa.Tags{
+			file: &types.File{
+				Tags: types.Tags{
 					TrackNumber: 2,
 					TrackTotal:  4,
 				},
@@ -242,8 +242,8 @@ func TestResolveSeriesPart_FromTrackNumber(t *testing.T) {
 		},
 		{
 			name: "Track 15 of 69 (likely chapters, not series)",
-			file: &audiometa.File{
-				Tags: audiometa.Tags{
+			file: &types.File{
+				Tags: types.Tags{
 					TrackNumber: 15,
 					TrackTotal:  69,
 				},
@@ -253,8 +253,8 @@ func TestResolveSeriesPart_FromTrackNumber(t *testing.T) {
 		},
 		{
 			name: "Track 0 of 4 (invalid)",
-			file: &audiometa.File{
-				Tags: audiometa.Tags{
+			file: &types.File{
+				Tags: types.Tags{
 					TrackNumber: 0,
 					TrackTotal:  4,
 				},
@@ -278,14 +278,14 @@ func TestResolveSeriesPart_FromTrackNumber(t *testing.T) {
 func TestResolveSeriesPart_FromTitleParsing(t *testing.T) {
 	tests := []struct {
 		name       string
-		file       *audiometa.File
+		file       *types.File
 		customTags map[string]string
 		expected   string
 	}{
 		{
 			name: "Book 2 in title",
-			file: &audiometa.File{
-				Tags: audiometa.Tags{
+			file: &types.File{
+				Tags: types.Tags{
 					Title: "The Wingfeather Saga, Book 2: North or Be Eaten",
 				},
 			},
@@ -294,8 +294,8 @@ func TestResolveSeriesPart_FromTitleParsing(t *testing.T) {
 		},
 		{
 			name: "Part 3 in title",
-			file: &audiometa.File{
-				Tags: audiometa.Tags{
+			file: &types.File{
+				Tags: types.Tags{
 					Title: "Part 3: The Monster in the Hollows",
 				},
 			},
@@ -304,8 +304,8 @@ func TestResolveSeriesPart_FromTitleParsing(t *testing.T) {
 		},
 		{
 			name: "No series info in title",
-			file: &audiometa.File{
-				Tags: audiometa.Tags{
+			file: &types.File{
+				Tags: types.Tags{
 					Title: "The Martian",
 				},
 			},
@@ -328,14 +328,14 @@ func TestResolveSeriesPart_FromTitleParsing(t *testing.T) {
 func TestResolveSeriesPart_FromAlbumParsing(t *testing.T) {
 	tests := []struct {
 		name       string
-		file       *audiometa.File
+		file       *types.File
 		customTags map[string]string
 		expected   string
 	}{
 		{
 			name: "Book 2 in album",
-			file: &audiometa.File{
-				Tags: audiometa.Tags{
+			file: &types.File{
+				Tags: types.Tags{
 					Title: "North or Be Eaten",
 					Album: "The Wingfeather Saga, Book 2",
 				},
@@ -345,8 +345,8 @@ func TestResolveSeriesPart_FromAlbumParsing(t *testing.T) {
 		},
 		{
 			name: "Title takes priority over album",
-			file: &audiometa.File{
-				Tags: audiometa.Tags{
+			file: &types.File{
+				Tags: types.Tags{
 					Title: "Book 3: The Title",
 					Album: "Book 2: The Album",
 				},
@@ -371,8 +371,8 @@ func TestResolveSeriesPart_PriorityOrder(t *testing.T) {
 	sr := createMockSafeReader("")
 
 	// Test that custom atoms take priority over everything
-	file := &audiometa.File{
-		Tags: audiometa.Tags{
+	file := &types.File{
+		Tags: types.Tags{
 			Title:       "Book 99: Wrong",
 			Album:       "Book 98: Also Wrong",
 			TrackNumber: 97,
@@ -387,8 +387,8 @@ func TestResolveSeriesPart_PriorityOrder(t *testing.T) {
 	}
 
 	// Test that track number takes priority over title when custom atom absent
-	file2 := &audiometa.File{
-		Tags: audiometa.Tags{
+	file2 := &types.File{
+		Tags: types.Tags{
 			Title:       "Book 99: Wrong",
 			TrackNumber: 3,
 			TrackTotal:  4,
@@ -406,15 +406,15 @@ func TestResolveSeriesPart_FromPathParsing(t *testing.T) {
 	tests := []struct {
 		name       string
 		path       string
-		file       *audiometa.File
+		file       *types.File
 		customTags map[string]string
 		expected   string
 	}{
 		{
 			name: "Path parsing as last resort",
 			path: "/audiobooks/Author/Series/2 - North or Be Eaten/file.m4b",
-			file: &audiometa.File{
-				Tags: audiometa.Tags{
+			file: &types.File{
+				Tags: types.Tags{
 					Title: "North or Be Eaten",
 					Album: "The Wingfeather Saga",
 				},
@@ -425,8 +425,8 @@ func TestResolveSeriesPart_FromPathParsing(t *testing.T) {
 		{
 			name: "Path with Book keyword",
 			path: "/audiobooks/C.S. Lewis/Narnia/Book 3 - The Horse and His Boy/file.m4b",
-			file: &audiometa.File{
-				Tags: audiometa.Tags{
+			file: &types.File{
+				Tags: types.Tags{
 					Title: "The Horse and His Boy",
 				},
 			},
@@ -436,8 +436,8 @@ func TestResolveSeriesPart_FromPathParsing(t *testing.T) {
 		{
 			name: "Custom atom overrides path",
 			path: "/audiobooks/Author/Series/2 - Wrong Folder/file.m4b",
-			file: &audiometa.File{
-				Tags: audiometa.Tags{
+			file: &types.File{
+				Tags: types.Tags{
 					Title: "Some Book",
 				},
 			},

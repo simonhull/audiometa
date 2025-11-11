@@ -7,7 +7,7 @@ package vorbis
 import (
 	"fmt"
 
-	"github.com/simonhull/audiometa"
+	"github.com/simonhull/audiometa/internal/types"
 )
 
 // ParseComment parses a single Vorbis comment in "KEY=VALUE" format
@@ -17,7 +17,7 @@ import (
 // The comment is also stored in the raw tags map.
 //
 // Returns an error if the comment is not in valid "KEY=VALUE" format.
-func ParseComment(comment string, tags *audiometa.Tags) error {
+func ParseComment(comment string, tags *types.Tags) error {
 	// Find the '=' separator
 	eq := -1
 	for i := 0; i < len(comment); i++ {

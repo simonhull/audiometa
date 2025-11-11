@@ -3,12 +3,12 @@ package m4a
 import (
 	"time"
 
-	"github.com/simonhull/audiometa"
 	"github.com/simonhull/audiometa/internal/binary"
+	"github.com/simonhull/audiometa/internal/types"
 )
 
 // parseTechnicalInfo extracts duration, bitrate, sample rate, channels, and codec
-func parseTechnicalInfo(sr *binary.SafeReader, moovAtom *Atom, file *audiometa.File) error {
+func parseTechnicalInfo(sr *binary.SafeReader, moovAtom *Atom, file *types.File) error {
 	// Find mvhd (movie header) atom for duration
 	mvhdAtom, err := findAtom(sr, moovAtom.DataOffset(), moovAtom.DataOffset()+int64(moovAtom.DataSize()), "mvhd")
 	if err != nil {
@@ -77,7 +77,7 @@ func parseTechnicalInfo(sr *binary.SafeReader, moovAtom *Atom, file *audiometa.F
 }
 
 // parseMvhd parses the movie header atom for duration
-func parseMvhd(sr *binary.SafeReader, mvhdAtom *Atom, file *audiometa.File) error {
+func parseMvhd(sr *binary.SafeReader, mvhdAtom *Atom, file *types.File) error {
 	offset := mvhdAtom.DataOffset()
 
 	// Read version (1 byte)
@@ -139,7 +139,7 @@ func parseMvhd(sr *binary.SafeReader, mvhdAtom *Atom, file *audiometa.File) erro
 }
 
 // parseStsd parses the sample description atom for codec, sample rate, channels
-func parseStsd(sr *binary.SafeReader, stsdAtom *Atom, file *audiometa.File) error {
+func parseStsd(sr *binary.SafeReader, stsdAtom *Atom, file *types.File) error {
 	offset := stsdAtom.DataOffset()
 
 	// stsd structure:
