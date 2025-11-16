@@ -11,8 +11,10 @@ import (
 // such as duration, sample rate, bit depth, and codec information.
 type AudioInfo struct {
 	// Format identification
-	Codec     string // Codec name: "FLAC", "MP3 Layer III", "AAC LC"
-	Container string // Container format: "FLAC", "MP4", "ID3v2.4"
+	Codec            string // Codec FourCC: "mp4a", "ec-3", "ac-4", "mhm1"
+	CodecDescription string // Human-readable: "xHE-AAC", "E-AC-3"
+	CodecProfile     string // Profile: "AAC-LC", "HE-AAC v2", "USAC"
+	Container        string // Container format: "FLAC", "MP4", "ID3v2.4"
 
 	// Core audio properties
 	Duration   time.Duration // Total audio duration
@@ -201,4 +203,44 @@ func pow10(x float64) float64 {
 		}
 	}
 	return result
+}
+
+// ShortCodecName returns a short, human-readable codec name
+func (a AudioInfo) ShortCodecName() string {
+	if a.CodecDescription != "" {
+		return a.CodecDescription
+	}
+	return a.Codec
+}
+
+// FullCodecName returns the full codec name with profile
+func (a AudioInfo) FullCodecName() string {
+	codec := a.CodecDescription
+	if codec == "" {
+		codec = a.Codec
+	}
+
+	if a.CodecProfile != "" && a.CodecProfile != codec {
+		return fmt.Sprintf("%s (%s)", codec, a.CodecProfile)
+	}
+
+	return codec
+}
+
+// IsModernAudiobookCodec returns true for modern audiobook codecs
+func (a AudioInfo) IsModernAudiobookCodec() bool {
+	switch a.Codec {
+	case "mhm1", "mhm2": // xHE-AAC
+		return true
+	case "ec-3": // E-AC-3
+		return true
+	case "ac-4": // AC-4
+		return true
+	case "mp4a": // AAC
+		switch a.CodecProfile {
+		case "HE-AAC", "HE-AAC v2", "xHE-AAC":
+			return true
+		}
+	}
+	return false
 }

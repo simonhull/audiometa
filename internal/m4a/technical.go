@@ -183,6 +183,11 @@ func parseStsd(sr *binary.SafeReader, stsdAtom *Atom, file *types.File) error {
 	codec := string(formatBytes)
 	file.Audio.Codec = codec
 
+	// Parse enhanced codec details
+	if err := parseCodecDetails(sr, offset-8, codec, file); err != nil {
+		// Non-fatal, just skip enhanced details
+	}
+
 	// Skip reserved (6 bytes) and data reference index (2 bytes)
 	offset += 8
 

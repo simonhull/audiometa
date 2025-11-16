@@ -230,7 +230,7 @@ func TestResolveSeriesPart_FromTrackNumber(t *testing.T) {
 		expected   string
 	}{
 		{
-			name: "Track 2 of 4 (likely series)",
+			name: "Track 2 of 4 (no inference from track numbers)",
 			file: &types.File{
 				Tags: types.Tags{
 					TrackNumber: 2,
@@ -238,7 +238,7 @@ func TestResolveSeriesPart_FromTrackNumber(t *testing.T) {
 				},
 			},
 			customTags: map[string]string{},
-			expected:   "2",
+			expected:   "", // Changed: library no longer infers from track numbers
 		},
 		{
 			name: "Track 15 of 69 (likely chapters, not series)",
@@ -386,7 +386,7 @@ func TestResolveSeriesPart_PriorityOrder(t *testing.T) {
 		t.Errorf("custom atom should win, expected '2', got '%s'", result)
 	}
 
-	// Test that track number takes priority over title when custom atom absent
+	// Test that title parsing works when custom atom absent (track numbers no longer used)
 	file2 := &types.File{
 		Tags: types.Tags{
 			Title:       "Book 99: Wrong",
@@ -397,8 +397,8 @@ func TestResolveSeriesPart_PriorityOrder(t *testing.T) {
 	customTags2 := map[string]string{}
 
 	result2 := resolveSeriesPart(sr, file2, customTags2)
-	if result2 != "3" {
-		t.Errorf("track number should win, expected '3', got '%s'", result2)
+	if result2 != "99" {
+		t.Errorf("title parsing should extract '99', got '%s'", result2)
 	}
 }
 

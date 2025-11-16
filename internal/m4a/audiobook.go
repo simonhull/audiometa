@@ -1,7 +1,6 @@
 package m4a
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/simonhull/audiometa/internal/binary"
@@ -140,9 +139,9 @@ func mapAudiobookField(fieldName, value string, file *types.File) {
 }
 
 // resolveSeriesPart determines series part from multiple sources
-// Priority: Custom atoms > Track number > Title parsing > Album parsing > Path parsing
+// Priority: Custom atoms > Title parsing > Album parsing > Path parsing
 func resolveSeriesPart(sr *binary.SafeReader, file *types.File, customTags map[string]string) string {
-	// Priority 1: Custom iTunes atoms
+	// Priority 1: Explicit custom iTunes atoms
 	if part := customTags["Series Part"]; part != "" {
 		return part
 	}
@@ -156,22 +155,17 @@ func resolveSeriesPart(sr *binary.SafeReader, file *types.File, customTags map[s
 		return part
 	}
 
-	// Priority 2: Track number (if likely series position)
-	if parsing.IsLikelySeriesPosition(file.Tags.TrackNumber, file.Tags.TrackTotal) {
-		return fmt.Sprintf("%d", file.Tags.TrackNumber)
-	}
-
-	// Priority 3: Parse from title
+	// Priority 2: Parse from title
 	if part := parsing.ExtractSeriesPartFromText(file.Tags.Title); part != "" {
 		return part
 	}
 
-	// Priority 4: Parse from album
+	// Priority 3: Parse from album
 	if part := parsing.ExtractSeriesPartFromText(file.Tags.Album); part != "" {
 		return part
 	}
 
-	// Priority 5: Parse from file path (last resort)
+	// Priority 4: Parse from file path
 	if part := parsing.ExtractSeriesPartFromPath(sr.Path()); part != "" {
 		return part
 	}

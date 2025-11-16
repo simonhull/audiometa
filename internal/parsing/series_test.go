@@ -86,64 +86,6 @@ func TestExtractSeriesPartFromText(t *testing.T) {
 	}
 }
 
-func TestIsLikelySeriesPosition(t *testing.T) {
-	tests := []struct {
-		name       string
-		trackNum   int
-		trackTotal int
-		expected   bool
-	}{
-		// Special case: Track 1/1 (single-file audiobooks)
-		{"Track 1/1 - single file audiobook", 1, 1, false},
-
-		// Small totals (≤ 10) - likely series
-		{"Trilogy book 2", 2, 3, true},
-		{"Trilogy book 1", 1, 3, true},
-		{"5-book series", 3, 5, true},
-		{"10-book series", 7, 10, true},
-		{"Boundary: 10 books", 10, 10, true},
-
-		// Medium totals (11-30) - depends on ratio
-		{"Book 2 of 15 - likely series", 6, 15, true},
-		{"Book 1 of 20 - likely series", 1, 20, true},
-		{"Book 8 of 20 - likely series", 8, 20, true},
-		{"Chapter 2 of 25 - likely chapters", 2, 25, false},
-		{"Chapter 3 of 30 - likely chapters", 3, 30, false},
-		{"Boundary: 30 total", 15, 30, true}, // Past 1/3
-
-		// Large totals (31-100) - likely chapters but could be large series
-		{"Discworld book 20 of 41", 20, 41, false}, // Conservative: false
-		{"Horus Heresy book 30 of 54", 30, 54, false},
-		{"Chapter 15 of 47", 15, 47, false},
-		{"Chapter 3 of 50", 3, 50, false},   // Near beginning
-		{"Chapter 48 of 50", 48, 50, false}, // Near end
-		{"Boundary: 100 books", 50, 100, false},
-
-		// Very large totals (> 100) - almost certainly chapters
-		{"Chapter 50 of 150", 50, 150, false},
-		{"Chapter 100 of 200", 100, 200, false},
-
-		// Invalid inputs
-		{"Zero track number", 0, 5, false},
-		{"Zero track total", 3, 0, false},
-		{"Both zero", 0, 0, false},
-		{"Track exceeds total", 10, 5, false},
-
-		// Edge cases with book 0
-		{"Book 0 not supported in tracks", 0, 10, false}, // Track numbers start at 1
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := IsLikelySeriesPosition(tt.trackNum, tt.trackTotal)
-			if result != tt.expected {
-				t.Errorf("IsLikelySeriesPosition(%d, %d) = %v, want %v",
-					tt.trackNum, tt.trackTotal, result, tt.expected)
-			}
-		})
-	}
-}
-
 func TestExtractSeriesPartFromPath(t *testing.T) {
 	tests := []struct {
 		name     string
