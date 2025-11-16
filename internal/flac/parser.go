@@ -11,7 +11,10 @@ import (
 	"github.com/simonhull/audiometa/internal/vorbis"
 )
 
-// Metadata block types
+// Codec and container name.
+const codecName = "FLAC"
+
+// Metadata block types.
 const (
 	blockTypeStreamInfo    = 0
 	blockTypePadding       = 1
@@ -22,11 +25,11 @@ const (
 	blockTypePicture       = 6
 )
 
-// parser implements the audiometa.FormatParser interface for FLAC files
+// parser implements the audiometa.FormatParser interface for FLAC files.
 type parser struct{}
 
-// Parse parses a FLAC file and extracts metadata
-func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, error) {
+// Parse parses a FLAC file and extracts metadata.
+func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, error) { //nolint:gocyclo // Block processing requires multiple conditional branches
 	// Create safe reader
 	sr := binary.NewSafeReader(r, size, path)
 
@@ -133,14 +136,14 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, err
 	}
 
 	// Set container and codec
-	file.Audio.Container = "FLAC"
-	file.Audio.Codec = "FLAC"
+	file.Audio.Container = codecName
+	file.Audio.Codec = codecName
 	file.Audio.Lossless = true
 
 	return file, nil
 }
 
-// ExtractArtwork extracts embedded artwork from FLAC files
+// ExtractArtwork extracts embedded artwork from FLAC files.
 func (p *parser) ExtractArtwork(r io.ReaderAt, size int64, path string) ([]types.Artwork, error) {
 	sr := binary.NewSafeReader(r, size, path)
 
@@ -181,10 +184,10 @@ func (p *parser) ExtractArtwork(r io.ReaderAt, size int64, path string) ([]types
 		}
 	}
 
-	return artwork, nil
+	return artwork, nil //nolint:nilerr // We return all successfully parsed artwork, errors are non-fatal
 }
 
-// parseStreamInfo extracts audio info from STREAMINFO block
+// parseStreamInfo extracts audio info from STREAMINFO block.
 func parseStreamInfo(sr *binary.SafeReader, offset, blockLength int64, file *types.File) error {
 	// STREAMINFO is exactly 34 bytes
 	if blockLength != 34 {
@@ -208,10 +211,10 @@ func parseStreamInfo(sr *binary.SafeReader, offset, blockLength int64, file *typ
 	packed := uint64(data[10])<<56 | uint64(data[11])<<48 | uint64(data[12])<<40 | uint64(data[13])<<32 |
 		uint64(data[14])<<24 | uint64(data[15])<<16 | uint64(data[16])<<8 | uint64(data[17])
 
-	sampleRate := (packed >> 44) & 0xFFFFF // Top 20 bits
-	channels := ((packed >> 41) & 0x7) + 1  // Next 3 bits, stored as (channels - 1)
+	sampleRate := (packed >> 44) & 0xFFFFF       // Top 20 bits
+	channels := ((packed >> 41) & 0x7) + 1       // Next 3 bits, stored as (channels - 1)
 	bitsPerSample := ((packed >> 36) & 0x1F) + 1 // Next 5 bits, stored as (bits - 1)
-	totalSamples := packed & 0xFFFFFFFFF // Bottom 36 bits
+	totalSamples := packed & 0xFFFFFFFFF         // Bottom 36 bits
 
 	// Calculate duration
 	if sampleRate > 0 {
@@ -235,8 +238,8 @@ func parseStreamInfo(sr *binary.SafeReader, offset, blockLength int64, file *typ
 	return nil
 }
 
-// parseVorbisComment extracts tags from VORBIS_COMMENT block
-func parseVorbisComment(sr *binary.SafeReader, offset, blockLength int64, file *types.File) error {
+// parseVorbisComment extracts tags from VORBIS_COMMENT block.
+func parseVorbisComment(sr *binary.SafeReader, offset, _ int64, file *types.File) error { //nolint:revive // Unused blockLength parameter kept for interface consistency
 	currentOffset := offset
 
 	// Read vendor string length (32-bit little-endian)
@@ -286,8 +289,8 @@ func parseVorbisComment(sr *binary.SafeReader, offset, blockLength int64, file *
 	return nil
 }
 
-// parsePicture extracts artwork from PICTURE block
-func parsePicture(sr *binary.SafeReader, offset, blockLength int64) (types.Artwork, error) {
+// parsePicture extracts artwork from PICTURE block.
+func parsePicture(sr *binary.SafeReader, offset, _ int64) (types.Artwork, error) { //nolint:revive // Unused blockLength parameter kept for interface consistency
 	currentOffset := offset
 
 	// Read picture type (32-bit big-endian)
@@ -379,7 +382,7 @@ func parsePicture(sr *binary.SafeReader, offset, blockLength int64) (types.Artwo
 	}, nil
 }
 
-// init registers the FLAC parser
+// init registers the FLAC parser.
 func init() {
 	registry.Register(types.FormatFLAC, &parser{})
 }

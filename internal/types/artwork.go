@@ -7,21 +7,12 @@ import "fmt"
 // Artwork can include album covers, artist photos, and other images
 // embedded in audio files. Multiple artworks per file are supported.
 type Artwork struct {
-	// Type of artwork (front cover, back cover, artist photo, etc.)
-	Type ArtworkType
-
-	// MIME type of the image data
-	MIMEType string // "image/jpeg", "image/png", "image/gif"
-
-	// Description of the artwork (optional)
+	MIMEType    string
 	Description string
-
-	// Image binary data
-	Data []byte
-
-	// Dimensions (if available in metadata, otherwise 0)
-	Width  int // Pixels
-	Height int // Pixels
+	Data        []byte
+	Type        ArtworkType
+	Width       int
+	Height      int
 }
 
 // ArtworkType categorizes the purpose/content of artwork.
@@ -33,32 +24,30 @@ type Artwork struct {
 type ArtworkType int
 
 const (
-	ArtworkOther ArtworkType = iota // Other
-	ArtworkIcon                      // File icon (32x32 PNG)
-	ArtworkOtherIcon                 // Other file icon
-	ArtworkFrontCover                // Front cover
-	ArtworkBackCover                 // Back cover
-	ArtworkLeaflet                   // Leaflet page
-	ArtworkMedia                     // Media (CD/vinyl label)
-	ArtworkLeadArtist                // Lead artist/performer/soloist
-	ArtworkArtist                    // Artist/performer
-	ArtworkConductor                 // Conductor
-	ArtworkBand                      // Band/orchestra
-	ArtworkComposer                  // Composer
-	ArtworkLyricist                  // Lyricist/text writer
-	ArtworkRecordingLocation         // Recording location
-	ArtworkDuringRecording           // During recording
-	ArtworkDuringPerformance         // During performance
-	ArtworkVideoCapture              // Movie/video screen capture
-	ArtworkBrightFish                // A bright colored fish
-	ArtworkIllustration              // Illustration
-	ArtworkBandLogotype              // Band/artist logotype
-	ArtworkPublisherLogotype         // Publisher/studio logotype
+	ArtworkOther             ArtworkType = iota // Other
+	ArtworkIcon                                 // File icon (32x32 PNG)
+	ArtworkOtherIcon                            // Other file icon
+	ArtworkFrontCover                           // Front cover
+	ArtworkBackCover                            // Back cover
+	ArtworkLeaflet                              // Leaflet page
+	ArtworkMedia                                // Media (CD/vinyl label)
+	ArtworkLeadArtist                           // Lead artist/performer/soloist
+	ArtworkArtist                               // Artist/performer
+	ArtworkConductor                            // Conductor
+	ArtworkBand                                 // Band/orchestra
+	ArtworkComposer                             // Composer
+	ArtworkLyricist                             // Lyricist/text writer
+	ArtworkRecordingLocation                    // Recording location
+	ArtworkDuringRecording                      // During recording
+	ArtworkDuringPerformance                    // During performance
+	ArtworkVideoCapture                         // Movie/video screen capture
+	ArtworkBrightFish                           // A bright colored fish
+	ArtworkIllustration                         // Illustration
+	ArtworkBandLogotype                         // Band/artist logotype
+	ArtworkPublisherLogotype                    // Publisher/studio logotype
 )
 
-// String returns a human-readable description of the artwork.
-//
-// Example output: "Front cover (1200x1200 JPEG, 245KB)"
+// Example output: "Front cover (1200x1200 JPEG, 245KB)".
 func (a Artwork) String() string {
 	size := len(a.Data)
 	sizeStr := formatSize(size)
@@ -117,10 +106,10 @@ func mimeToFormat(mime string) string {
 // RawTag preserves the original binary representation and encoding
 // information for tags that are not mapped to standard Tag fields.
 type RawTag struct {
-	Key      string     // Tag key (format-specific)
-	Value    []byte     // Raw binary value
-	Encoding string     // Text encoding: "UTF-8", "UTF-16LE", "ISO-8859-1", etc.
-	Type     RawTagType // Value type hint
+	Key      string
+	Encoding string
+	Value    []byte
+	Type     RawTagType
 }
 
 // RawTagType indicates the semantic type of a raw tag value.

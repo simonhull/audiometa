@@ -23,10 +23,10 @@ func TestReadLE(t *testing.T) {
 	sr := NewSafeReader(bytes.NewReader(data), int64(len(data)), "test.flac")
 
 	tests := []struct {
+		readFunc func() (uint64, error)
 		name     string
 		offset   int64
 		want     uint64
-		readFunc func() (uint64, error)
 	}{
 		{
 			name:   "uint16 little-endian",
@@ -87,10 +87,10 @@ func TestReadBE(t *testing.T) {
 	sr := NewSafeReader(bytes.NewReader(data), int64(len(data)), "test.m4a")
 
 	tests := []struct {
+		readFunc func() (uint64, error)
 		name     string
 		offset   int64
 		want     uint64
-		readFunc func() (uint64, error)
 	}{
 		{
 			name:   "uint16 big-endian",
@@ -221,7 +221,7 @@ func TestReadEndian_Uint8(t *testing.T) {
 	}
 }
 
-// Benchmark endianness reads
+// Benchmark endianness reads.
 func BenchmarkReadLE_Uint32(b *testing.B) {
 	data := []byte{0x01, 0x02, 0x03, 0x04}
 	sr := NewSafeReader(bytes.NewReader(data), int64(len(data)), "bench")

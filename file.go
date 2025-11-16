@@ -12,7 +12,7 @@ import (
 	"github.com/simonhull/audiometa/internal/registry"
 	"github.com/simonhull/audiometa/internal/types"
 
-	// Register built-in format parsers
+	// Register built-in format parsers.
 	_ "github.com/simonhull/audiometa/internal/flac"
 	_ "github.com/simonhull/audiometa/internal/m4a"
 	_ "github.com/simonhull/audiometa/internal/mp3"
@@ -66,7 +66,7 @@ func Open(path string, opts ...Option) (*File, error) {
 	// Get file size
 	stat, err := f.Stat()
 	if err != nil {
-		f.Close()
+		_ = f.Close()
 		return nil, fmt.Errorf("stat file: %w", err)
 	}
 	size := stat.Size()
@@ -74,7 +74,7 @@ func Open(path string, opts ...Option) (*File, error) {
 	// Parse with the reader
 	typesFile, err := openReader(f, size, path, options)
 	if err != nil {
-		f.Close()
+		_ = f.Close()
 		return nil, err
 	}
 
@@ -86,7 +86,7 @@ func Open(path string, opts ...Option) (*File, error) {
 
 	// Check strict parsing mode
 	if options.strictParsing && len(file.Warnings) > 0 {
-		f.Close()
+		_ = f.Close()
 		return nil, fmt.Errorf("strict parsing failed: %s", file.Warnings[0].Message)
 	}
 
@@ -104,7 +104,7 @@ func Open(path string, opts ...Option) (*File, error) {
 	return file, nil
 }
 
-// openReader opens from an io.ReaderAt (internal, for testing)
+// openReader opens from an io.ReaderAt (internal, for testing).
 func openReader(r io.ReaderAt, size int64, path string, options *openOptions) (*types.File, error) {
 	// Detect format
 	format, err := types.DetectFormat(r, size, path)
@@ -297,7 +297,7 @@ func OpenMany(ctx context.Context, paths ...string) ([]*File, error) {
 		// Close any successfully opened files
 		for _, file := range results {
 			if file != nil {
-				file.Close()
+				_ = file.Close()
 			}
 		}
 		return nil, err

@@ -94,7 +94,7 @@ func TestParse_EmptyFile(t *testing.T) {
 	}
 }
 
-// createMinimalMP3WithID3 creates a minimal MP3 file with ID3v2.3 tag
+// createMinimalMP3WithID3 creates a minimal MP3 file with ID3v2.3 tag.
 func createMinimalMP3WithID3() []byte {
 	data := make([]byte, 0, 1024)
 

@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/simonhull/audiometa/internal/types"
 	audiobinary "github.com/simonhull/audiometa/internal/binary"
+	"github.com/simonhull/audiometa/internal/types"
 )
 
-// createMvhdAtom creates a movie header atom with duration
+// createMvhdAtom creates a movie header atom with duration.
 func createMvhdAtom(version byte, timescale, duration uint32) []byte {
 	buf := &bytes.Buffer{}
 

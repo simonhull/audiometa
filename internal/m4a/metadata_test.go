@@ -5,11 +5,11 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"github.com/simonhull/audiometa/internal/types"
 	audiobinary "github.com/simonhull/audiometa/internal/binary"
+	"github.com/simonhull/audiometa/internal/types"
 )
 
-// createDataAtom creates a data atom with string content
+// createDataAtom creates a data atom with string content.
 func createDataAtom(value string) []byte {
 	buf := &bytes.Buffer{}
 
@@ -30,8 +30,7 @@ func createDataAtom(value string) []byte {
 	return buf.Bytes()
 }
 
-// createMetadataItem creates an iTunes metadata item (e.g., ©nam for title)
-// For iTunes tags, itemType should be the 4-byte tag code as bytes (e.g., []byte{0xA9, 'n', 'a', 'm'} for ©nam)
+// For iTunes tags, itemType should be the 4-byte tag code as bytes (e.g., []byte{0xA9, 'n', 'a', 'm'} for ©nam).
 func createMetadataItem(itemType []byte, value string) []byte {
 	if len(itemType) != 4 {
 		panic("itemType must be exactly 4 bytes")
@@ -139,9 +138,9 @@ func TestMapTagToField(t *testing.T) {
 		checkFn  func(*types.File) string
 		expected string
 	}{
-		{"\xA9nam", "Title", func(f *types.File) string { return f.Tags.Title }, "Title"},       // ©nam
-		{"\xA9ART", "Artist", func(f *types.File) string { return f.Tags.Artist }, "Artist"},    // ©ART
-		{"\xA9alb", "Album", func(f *types.File) string { return f.Tags.Album }, "Album"},       // ©alb
+		{"\xA9nam", "Title", func(f *types.File) string { return f.Tags.Title }, "Title"},    // ©nam
+		{"\xA9ART", "Artist", func(f *types.File) string { return f.Tags.Artist }, "Artist"}, // ©ART
+		{"\xA9alb", "Album", func(f *types.File) string { return f.Tags.Album }, "Album"},    // ©alb
 		{"\xA9gen", "Genre", func(f *types.File) string {
 			if len(f.Tags.Genres) > 0 {
 				return f.Tags.Genres[0]
@@ -162,7 +161,7 @@ func TestMapTagToField(t *testing.T) {
 	}
 }
 
-// createTrackDataAtom creates a data atom with track number content
+// createTrackDataAtom creates a data atom with track number content.
 func createTrackDataAtom(trackNum, trackTotal uint16) []byte {
 	buf := &bytes.Buffer{}
 

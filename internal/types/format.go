@@ -42,6 +42,8 @@ func (f Format) Extensions() []string {
 		return []string{".wav"}
 	case FormatAIFF:
 		return []string{".aiff", ".aif"}
+	case FormatUnknown:
+		return nil
 	default:
 		return nil
 	}
@@ -53,7 +55,7 @@ func (f Format) Extensions() []string {
 //
 // Detection is based on file signatures (magic bytes) at the beginning of the file.
 // Format detection does not validate the entire file structure.
-func DetectFormat(r io.ReaderAt, size int64, path string) (Format, error) {
+func DetectFormat(r io.ReaderAt, size int64, path string) (Format, error) { //nolint:gocyclo // Format detection requires checking multiple magic byte patterns
 	// File must be at least 4 bytes for any meaningful detection
 	if size < 4 {
 		return FormatUnknown, &UnsupportedFormatError{

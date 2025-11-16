@@ -1,3 +1,4 @@
+// Package registry manages format-specific parsers for audio file types.
 package registry
 
 import (

@@ -6,7 +6,7 @@ import (
 	"github.com/simonhull/audiometa/internal/types"
 )
 
-// codecNames maps MP4 codec FourCC codes to human-readable names
+// codecNames maps MP4 codec FourCC codes to human-readable names.
 var codecNames = map[string]string{
 	// AAC Family
 	"mp4a": "AAC",
@@ -28,7 +28,7 @@ var codecNames = map[string]string{
 	".mp3": "MP3",
 }
 
-// aacProfiles maps AAC Audio Object Types to profile names
+// aacProfiles maps AAC Audio Object Types to profile names.
 var aacProfiles = map[uint8]string{
 	1:  "AAC Main",
 	2:  "AAC-LC",
@@ -40,7 +40,7 @@ var aacProfiles = map[uint8]string{
 	42: "xHE-AAC",
 }
 
-// mapCodecName converts a FourCC codec identifier to a human-readable name
+// mapCodecName converts a FourCC codec identifier to a human-readable name.
 func mapCodecName(fourCC string) string {
 	if name, ok := codecNames[fourCC]; ok {
 		return name
@@ -48,7 +48,7 @@ func mapCodecName(fourCC string) string {
 	return fourCC
 }
 
-// parseCodecDetails enriches codec information with human-readable names
+// parseCodecDetails enriches codec information with human-readable names.
 func parseCodecDetails(sr *binary.SafeReader, sampleEntryOffset int64, codec string, file *types.File) error {
 	file.Audio.CodecDescription = mapCodecName(codec)
 
@@ -70,7 +70,7 @@ func parseCodecDetails(sr *binary.SafeReader, sampleEntryOffset int64, codec str
 	return nil
 }
 
-// parseAACProfile attempts to extract AAC profile from ESDS atom
+// parseAACProfile attempts to extract AAC profile from ESDS atom.
 func parseAACProfile(sr *binary.SafeReader, sampleEntryOffset int64) (string, error) {
 	// Search for "esds" within sample entry
 	searchBuf := make([]byte, 256)
@@ -118,7 +118,7 @@ func parseAACProfile(sr *binary.SafeReader, sampleEntryOffset int64) (string, er
 	return "", nil
 }
 
-// parseESDescriptors navigates ESDS descriptor hierarchy
+// parseESDescriptors navigates ESDS descriptor hierarchy.
 func parseESDescriptors(data []byte) uint8 {
 	pos := 0
 

@@ -1,3 +1,4 @@
+// Package mp3 provides MP3 audio file parsing and ID3 tag extraction.
 package mp3
 
 import (
@@ -15,7 +16,7 @@ import (
 	"github.com/simonhull/audiometa/internal/types"
 )
 
-// ID3v2Header represents an ID3v2 tag header
+// ID3v2Header represents an ID3v2 tag header.
 type ID3v2Header struct {
 	Version      byte // Major version (3 or 4)
 	Revision     byte // Minor version
@@ -24,133 +25,23 @@ type ID3v2Header struct {
 	ExtendedSize uint32 // Extended header size if present
 }
 
-// ID3v2Frame represents a single ID3v2 frame
+// ID3v2Frame represents a single ID3v2 frame.
 type ID3v2Frame struct {
-	ID    string // 4-character frame ID (e.g., "TIT2", "CHAP")
-	Size  uint32 // Frame size (excluding header)
-	Flags uint16 // Frame flags
-	Data  []byte // Frame data
+	ID    string
+	Data  []byte
+	Size  uint32
+	Flags uint16
 }
 
-// parseID3v2 parses ID3v2 tags and extracts metadata
+// parseID3v2 parses ID3v2 tags and extracts metadata.
 func parseID3v2(sr *binutil.SafeReader, file *types.File) (int64, error) {
-	// Read ID3v2 header (10 bytes)
-	buf := make([]byte, 10)
-	if err := sr.ReadAt(buf, 0, "ID3v2 header"); err != nil {
-		return 0, &types.UnsupportedFormatError{
-			Path:   sr.Path(),
-			Reason: "failed to read ID3v2 header",
-		}
+	header, err := parseID3v2Header(sr)
+	if err != nil {
+		return 0, err
 	}
 
-	// Verify "ID3" magic bytes
-	if string(buf[0:3]) != "ID3" {
-		return 0, &types.UnsupportedFormatError{
-			Path:   sr.Path(),
-			Reason: "not an ID3v2 file (missing ID3 header)",
-		}
-	}
-
-	// Parse header
-	header := ID3v2Header{
-		Version:  buf[3],
-		Revision: buf[4],
-		Flags:    buf[5],
-		Size:     decodeSynchsafe(buf[6:10]),
-	}
-
-	// Only support ID3v2.3 and ID3v2.4
-	if header.Version != 3 && header.Version != 4 {
-		return 0, &types.UnsupportedFormatError{
-			Path:   sr.Path(),
-			Reason: fmt.Sprintf("unsupported ID3v2 version: 2.%d", header.Version),
-		}
-	}
-
-	// Extended header (ID3v2.4 feature)
-	frameDataOffset := int64(10)
-	if header.Flags&0x40 != 0 {
-		// Extended header present - skip it
-		extHeaderSize := uint32(0)
-		if header.Version == 4 {
-			// ID3v2.4: synchsafe size
-			extBuf := make([]byte, 4)
-			if err := sr.ReadAt(extBuf, frameDataOffset, "extended header size"); err == nil {
-				extHeaderSize = decodeSynchsafe(extBuf)
-				frameDataOffset += int64(extHeaderSize)
-			}
-		} else if header.Version == 3 {
-			// ID3v2.3: regular size
-			extBuf := make([]byte, 4)
-			if err := sr.ReadAt(extBuf, frameDataOffset, "extended header size"); err == nil {
-				extHeaderSize = binary.BigEndian.Uint32(extBuf)
-				frameDataOffset += int64(extHeaderSize) + 4
-			}
-		}
-	}
-
-	// Parse frames
-	tagEnd := int64(10 + header.Size)
-	offset := frameDataOffset
-
-	var chapters []ID3v2Frame
-	for offset < tagEnd {
-		// Read frame header (10 bytes)
-		frameHeaderBuf := make([]byte, 10)
-		if err := sr.ReadAt(frameHeaderBuf, offset, "frame header"); err != nil {
-			break
-		}
-
-		// Check for padding (null bytes indicate end of frames)
-		if frameHeaderBuf[0] == 0 {
-			break
-		}
-
-		// Parse frame header
-		frameID := string(frameHeaderBuf[0:4])
-		frameSize := uint32(0)
-		if header.Version == 4 {
-			frameSize = decodeSynchsafe(frameHeaderBuf[4:8])
-		} else {
-			frameSize = binary.BigEndian.Uint32(frameHeaderBuf[4:8])
-		}
-		frameFlags := binary.BigEndian.Uint16(frameHeaderBuf[8:10])
-
-		// Read frame data
-		frameData := make([]byte, frameSize)
-		if err := sr.ReadAt(frameData, offset+10, fmt.Sprintf("frame %s data", frameID)); err != nil {
-			file.Warnings = append(file.Warnings, types.Warning{
-				Stage:   "metadata",
-				Message: fmt.Sprintf("failed to read frame %s: %v", frameID, err),
-			})
-			offset += 10 + int64(frameSize)
-			continue
-		}
-
-		frame := ID3v2Frame{
-			ID:    frameID,
-			Size:  frameSize,
-			Flags: frameFlags,
-			Data:  frameData,
-		}
-
-		// Parse frame based on ID
-		if strings.HasPrefix(frameID, "T") && frameID != "TXXX" {
-			// Text frame
-			parseTextFrame(frame, file)
-		} else if frameID == "TXXX" {
-			// Custom text frame
-			parseTXXXFrame(frame, file)
-		} else if frameID == "COMM" {
-			// Comment frame
-			parseCommentFrame(frame, file)
-		} else if frameID == "CHAP" {
-			// Chapter frame - collect for later processing
-			chapters = append(chapters, frame)
-		}
-
-		offset += 10 + int64(frameSize)
-	}
+	frameDataOffset := skipExtendedHeader(sr, header)
+	chapters := parseID3v2Frames(sr, file, header, frameDataOffset)
 
 	// Process chapters
 	if len(chapters) > 0 {
@@ -161,8 +52,148 @@ func parseID3v2(sr *binutil.SafeReader, file *types.File) (int64, error) {
 	return int64(10 + header.Size), nil
 }
 
-// decodeSynchsafe decodes a synchsafe integer (7 bits per byte)
-// ID3v2 uses 7-bit encoding where bit 7 is always 0
+// parseID3v2Header reads and validates the ID3v2 header.
+func parseID3v2Header(sr *binutil.SafeReader) (ID3v2Header, error) {
+	buf := make([]byte, 10)
+	if err := sr.ReadAt(buf, 0, "ID3v2 header"); err != nil {
+		return ID3v2Header{}, &types.UnsupportedFormatError{
+			Path:   sr.Path(),
+			Reason: "failed to read ID3v2 header",
+		}
+	}
+
+	// Verify "ID3" magic bytes
+	if string(buf[0:3]) != "ID3" {
+		return ID3v2Header{}, &types.UnsupportedFormatError{
+			Path:   sr.Path(),
+			Reason: "not an ID3v2 file (missing ID3 header)",
+		}
+	}
+
+	header := ID3v2Header{
+		Version: buf[3],
+		Flags:   buf[5],
+		Size:    decodeSynchsafe(buf[6:10]),
+	}
+
+	// Only support ID3v2.3 and ID3v2.4
+	if header.Version != 3 && header.Version != 4 {
+		return ID3v2Header{}, &types.UnsupportedFormatError{
+			Path:   sr.Path(),
+			Reason: fmt.Sprintf("unsupported ID3v2 version: 2.%d", header.Version),
+		}
+	}
+
+	return header, nil
+}
+
+// skipExtendedHeader skips the extended header if present and returns frame data offset.
+func skipExtendedHeader(sr *binutil.SafeReader, header ID3v2Header) int64 {
+	frameDataOffset := int64(10)
+
+	if header.Flags&0x40 == 0 {
+		return frameDataOffset // No extended header
+	}
+
+	extBuf := make([]byte, 4)
+	if err := sr.ReadAt(extBuf, frameDataOffset, "extended header size"); err != nil {
+		return frameDataOffset // Failed to read, use default offset
+	}
+
+	var extHeaderSize uint32
+	if header.Version == 4 {
+		extHeaderSize = decodeSynchsafe(extBuf)
+		frameDataOffset += int64(extHeaderSize)
+	} else if header.Version == 3 {
+		extHeaderSize = binary.BigEndian.Uint32(extBuf)
+		frameDataOffset += int64(extHeaderSize) + 4
+	}
+
+	return frameDataOffset
+}
+
+// parseID3v2Frames parses all frames in the ID3v2 tag.
+func parseID3v2Frames(sr *binutil.SafeReader, file *types.File, header ID3v2Header, startOffset int64) []ID3v2Frame {
+	tagEnd := int64(10 + header.Size)
+	offset := startOffset
+	chapters := make([]ID3v2Frame, 0)
+
+	for offset < tagEnd {
+		frame, bytesRead, stop := readSingleFrame(sr, file, header, offset)
+		if stop {
+			break
+		}
+
+		if frame != nil {
+			processFrame(*frame, file, &chapters)
+		}
+
+		offset += bytesRead
+	}
+
+	return chapters
+}
+
+// readSingleFrame reads a single ID3v2 frame.
+func readSingleFrame(sr *binutil.SafeReader, file *types.File, header ID3v2Header, offset int64) (*ID3v2Frame, int64, bool) {
+	frameHeaderBuf := make([]byte, 10)
+	if err := sr.ReadAt(frameHeaderBuf, offset, "frame header"); err != nil {
+		return nil, 0, true
+	}
+
+	// Check for padding (null bytes indicate end of frames)
+	if frameHeaderBuf[0] == 0 {
+		return nil, 0, true
+	}
+
+	// Parse frame header
+	frameID := string(frameHeaderBuf[0:4])
+	frameSize := decodeFrameSize(header.Version, frameHeaderBuf[4:8])
+	frameFlags := binary.BigEndian.Uint16(frameHeaderBuf[8:10])
+
+	// Read frame data
+	frameData := make([]byte, frameSize)
+	if err := sr.ReadAt(frameData, offset+10, fmt.Sprintf("frame %s data", frameID)); err != nil {
+		file.Warnings = append(file.Warnings, types.Warning{
+			Stage:   "metadata",
+			Message: fmt.Sprintf("failed to read frame %s: %v", frameID, err),
+		})
+		return nil, 10 + int64(frameSize), false
+	}
+
+	frame := &ID3v2Frame{
+		ID:    frameID,
+		Size:  frameSize,
+		Flags: frameFlags,
+		Data:  frameData,
+	}
+
+	return frame, 10 + int64(frameSize), false
+}
+
+// decodeFrameSize decodes frame size based on ID3v2 version.
+func decodeFrameSize(version byte, sizeBytes []byte) uint32 {
+	if version == 4 {
+		return decodeSynchsafe(sizeBytes)
+	}
+	return binary.BigEndian.Uint32(sizeBytes)
+}
+
+// processFrame processes a single frame based on its ID.
+func processFrame(frame ID3v2Frame, file *types.File, chapters *[]ID3v2Frame) {
+	switch {
+	case strings.HasPrefix(frame.ID, "T") && frame.ID != "TXXX":
+		parseTextFrame(frame, file)
+	case frame.ID == "TXXX":
+		parseTXXXFrame(frame, file)
+	case frame.ID == "COMM":
+		parseCommentFrame(frame, file)
+	case frame.ID == "CHAP":
+		*chapters = append(*chapters, frame)
+	}
+}
+
+// ID3v2 uses 7-bit encoding where bit 7 is always 0.
 func decodeSynchsafe(b []byte) uint32 {
 	if len(b) != 4 {
 		return 0
@@ -174,7 +205,7 @@ func decodeSynchsafe(b []byte) uint32 {
 }
 
 // parseTextFrame parses standard text frames (TIT2, TPE1, TALB, etc.)
-func parseTextFrame(frame ID3v2Frame, file *types.File) {
+func parseTextFrame(frame ID3v2Frame, file *types.File) { //nolint:gocyclo // Complexity from many simple cases - intentionally kept together
 	if len(frame.Data) < 1 {
 		return
 	}
@@ -214,8 +245,7 @@ func parseTextFrame(frame ID3v2Frame, file *types.File) {
 	}
 }
 
-// parseTXXXFrame parses custom text frames (TXXX)
-// Format: [encoding][description\0][value]
+// Format: [encoding][description\0][value].
 func parseTXXXFrame(frame ID3v2Frame, file *types.File) {
 	if len(frame.Data) < 2 {
 		return
@@ -253,8 +283,7 @@ func parseTXXXFrame(frame ID3v2Frame, file *types.File) {
 	}
 }
 
-// parseCommentFrame parses comment frames (COMM)
-// Format: [encoding][language(3)][short description\0][text]
+// Format: [encoding][language(3)][short description\0][text].
 func parseCommentFrame(frame ID3v2Frame, file *types.File) {
 	if len(frame.Data) < 4 {
 		return
@@ -277,20 +306,20 @@ func parseCommentFrame(frame ID3v2Frame, file *types.File) {
 	file.Tags.Comment = comment
 }
 
-// parseChapterFrames parses CHAP frames and builds chapter list
+// parseChapterFrames parses CHAP frames and builds chapter list.
 // CHAP frame format:
 //
 //	[encoding][element_id\0][start_time(4)][end_time(4)][start_offset(4)][end_offset(4)][subframes...]
-func parseChapterFrames(frames []ID3v2Frame, totalDuration time.Duration) []types.Chapter {
+func parseChapterFrames(frames []ID3v2Frame, _ time.Duration) []types.Chapter {
 	type chapterData struct {
-		Index     int
 		ElementID string
-		StartTime uint32 // milliseconds
-		EndTime   uint32 // milliseconds
 		Title     string
+		Index     int
+		StartTime uint32
+		EndTime   uint32
 	}
 
-	var chapters []chapterData
+	chapters := make([]chapterData, 0, len(frames))
 
 	for _, frame := range frames {
 		if len(frame.Data) < 20 {
@@ -317,33 +346,10 @@ func parseChapterFrames(frames []ID3v2Frame, totalDuration time.Duration) []type
 		// Parse times (big-endian uint32, milliseconds)
 		startTime := binary.BigEndian.Uint32(data[0:4])
 		endTime := binary.BigEndian.Uint32(data[4:8])
-		// startOffset := binary.BigEndian.Uint32(data[8:12])  // Usually 0xFFFFFFFF
-		// endOffset := binary.BigEndian.Uint32(data[12:16])   // Usually 0xFFFFFFFF
+		// Skip startOffset and endOffset (usually 0xFFFFFFFF) at data[8:16]
 
 		// Parse subframes for chapter title
-		title := ""
-		subframeData := data[16:]
-		if len(subframeData) >= 10 {
-			// Try to parse TIT2 subframe
-			subframeID := string(subframeData[0:4])
-			if subframeID == "TIT2" {
-				// Try synchsafe size first (CHAP subframes may use synchsafe)
-				subframeSize := decodeSynchsafe(subframeData[4:8])
-				// Subframes have 2-byte flags like regular frames
-				if len(subframeData) >= int(10+subframeSize) {
-					titleData := subframeData[10 : 10+subframeSize]
-					if len(titleData) > 0 {
-						titleEncoding := titleData[0]
-						title = decodeText(titleData[1:], titleEncoding)
-					}
-				}
-			}
-		}
-
-		// Use element ID as fallback title
-		if title == "" {
-			title = elementID
-		}
+		title := extractChapterTitleFromSubframes(data[16:], elementID)
 
 		chapters = append(chapters, chapterData{
 			Index:     len(chapters),
@@ -373,7 +379,39 @@ func parseChapterFrames(frames []ID3v2Frame, totalDuration time.Duration) []type
 	return result
 }
 
-// decodeText decodes text based on ID3v2 encoding byte
+// extractChapterTitleFromSubframes extracts chapter title from TIT2 subframe.
+func extractChapterTitleFromSubframes(subframeData []byte, fallbackTitle string) string {
+	if len(subframeData) < 10 {
+		return fallbackTitle
+	}
+
+	// Try to parse TIT2 subframe
+	subframeID := string(subframeData[0:4])
+	if subframeID != "TIT2" {
+		return fallbackTitle
+	}
+
+	// Try synchsafe size (CHAP subframes may use synchsafe)
+	subframeSize := decodeSynchsafe(subframeData[4:8])
+	if len(subframeData) < int(10+subframeSize) {
+		return fallbackTitle
+	}
+
+	titleData := subframeData[10 : 10+subframeSize]
+	if len(titleData) == 0 {
+		return fallbackTitle
+	}
+
+	titleEncoding := titleData[0]
+	title := decodeText(titleData[1:], titleEncoding)
+	if title == "" {
+		return fallbackTitle
+	}
+
+	return title
+}
+
+// decodeText decodes text based on ID3v2 encoding byte.
 func decodeText(data []byte, encoding byte) string {
 	if len(data) == 0 {
 		return ""
@@ -401,7 +439,7 @@ func decodeText(data []byte, encoding byte) string {
 	}
 }
 
-// decodeUTF16 decodes UTF-16 with BOM
+// decodeUTF16 decodes UTF-16 with BOM.
 func decodeUTF16(data []byte) string {
 	if len(data) < 2 {
 		return ""
@@ -420,7 +458,7 @@ func decodeUTF16(data []byte) string {
 	return decodeUTF16BE(data)
 }
 
-// decodeUTF16LE decodes UTF-16 little-endian
+// decodeUTF16LE decodes UTF-16 little-endian.
 func decodeUTF16LE(data []byte) string {
 	if len(data)%2 != 0 {
 		data = data[:len(data)-1]
@@ -434,7 +472,7 @@ func decodeUTF16LE(data []byte) string {
 	return string(utf16.Decode(u16))
 }
 
-// decodeUTF16BE decodes UTF-16 big-endian
+// decodeUTF16BE decodes UTF-16 big-endian.
 func decodeUTF16BE(data []byte) string {
 	if len(data)%2 != 0 {
 		data = data[:len(data)-1]
@@ -448,7 +486,7 @@ func decodeUTF16BE(data []byte) string {
 	return string(utf16.Decode(u16))
 }
 
-// findNullTerminator finds the null terminator based on encoding
+// findNullTerminator finds the null terminator based on encoding.
 func findNullTerminator(data []byte, encoding byte) int {
 	switch encoding {
 	case 0, 3: // ISO-8859-1, UTF-8 (single-byte null)
@@ -467,7 +505,7 @@ func findNullTerminator(data []byte, encoding byte) int {
 	}
 }
 
-// terminatorSize returns the size of the null terminator for the encoding
+// terminatorSize returns the size of the null terminator for the encoding.
 func terminatorSize(encoding byte) int {
 	switch encoding {
 	case 0, 3: // ISO-8859-1, UTF-8
@@ -479,27 +517,28 @@ func terminatorSize(encoding byte) int {
 	}
 }
 
-// parseYear extracts year from various date formats
+// parseYear extracts year from various date formats.
 func parseYear(text string) int {
 	// YYYY format
 	if len(text) >= 4 {
 		var year int
-		fmt.Sscanf(text[:4], "%d", &year)
-		if year >= 1900 && year <= 2100 {
-			return year
+		if _, err := fmt.Sscanf(text[:4], "%d", &year); err == nil {
+			if year >= 1900 && year <= 2100 {
+				return year
+			}
 		}
 	}
 	return 0
 }
 
-// parseTrackNumber parses "N" or "N/Total" format
+// parseTrackNumber parses "N" or "N/Total" format.
 func parseTrackNumber(text string) (number, total int) {
 	parts := strings.Split(text, "/")
 	if len(parts) >= 1 {
-		fmt.Sscanf(parts[0], "%d", &number)
+		_, _ = fmt.Sscanf(parts[0], "%d", &number) //nolint:errcheck // Best effort parsing, zero value is fine
 	}
 	if len(parts) >= 2 {
-		fmt.Sscanf(parts[1], "%d", &total)
+		_, _ = fmt.Sscanf(parts[1], "%d", &total) //nolint:errcheck // Best effort parsing, zero value is fine
 	}
 	return
 }

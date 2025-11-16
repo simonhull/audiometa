@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// createMockM4B creates a minimal valid M4B/M4A file header
+// createMockM4B creates a minimal valid M4B/M4A file header.
 func createMockM4B(brand string) []byte {
 	buf := &bytes.Buffer{}
 
@@ -25,7 +25,7 @@ func createMockM4B(brand string) []byte {
 	return buf.Bytes()
 }
 
-// createInvalidFile creates a file with invalid ftyp
+// createInvalidFile creates a file with invalid ftyp.
 func createInvalidFile() []byte {
 	buf := &bytes.Buffer{}
 	// Invalid atom size

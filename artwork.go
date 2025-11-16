@@ -12,7 +12,7 @@ type Artwork = types.Artwork
 // Re-exporting from internal/types to maintain public API.
 type ArtworkType = types.ArtworkType
 
-// Re-export all artwork type constants
+// Re-export all artwork type constants.
 const (
 	ArtworkOther             = types.ArtworkOther
 	ArtworkIcon              = types.ArtworkIcon
@@ -45,7 +45,7 @@ type RawTag = types.RawTag
 // Re-exporting from internal/types to maintain public API.
 type RawTagType = types.RawTagType
 
-// Re-export all raw tag type constants
+// Re-export all raw tag type constants.
 const (
 	RawTagText    = types.RawTagText
 	RawTagBinary  = types.RawTagBinary

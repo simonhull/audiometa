@@ -47,7 +47,7 @@ func createTestM4BFile(t *testing.T) string {
 	return tmpFile.Name()
 }
 
-// TestOpenMany_Cancellation verifies that cancelled operations clean up resources
+// TestOpenMany_Cancellation verifies that canceled operations clean up resources.
 func TestOpenMany_Cancellation(t *testing.T) {
 	// Create test files
 	paths := make([]string, 5)
@@ -56,16 +56,16 @@ func TestOpenMany_Cancellation(t *testing.T) {
 		defer os.Remove(paths[i])
 	}
 
-	// Create a context that's already cancelled
+	// Create a context that's already canceled
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
 
-	// Try to open files with cancelled context
+	// Try to open files with canceled context
 	files, err := audiometa.OpenMany(ctx, paths...)
 
 	// Should return error
 	if err == nil {
-		t.Fatal("expected error from cancelled context")
+		t.Fatal("expected error from canceled context")
 	}
 
 	// Should not return any files
@@ -76,7 +76,7 @@ func TestOpenMany_Cancellation(t *testing.T) {
 	// If we got here without leaking file descriptors, the test passes
 }
 
-// TestOpenMany_PartialFailure verifies cleanup on partial failure
+// TestOpenMany_PartialFailure verifies cleanup on partial failure.
 func TestOpenMany_PartialFailure(t *testing.T) {
 	// Create mix of valid and invalid paths
 	validPath := createTestM4BFile(t)

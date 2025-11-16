@@ -9,17 +9,17 @@ import (
 	"github.com/simonhull/audiometa/internal/types"
 )
 
-// MP3 bitrate table (MPEG1 Layer III) in kbps
+// MP3 bitrate table (MPEG1 Layer III) in kbps.
 var bitrateTable = []int{
 	0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0,
 }
 
-// MP3 sample rate table (MPEG1) in Hz
+// MP3 sample rate table (MPEG1) in Hz.
 var sampleRateTable = []int{
 	44100, 48000, 32000, 0,
 }
 
-// parseTechnicalInfo extracts bitrate, sample rate, codec, and duration from MP3 frames
+// parseTechnicalInfo extracts bitrate, sample rate, codec, and duration from MP3 frames.
 func parseTechnicalInfo(sr *binutil.SafeReader, tagSize int64, fileSize int64, file *types.File) error {
 	// Find first MP3 frame (after ID3 tag)
 	frameOffset := tagSize
@@ -57,7 +57,7 @@ func parseTechnicalInfo(sr *binutil.SafeReader, tagSize int64, fileSize int64, f
 	return fmt.Errorf("no valid MP3 frame found")
 }
 
-// findMP3FrameAt attempts to read an MP3 frame header at the given offset
+// findMP3FrameAt attempts to read an MP3 frame header at the given offset.
 func findMP3FrameAt(sr *binutil.SafeReader, offset int64) (uint32, error) {
 	buf := make([]byte, 4)
 	if err := sr.ReadAt(buf, offset, "MP3 frame header"); err != nil {
@@ -88,7 +88,7 @@ func findMP3FrameAt(sr *binutil.SafeReader, offset int64) (uint32, error) {
 	return header, nil
 }
 
-// parseMP3FrameHeader extracts bitrate, sample rate, and channels from frame header
+// parseMP3FrameHeader extracts bitrate, sample rate, and channels from frame header.
 func parseMP3FrameHeader(header uint32) (bitrate, sampleRate, channels int) {
 	// Bitrate index (4 bits)
 	bitrateIdx := (header >> 12) & 0xF
@@ -113,7 +113,7 @@ func parseMP3FrameHeader(header uint32) (bitrate, sampleRate, channels int) {
 	return
 }
 
-// parseVBRHeader checks for Xing/VBRI VBR headers and calculates accurate duration
+// parseVBRHeader checks for Xing/VBRI VBR headers and calculates accurate duration.
 func parseVBRHeader(sr *binutil.SafeReader, frameOffset int64, sampleRate int, fileSize int64, tagSize int64) (time.Duration, bool) {
 	// Xing/Info header is 36 bytes after frame header for MPEG1
 	// Check for "Xing" or "Info" marker
@@ -154,7 +154,7 @@ func parseVBRHeader(sr *binutil.SafeReader, frameOffset int64, sampleRate int, f
 	return 0, false
 }
 
-// calculateDurationFromFrames calculates duration from number of frames
+// calculateDurationFromFrames calculates duration from number of frames.
 func calculateDurationFromFrames(numFrames uint32, sampleRate int) time.Duration {
 	// Each MPEG1 Layer III frame = 1152 samples
 	samplesPerFrame := 1152
@@ -163,7 +163,7 @@ func calculateDurationFromFrames(numFrames uint32, sampleRate int) time.Duration
 	return time.Duration(durationSeconds * float64(time.Second))
 }
 
-// estimateCBRDuration estimates duration for constant bitrate files
+// estimateCBRDuration estimates duration for constant bitrate files.
 func estimateCBRDuration(bitrate int, fileSize int64, tagSize int64) time.Duration {
 	if bitrate == 0 {
 		return 0

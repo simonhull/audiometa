@@ -27,7 +27,7 @@ func parseVorbisIdentification(data []byte, file *types.File) error {
 	}
 
 	// Verify "vorbis" magic marker
-	if string(data[1:7]) != "vorbis" {
+	if string(data[1:7]) != codecVorbis {
 		return fmt.Errorf("invalid vorbis magic: %q", string(data[1:7]))
 	}
 
@@ -40,13 +40,13 @@ func parseVorbisIdentification(data []byte, file *types.File) error {
 	// Parse audio properties (all little-endian)
 	channels := data[11]
 	sampleRate := binary.LittleEndian.Uint32(data[12:16])
-	// bitrateMaximum := binary.LittleEndian.Uint32(data[16:20]) // Optional, can be 0
+	// bitrateMaximum := binary.LittleEndian.Uint32(data[16:20]) // Optional, can be 0 //nolint:gocritic // commentedOutCode - kept for documentation
 	bitrateNominal := binary.LittleEndian.Uint32(data[20:24])
-	// bitrateMinimum := binary.LittleEndian.Uint32(data[24:28]) // Optional, can be 0
+	// bitrateMinimum := binary.LittleEndian.Uint32(data[24:28]) // Optional, can be 0 //nolint:gocritic // commentedOutCode - kept for documentation
 
 	// Populate file.Audio
 	file.Audio.Codec = "Vorbis"
-	file.Audio.Container = "Ogg"
+	file.Audio.Container = containerOgg
 	file.Audio.SampleRate = int(sampleRate)
 	file.Audio.Channels = int(channels)
 	file.Audio.Bitrate = int(bitrateNominal)
@@ -78,7 +78,7 @@ func parseVorbisComment(data []byte, file *types.File) error {
 	}
 
 	// Verify "vorbis" magic marker
-	if string(data[1:7]) != "vorbis" {
+	if string(data[1:7]) != codecVorbis {
 		return fmt.Errorf("invalid vorbis magic: %q", string(data[1:7]))
 	}
 

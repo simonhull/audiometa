@@ -15,53 +15,38 @@ import (
 // For access to unmapped or custom tags, use the All() iterator or
 // Get() method to retrieve raw tag values by key.
 type Tags struct {
-	// Core identification
-	Title       string // Track/song title
-	Artist      string // Primary artist
-	Album       string // Album name
-	AlbumArtist string // Album-level artist (for compilations)
-
-	// Multi-value fields
-	Artists    []string // All artists (may include featured artists)
-	Genres     []string // Music genres
-	Composers  []string // Composers/songwriters
-	Performers []string // Performers/musicians
-
-	// Temporal metadata
-	Year         int    // Year of release (convenience field)
-	Date         string // ISO 8601 date: "2024-03-15"
-	OriginalDate string // Original release date
-
-	// Organization
-	TrackNumber int // Track number (1-based)
-	TrackTotal  int // Total tracks on disc
-	DiscNumber  int // Disc number (1-based)
-	DiscTotal   int // Total discs in set
-
-	// Extended content
-	Comment string // Free-form comment
-	Lyrics  string // Song lyrics
-
-	// Audiobook-specific
-	Narrator   string // Narrator/reader (audiobooks)
-	Publisher  string // Publisher name
-	Series     string // Book series name
-	SeriesPart string // Position in series ("1", "2.5", etc.)
-	ISBN       string // ISBN for books
-	ASIN       string // Amazon ASIN
-
-	// Cataloging and identification
-	MusicBrainzTrackID  string // MusicBrainz recording ID
-	MusicBrainzAlbumID  string // MusicBrainz release ID
-	MusicBrainzArtistID string // MusicBrainz artist ID
-	ISRC                string // International Standard Recording Code
-	Barcode             string // Album UPC/EAN barcode
-	CatalogNumber       string // Record label catalog number
-	Label               string // Record label name
-	Copyright           string // Copyright notice
-
-	// Internal storage (unexported)
-	raw map[string][]string // Format-specific raw tags
+	raw                 map[string][]string
+	MusicBrainzAlbumID  string
+	Narrator            string
+	AlbumArtist         string
+	Artist              string
+	Copyright           string
+	Label               string
+	CatalogNumber       string
+	Barcode             string
+	Date                string
+	OriginalDate        string
+	ISRC                string
+	MusicBrainzArtistID string
+	Title               string
+	MusicBrainzTrackID  string
+	Album               string
+	Comment             string
+	Series              string
+	Publisher           string
+	Lyrics              string
+	SeriesPart          string
+	ISBN                string
+	ASIN                string
+	Performers          []string
+	Composers           []string
+	Genres              []string
+	Artists             []string
+	DiscTotal           int
+	DiscNumber          int
+	TrackTotal          int
+	TrackNumber         int
+	Year                int
 }
 
 // All returns an iterator over all raw tags.
@@ -183,7 +168,7 @@ func (t *Tags) Set(key string, values ...string) {
 //
 //	// Apply fallback tags
 //	fileTags.Merge(defaultTags)
-func (t *Tags) Merge(other *Tags) {
+func (t *Tags) Merge(other *Tags) { //nolint:gocyclo // Merging requires checking all tag fields individually
 	if other == nil {
 		return
 	}
@@ -355,7 +340,7 @@ func (t *Tags) Clone() *Tags {
 //	if !tags1.Equal(tags2) {
 //		fmt.Println("Tags differ")
 //	}
-func (t *Tags) Equal(other *Tags) bool {
+func (t *Tags) Equal(other *Tags) bool { //nolint:gocyclo // Equality check requires comparing all tag fields individually
 	if t == nil && other == nil {
 		return true
 	}

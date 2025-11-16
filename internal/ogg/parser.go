@@ -10,11 +10,16 @@ import (
 	"github.com/simonhull/audiometa/internal/types"
 )
 
-// parser implements the audiometa.FormatParser interface for Ogg Vorbis files
+const (
+	codecVorbis  = "vorbis"
+	containerOgg = "Ogg"
+)
+
+// parser implements the audiometa.FormatParser interface for Ogg Vorbis files.
 type parser struct{}
 
-// Parse parses an Ogg Vorbis file and extracts metadata
-func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, error) {
+// Parse parses an Ogg Vorbis file and extracts metadata.
+func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, error) { //nolint:gocyclo // Multiple codec types and error handling require branching
 	// Create safe reader
 	sr := binary.NewSafeReader(r, size, path)
 
@@ -79,7 +84,7 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, err
 	codec := detectOggCodec(packets[0])
 
 	switch codec {
-	case "vorbis":
+	case codecVorbis:
 		// Parse Vorbis identification header (packet 0)
 		if err := parseVorbisIdentification(packets[0], file); err != nil {
 			return nil, fmt.Errorf("failed to parse Vorbis identification header: %w", err)
@@ -161,8 +166,8 @@ func detectOggCodec(firstPacket []byte) string {
 	}
 
 	// Check for Vorbis (7 bytes: 0x01 + "vorbis")
-	if len(firstPacket) >= 7 && firstPacket[0] == 0x01 && string(firstPacket[1:7]) == "vorbis" {
-		return "vorbis"
+	if len(firstPacket) >= 7 && firstPacket[0] == 0x01 && string(firstPacket[1:7]) == codecVorbis {
+		return codecVorbis
 	}
 
 	return "unknown"
@@ -195,10 +200,7 @@ func estimateOpusBitrate(fileSize int64, duration time.Duration) int {
 	return bitrate
 }
 
-// calculateDuration finds the last Ogg page and calculates duration
-// from its granule position.
-//
-// Duration = granule_position / sample_rate
+// Duration = granule_position / sample_rate.
 func calculateDuration(sr *binary.SafeReader, fileSize int64, sampleRate int) (time.Duration, error) {
 	if sampleRate == 0 {
 		return 0, fmt.Errorf("sample rate is zero")
@@ -220,7 +222,7 @@ func calculateDuration(sr *binary.SafeReader, fileSize int64, sampleRate int) (t
 	return time.Duration(seconds * float64(time.Second)), nil
 }
 
-// init registers the Ogg Vorbis parser
+// init registers the Ogg Vorbis parser.
 func init() {
 	registry.Register(types.FormatOgg, &parser{})
 }

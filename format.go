@@ -10,7 +10,7 @@ import (
 // Re-exporting from internal/types to maintain public API.
 type Format = types.Format
 
-// Re-export all format constants
+// Re-export all format constants.
 const (
 	FormatUnknown = types.FormatUnknown
 	FormatFLAC    = types.FormatFLAC

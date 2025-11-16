@@ -8,7 +8,7 @@ import (
 	"github.com/simonhull/audiometa/internal/types"
 )
 
-// parseAudiobookTags extracts narrator, series, publisher, etc. from custom atoms
+// parseAudiobookTags extracts narrator, series, publisher, etc. from custom atoms.
 func parseAudiobookTags(sr *binary.SafeReader, ilstAtom *Atom, file *types.File) error {
 	offset := ilstAtom.DataOffset()
 	end := offset + int64(ilstAtom.DataSize())
@@ -51,7 +51,7 @@ func parseAudiobookTags(sr *binary.SafeReader, ilstAtom *Atom, file *types.File)
 	return nil
 }
 
-// parseCustomAtomWithTags parses a ---- custom atom and returns the field name and value
+// parseCustomAtomWithTags parses a ---- custom atom and returns the field name and value.
 func parseCustomAtomWithTags(sr *binary.SafeReader, customAtom *Atom, file *types.File) (string, string, error) {
 	offset := customAtom.DataOffset()
 	end := offset + int64(customAtom.DataSize())
@@ -115,9 +115,7 @@ func parseCustomAtomWithTags(sr *binary.SafeReader, customAtom *Atom, file *type
 	return fieldName, value, nil
 }
 
-// mapAudiobookField maps custom field names to metadata fields
-// NOTE: Series Part is NOT set here - it's resolved via resolveSeriesPart()
-// to allow multi-source validation and fallback
+// to allow multi-source validation and fallback.
 func mapAudiobookField(fieldName, value string, file *types.File) {
 	// Normalize field name (case-insensitive)
 	fieldName = strings.ToLower(fieldName)
@@ -138,8 +136,7 @@ func mapAudiobookField(fieldName, value string, file *types.File) {
 	}
 }
 
-// resolveSeriesPart determines series part from multiple sources
-// Priority: Custom atoms > Title parsing > Album parsing > Path parsing
+// Priority: Custom atoms > Title parsing > Album parsing > Path parsing.
 func resolveSeriesPart(sr *binary.SafeReader, file *types.File, customTags map[string]string) string {
 	// Priority 1: Explicit custom iTunes atoms
 	if part := customTags["Series Part"]; part != "" {

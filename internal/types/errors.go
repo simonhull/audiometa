@@ -2,13 +2,13 @@ package types
 
 import "fmt"
 
-// OutOfBoundsError is returned when attempting to read beyond file bounds
+// OutOfBoundsError is returned when attempting to read beyond file bounds.
 type OutOfBoundsError struct {
 	Path   string
+	What   string
 	Offset int64
 	Length int
 	Size   int64
-	What   string // Context: what was being read
 }
 
 func (e *OutOfBoundsError) Error() string {
@@ -20,7 +20,7 @@ func (e *OutOfBoundsError) Error() string {
 		e.Path, e.Length, e.Offset, e.Size, e.What)
 }
 
-// UnsupportedFormatError is returned when the file format is not M4B/M4A
+// UnsupportedFormatError is returned when the file format is not M4B/M4A.
 type UnsupportedFormatError struct {
 	Path   string
 	Reason string
@@ -30,11 +30,11 @@ func (e *UnsupportedFormatError) Error() string {
 	return fmt.Sprintf("%s: unsupported format: %s", e.Path, e.Reason)
 }
 
-// CorruptedFileError is returned when file structure is invalid
+// CorruptedFileError is returned when file structure is invalid.
 type CorruptedFileError struct {
 	Path   string
-	Offset int64
 	Reason string
+	Offset int64
 }
 
 func (e *CorruptedFileError) Error() string {

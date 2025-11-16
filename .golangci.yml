@@ -1,0 +1,160 @@
+# golangci-lint configuration
+# https://golangci-lint.run/usage/configuration/
+
+run:
+  timeout: 5m
+  tests: true
+  build-tags: []
+  modules-download-mode: readonly
+  allow-parallel-runners: true
+
+linters:
+  enable:
+    - errcheck      # Check for unchecked errors
+    - gosimple      # Simplify code
+    - govet         # Go vet
+    - ineffassign   # Detect ineffectual assignments
+    - staticcheck   # Staticcheck (SA*)
+    - unused        # Detect unused code
+    - gofmt         # Check formatting
+    - goimports     # Check import ordering
+    - misspell      # Check for misspelled words
+    - revive        # Fast, configurable linter
+    - gosec         # Security-focused linter
+    - unconvert     # Remove unnecessary type conversions
+    - unparam       # Detect unused function parameters
+    - gocritic      # Comprehensive linter with many checks
+    - nolintlint    # Report ill-formed or insufficient nolint directives
+    - stylecheck    # Replacement for golint
+    - gocyclo       # Cyclomatic complexity
+    - bodyclose     # Check HTTP response body is closed
+    - dupl          # Code clone detection
+    - errorlint     # Error wrapping issues
+    - exhaustive    # Check exhaustiveness of enum switch statements
+    - goconst       # Repeated strings that could be constants
+    - godot         # Check comments end in period
+    - goprintffuncname # Printf-like function naming
+    - noctx         # HTTP requests without context
+    - prealloc      # Slice preallocation
+    - predeclared   # Shadowing of predeclared identifiers
+    - rowserrcheck  # Check SQL rows.Err
+    - sqlclosecheck # Check SQL rows/statements are closed
+    - whitespace    # Whitespace issues
+    - nilnil        # Prevent returning (nil, nil)
+    - errname       # Enforce Err prefix for sentinel errors
+    - nilerr        # Catches return nil when error is not nil
+    - makezero      # Finds make([]T, nonzero) followed by append
+    - thelper       # Ensures test helpers call t.Helper()
+    - bidichk       # Security: detects dangerous unicode
+    - forcetypeassert # Finds type assertions without error checking
+    - durationcheck # Catches multiplying durations
+    - contextcheck  # Ensures functions use inherited context
+    - containedctx  # Detects context.Context in structs
+    - nakedret      # Warns about naked returns in long functions
+    - nestif        # Flags deeply nested if statements
+    - usestdlibvars # Suggests using stdlib constants
+
+  disable:
+    - exhaustruct   # Too strict - requires all struct fields
+    - nlreturn      # Too opinionated about newlines
+    - wsl           # Too opinionated about whitespace
+    - funlen        # Function length checks - we'll handle this ourselves
+    - cyclop        # Duplicate of gocyclo
+    - lll           # Line length - we'll handle this ourselves
+    - wrapcheck     # Too strict about error wrapping
+    - varnamelen    # Too strict about variable naming
+    - tagliatelle   # Struct tag formatting - too opinionated
+    - testpackage   # Requires _test package - not always desired
+    - paralleltest  # Parallel test requirements - too strict
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+
+  govet:
+    enable-all: true
+    disable:
+      - shadow # Too many false positives
+
+  gocyclo:
+    min-complexity: 15
+
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - style
+      - performance
+      - experimental
+      - opinionated
+    disabled-checks:
+      - whyNoLint # We use nolintlint for this
+      - hugeParam # We'll optimize when needed
+
+  misspell:
+    locale: US
+
+  stylecheck:
+    checks: ["all", "-ST1003"] # ST1003 is about underscores in names
+
+  gosec:
+    excludes:
+      - G104 # Duplicate of errcheck
+      - G304 # File path from variable - library needs to open user-provided paths
+      - G307 # Deferred file close errors - often false positives
+      - G115 # Integer overflow conversion - go 1.22+ handles this safely
+
+  nakedret:
+    max-func-lines: 30 # Warn if naked return in function > 30 lines
+
+  nestif:
+    min-complexity: 5 # Warn if nesting > 5 levels
+
+  revive:
+    enable-all-rules: false
+    rules:
+      - name: blank-imports
+      - name: context-as-argument
+      - name: dot-imports
+      - name: error-return
+      - name: error-strings
+      - name: error-naming
+      - name: exported
+      - name: increment-decrement
+      - name: var-naming
+      - name: package-comments
+      - name: range
+      - name: receiver-naming
+      - name: indent-error-flow
+      - name: superfluous-else
+      - name: unreachable-code
+      - name: unused-parameter
+      - name: confusing-naming
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  uniq-by-line: true
+
+  exclude-rules:
+    # Exclude some linters from running on tests
+    - path: _test\.go
+      linters:
+        - dupl
+        - gosec
+        - goconst
+
+    # Allow shadowing 'err' in tests
+    - path: _test\.go
+      text: "shadow: declaration of \"err\""
+
+  # Don't hide new issues in existing code
+  new: false
+
+output:
+  formats:
+    - format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
+  sort-results: true

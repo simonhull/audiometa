@@ -8,10 +8,10 @@ import (
 	"github.com/simonhull/audiometa/internal/types"
 )
 
-// parser implements the audiometa.FormatParser interface
+// parser implements the audiometa.FormatParser interface.
 type parser struct{}
 
-// detectM4Format determines if this is M4A or M4B by checking the ftyp atom
+// detectM4Format determines if this is M4A or M4B by checking the ftyp atom.
 func detectM4Format(sr *binary.SafeReader, size int64) types.Format {
 	// Try to find ftyp atom
 	ftypAtom, err := findAtom(sr, 0, size, "ftyp")
@@ -52,7 +52,7 @@ func detectM4Format(sr *binary.SafeReader, size int64) types.Format {
 	return types.FormatM4A
 }
 
-// Parse parses an M4A/M4B file and extracts metadata
+// Parse parses an M4A/M4B file and extracts metadata.
 func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, error) {
 	// Create safe reader
 	sr := binary.NewSafeReader(r, size, path)
@@ -141,13 +141,13 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, err
 	return file, nil
 }
 
-// ExtractArtwork extracts embedded artwork from M4A/M4B files
+// ExtractArtwork extracts embedded artwork from M4A/M4B files.
 func (p *parser) ExtractArtwork(r io.ReaderAt, size int64, path string) ([]types.Artwork, error) {
 	// TODO: Implement artwork extraction from covr atom
 	return nil, nil
 }
 
-// init registers the M4A/M4B parser
+// init registers the M4A/M4B parser.
 func init() {
 	p := &parser{}
 	registry.Register(types.FormatM4A, p)

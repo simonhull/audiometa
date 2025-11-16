@@ -8,15 +8,15 @@ import (
 	"github.com/simonhull/audiometa/internal/types"
 )
 
-// Atom represents an MP4/M4A/M4B atom (box)
+// Atom represents an MP4/M4A/M4B atom (box).
 type Atom struct {
-	Size     uint64 // Total size including header
-	Type     string // 4-character type code
-	Offset   int64  // Position in file
-	Extended bool   // Whether this uses 64-bit extended size
+	Type     string
+	Size     uint64
+	Offset   int64
+	Extended bool
 }
 
-// DataSize returns the size of the atom's data (excluding header)
+// DataSize returns the size of the atom's data (excluding header).
 func (a *Atom) DataSize() uint64 {
 	headerSize := uint64(8)
 	if a.Extended {
@@ -28,7 +28,7 @@ func (a *Atom) DataSize() uint64 {
 	return a.Size - headerSize
 }
 
-// DataOffset returns the file offset where the atom's data starts
+// DataOffset returns the file offset where the atom's data starts.
 func (a *Atom) DataOffset() int64 {
 	headerSize := int64(8)
 	if a.Extended {
@@ -37,7 +37,7 @@ func (a *Atom) DataOffset() int64 {
 	return a.Offset + headerSize
 }
 
-// IsContainer returns true if this atom type can contain other atoms
+// IsContainer returns true if this atom type can contain other atoms.
 func (a *Atom) IsContainer() bool {
 	containerTypes := map[string]bool{
 		"moov": true, // Movie container
@@ -52,7 +52,7 @@ func (a *Atom) IsContainer() bool {
 	return containerTypes[a.Type]
 }
 
-// readAtomHeader reads an atom header at the given offset
+// readAtomHeader reads an atom header at the given offset.
 func readAtomHeader(sr *binary.SafeReader, offset int64) (*Atom, error) {
 	// Read size (4 bytes)
 	size32, err := binary.Read[uint32](sr, offset, "atom size")
@@ -96,8 +96,7 @@ func readAtomHeader(sr *binary.SafeReader, offset int64) (*Atom, error) {
 	return atom, nil
 }
 
-// findAtom searches for an atom of the given type within a range
-// Returns the first matching atom or an error if not found
+// Returns the first matching atom or an error if not found.
 func findAtom(sr *binary.SafeReader, start, end int64, atomType string) (*Atom, error) {
 	offset := start
 

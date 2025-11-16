@@ -17,7 +17,7 @@ import (
 // The comment is also stored in the raw tags map.
 //
 // Returns an error if the comment is not in valid "KEY=VALUE" format.
-func ParseComment(comment string, tags *types.Tags) error {
+func ParseComment(comment string, tags *types.Tags) error { //nolint:gocyclo // Complexity from many simple field mappings - intentionally kept together
 	// Find the '=' separator
 	eq := -1
 	for i := 0; i < len(comment); i++ {
@@ -50,21 +50,20 @@ func ParseComment(comment string, tags *types.Tags) error {
 		// Try to extract year from date
 		if len(value) >= 4 {
 			var year int
-			fmt.Sscanf(value[:4], "%d", &year)
-			if year > 0 {
+			if _, err := fmt.Sscanf(value[:4], "%d", &year); err == nil && year > 0 {
 				tags.Year = year
 			}
 		}
 	case "ORIGINALDATE":
 		tags.OriginalDate = value
 	case "TRACKNUMBER":
-		fmt.Sscanf(value, "%d", &tags.TrackNumber)
+		_, _ = fmt.Sscanf(value, "%d", &tags.TrackNumber) //nolint:errcheck // Best effort parsing, zero value is fine
 	case "TRACKTOTAL", "TOTALTRACKS":
-		fmt.Sscanf(value, "%d", &tags.TrackTotal)
+		_, _ = fmt.Sscanf(value, "%d", &tags.TrackTotal) //nolint:errcheck // Best effort parsing, zero value is fine
 	case "DISCNUMBER":
-		fmt.Sscanf(value, "%d", &tags.DiscNumber)
+		_, _ = fmt.Sscanf(value, "%d", &tags.DiscNumber) //nolint:errcheck // Best effort parsing, zero value is fine
 	case "DISCTOTAL", "TOTALDISCS":
-		fmt.Sscanf(value, "%d", &tags.DiscTotal)
+		_, _ = fmt.Sscanf(value, "%d", &tags.DiscTotal) //nolint:errcheck // Best effort parsing, zero value is fine
 	case "GENRE":
 		tags.Genres = append(tags.Genres, value)
 	case "COMPOSER":

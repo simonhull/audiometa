@@ -2,16 +2,16 @@ package binary
 
 import "encoding/binary"
 
-// Endianness represents byte order for multi-byte values
+// Endianness represents byte order for multi-byte values.
 type Endianness int
 
 const (
-	// BigEndian represents big-endian byte order (most significant byte first)
-	// Used by: MP4/M4A, MP3 ID3v2, most network protocols
+	// BigEndian uses big-endian byte order.
+	// Used by: MP4/M4A, MP3 ID3v2, most network protocols.
 	BigEndian Endianness = iota
 
-	// LittleEndian represents little-endian byte order (least significant byte first)
-	// Used by: FLAC Vorbis comments, WAV, x86/x64 architectures
+	// LittleEndian uses little-endian byte order.
+	// Used by: FLAC Vorbis comments, WAV, x86/x64 architectures.
 	LittleEndian
 )
 

@@ -26,12 +26,12 @@ import (
 //	CHAPTER001NAME=Introduction
 //	CHAPTER002=00:05:23.500
 //	CHAPTER002NAME=Chapter 1: The Beginning
-func ParseChapters(comments []string, fileDuration time.Duration) []types.Chapter {
+func ParseChapters(comments []string, fileDuration time.Duration) []types.Chapter { //nolint:gocyclo // Chapter parsing requires handling multiple tag formats and cases
 	// Map to collect chapter data by chapter number
 	type chapterData struct {
-		number    int
 		timestamp string
 		title     string
+		number    int
 	}
 
 	chaptersMap := make(map[int]*chapterData)
@@ -51,7 +51,7 @@ func ParseChapters(comments []string, fileDuration time.Duration) []types.Chapte
 			continue
 		}
 
-		if strings.HasSuffix(key, "NAME") {
+		if strings.HasSuffix(key, "NAME") { //nolint:nestif // Chapter tag parsing requires nested conditionals for different formats
 			// CHAPTERxxxNAME - extract chapter number
 			numStr := strings.TrimSuffix(strings.TrimPrefix(key, "CHAPTER"), "NAME")
 			num, err := strconv.Atoi(numStr)
@@ -63,7 +63,6 @@ func ParseChapters(comments []string, fileDuration time.Duration) []types.Chapte
 				chaptersMap[num] = &chapterData{number: num}
 			}
 			chaptersMap[num].title = value
-
 		} else {
 			// CHAPTERxxx - extract chapter number and timestamp
 			numStr := strings.TrimPrefix(key, "CHAPTER")
@@ -112,8 +111,8 @@ func ParseChapters(comments []string, fileDuration time.Duration) []types.Chapte
 		// Calculate end time
 		var endTime time.Duration
 		if i < len(chapterList)-1 {
-			// End at start of next chapter
-			endTime, _ = parseChapterTimestamp(chapterList[i+1].timestamp)
+			// End at start of next chapter (ignore error, endTime stays 0 if invalid)
+			endTime, _ = parseChapterTimestamp(chapterList[i+1].timestamp) //nolint:errcheck // Invalid next timestamp is non-fatal, endTime stays 0
 		} else if fileDuration > 0 {
 			// Last chapter: use file duration
 			endTime = fileDuration

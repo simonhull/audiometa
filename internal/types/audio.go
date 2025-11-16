@@ -10,25 +10,18 @@ import (
 // AudioInfo provides format-agnostic access to audio technical metadata
 // such as duration, sample rate, bit depth, and codec information.
 type AudioInfo struct {
-	// Format identification
-	Codec            string // Codec FourCC: "mp4a", "ec-3", "ac-4", "mhm1"
-	CodecDescription string // Human-readable: "xHE-AAC", "E-AC-3"
-	CodecProfile     string // Profile: "AAC-LC", "HE-AAC v2", "USAC"
-	Container        string // Container format: "FLAC", "MP4", "ID3v2.4"
-
-	// Core audio properties
-	Duration   time.Duration // Total audio duration
-	SampleRate int           // Samples per second (Hz): 44100, 48000, 96000, etc.
-	BitDepth   int           // Bits per sample: 16, 24, 32 (0 for lossy formats)
-	Channels   int           // Channel count: 1=mono, 2=stereo, 6=5.1, etc.
-
-	// Quality indicators
-	Bitrate  int  // Bits per second (0 for lossless)
-	Lossless bool // True for FLAC, ALAC, WAV, etc.
-	VBR      bool // True for variable bitrate encoding
-
-	// ReplayGain (optional)
-	ReplayGain *ReplayGainInfo // nil if not present
+	ReplayGain       *ReplayGainInfo
+	Codec            string
+	CodecDescription string
+	CodecProfile     string
+	Container        string
+	Duration         time.Duration
+	SampleRate       int
+	BitDepth         int
+	Channels         int
+	Bitrate          int
+	Lossless         bool
+	VBR              bool
 }
 
 // ReplayGainInfo represents loudness normalization data.
@@ -42,9 +35,7 @@ type ReplayGainInfo struct {
 	AlbumPeak float64 // Album peak amplitude (0.0 to 1.0+)
 }
 
-// String returns a human-readable representation of AudioInfo.
-//
-// Example output: "FLAC 44.1kHz 16-bit stereo"
+// Example output: "FLAC 44.1kHz 16-bit stereo".
 func (a AudioInfo) String() string {
 	// Format sample rate
 	sampleRate := fmt.Sprintf("%.1fkHz", float64(a.SampleRate)/1000)
@@ -205,7 +196,7 @@ func pow10(x float64) float64 {
 	return result
 }
 
-// ShortCodecName returns a short, human-readable codec name
+// ShortCodecName returns a short, human-readable codec name.
 func (a AudioInfo) ShortCodecName() string {
 	if a.CodecDescription != "" {
 		return a.CodecDescription
@@ -213,7 +204,7 @@ func (a AudioInfo) ShortCodecName() string {
 	return a.Codec
 }
 
-// FullCodecName returns the full codec name with profile
+// FullCodecName returns the full codec name with profile.
 func (a AudioInfo) FullCodecName() string {
 	codec := a.CodecDescription
 	if codec == "" {
@@ -227,7 +218,7 @@ func (a AudioInfo) FullCodecName() string {
 	return codec
 }
 
-// IsModernAudiobookCodec returns true for modern audiobook codecs
+// IsModernAudiobookCodec returns true for modern audiobook codecs.
 func (a AudioInfo) IsModernAudiobookCodec() bool {
 	switch a.Codec {
 	case "mhm1", "mhm2": // xHE-AAC

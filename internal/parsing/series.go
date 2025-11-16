@@ -1,3 +1,4 @@
+// Package parsing provides utilities for parsing and extracting metadata from text.
 package parsing
 
 import (
@@ -8,9 +9,8 @@ import (
 	"strings"
 )
 
-// ExtractSeriesPartFromText attempts to extract series position from text fields
-// Handles patterns like: "Book 2", "Part 2", "#2", "Vol. 2", "2 -"
-// Supports fractional positions (0.5), zero-based (Book 0), and large numbers (100+)
+// ExtractSeriesPartFromText extracts series part numbers from text strings.
+// Supports fractional positions (0.5), zero-based (Book 0), and large numbers (100+).
 func ExtractSeriesPartFromText(text string) string {
 	if text == "" {
 		return ""
@@ -41,10 +41,7 @@ func ExtractSeriesPartFromText(text string) string {
 	return ""
 }
 
-// normalizeSeriesPart normalizes the series part string
-// - Removes leading zeros from whole numbers: "01" -> "1"
-// - Normalizes decimals: "01.5" -> "1.5", "00.5" -> "0.5"
-// - Handles book 0: "0" -> "0"
+// - Handles book 0: "0" -> "0".
 func normalizeSeriesPart(part string) string {
 	if part == "" {
 		return ""
@@ -71,9 +68,8 @@ func normalizeSeriesPart(part string) string {
 	return part
 }
 
-// ExtractSeriesPartFromPath attempts to extract series position from the file path
-// by examining the immediate parent directory name
-// Example: "/audiobooks/Author/Series/2 - North or Be Eaten/file.m4b" → "2"
+// ExtractSeriesPartFromPath extracts series part numbers from file paths.
+// Example: "/audiobooks/Author/Series/2 - North or Be Eaten/file.m4b" → "2".
 func ExtractSeriesPartFromPath(path string) string {
 	if path == "" {
 		return ""

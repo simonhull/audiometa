@@ -5,17 +5,17 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"github.com/simonhull/audiometa/internal/types"
 	audiobinary "github.com/simonhull/audiometa/internal/binary"
+	"github.com/simonhull/audiometa/internal/types"
 )
 
-// createMockSafeReader creates a SafeReader for testing with a given file path
+// createMockSafeReader creates a SafeReader for testing with a given file path.
 func createMockSafeReader(path string) *audiobinary.SafeReader {
 	buf := make([]byte, 0)
 	return audiobinary.NewSafeReader(bytes.NewReader(buf), 0, path)
 }
 
-// createCustomAtom creates a custom (----) atom with mean, name, and data
+// createCustomAtom creates a custom (----) atom with mean, name, and data.
 func createCustomAtom(namespace, fieldName, value string) []byte {
 	buf := &bytes.Buffer{}
 
@@ -44,7 +44,7 @@ func createCustomAtom(namespace, fieldName, value string) []byte {
 	return createAtomWithType(customType, buf.Bytes())
 }
 
-// createAtomWithType creates an atom with a specific type (as bytes)
+// createAtomWithType creates an atom with a specific type (as bytes).
 func createAtomWithType(atomType []byte, data []byte) []byte {
 	buf := &bytes.Buffer{}
 	size := uint32(8 + len(data))

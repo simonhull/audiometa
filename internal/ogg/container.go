@@ -12,11 +12,11 @@ import (
 // An Ogg page is the fundamental unit of the Ogg container format.
 // Each page contains a header and payload data.
 type Page struct {
-	HeaderType      byte   // Bit flags: 0x01=continued, 0x02=BOS, 0x04=EOS
-	GranulePosition int64  // Position in samples
-	SerialNumber    uint32 // Logical bitstream identifier
-	SequenceNumber  uint32 // Page sequence number
-	Data            []byte // Page payload (one or more packets)
+	Data            []byte
+	GranulePosition int64
+	SerialNumber    uint32
+	SequenceNumber  uint32
+	HeaderType      byte
 }
 
 // readPage reads an Ogg page at the given offset.
@@ -143,7 +143,6 @@ func extractPackets(pages []*Page) [][]byte {
 //
 // This is used to calculate the duration of the audio stream.
 func findLastGranulePosition(sr *binary.SafeReader, fileSize int64) (int64, error) {
-
 	// Search last 64KB for final page (typical max page size)
 	searchStart := fileSize - 65536
 	if searchStart < 0 {

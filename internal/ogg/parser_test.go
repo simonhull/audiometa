@@ -10,7 +10,7 @@ import (
 	"github.com/simonhull/audiometa/internal/types"
 )
 
-// createMinimalOgg creates a minimal Ogg Vorbis file with identification and comment headers
+// createMinimalOgg creates a minimal Ogg Vorbis file with identification and comment headers.
 func createMinimalOgg(title, artist, album string) []byte {
 	buf := &bytes.Buffer{}
 
@@ -62,22 +62,22 @@ func createMinimalOgg(title, artist, album string) []byte {
 
 	// Page 0: Identification header (BOS = Beginning of Stream)
 	idHeader := &bytes.Buffer{}
-	idHeader.WriteByte(0x01)             // Packet type: identification
-	idHeader.WriteString("vorbis")       // Magic
-	binary.Write(idHeader, binary.LittleEndian, uint32(0)) // Vorbis version
-	idHeader.WriteByte(2)                // Channels (stereo)
-	binary.Write(idHeader, binary.LittleEndian, uint32(44100)) // Sample rate
-	binary.Write(idHeader, binary.LittleEndian, uint32(0))     // Bitrate maximum
+	idHeader.WriteByte(0x01)                                    // Packet type: identification
+	idHeader.WriteString("vorbis")                              // Magic
+	binary.Write(idHeader, binary.LittleEndian, uint32(0))      // Vorbis version
+	idHeader.WriteByte(2)                                       // Channels (stereo)
+	binary.Write(idHeader, binary.LittleEndian, uint32(44100))  // Sample rate
+	binary.Write(idHeader, binary.LittleEndian, uint32(0))      // Bitrate maximum
 	binary.Write(idHeader, binary.LittleEndian, uint32(128000)) // Bitrate nominal
-	binary.Write(idHeader, binary.LittleEndian, uint32(0))     // Bitrate minimum
-	idHeader.WriteByte(0xB8)             // Blocksize info
-	idHeader.WriteByte(0x01)             // Framing flag
+	binary.Write(idHeader, binary.LittleEndian, uint32(0))      // Bitrate minimum
+	idHeader.WriteByte(0xB8)                                    // Blocksize info
+	idHeader.WriteByte(0x01)                                    // Framing flag
 
 	createPage(0x02, 0, 12345, 0, idHeader.Bytes()) // BOS flag
 
 	// Page 1: Comment header
 	commentHeader := &bytes.Buffer{}
-	commentHeader.WriteByte(0x03)        // Packet type: comment
+	commentHeader.WriteByte(0x03)       // Packet type: comment
 	commentHeader.WriteString("vorbis") // Magic
 
 	// Vendor string
@@ -113,9 +113,9 @@ func createMinimalOgg(title, artist, album string) []byte {
 
 	// Page 2: Setup header (empty for test purposes)
 	setupHeader := &bytes.Buffer{}
-	setupHeader.WriteByte(0x05)           // Packet type: setup
-	setupHeader.WriteString("vorbis")    // Magic
-	setupHeader.WriteByte(0x01)          // Framing
+	setupHeader.WriteByte(0x05)       // Packet type: setup
+	setupHeader.WriteString("vorbis") // Magic
+	setupHeader.WriteByte(0x01)       // Framing
 
 	createPage(0x00, 0, 12345, 2, setupHeader.Bytes())
 
@@ -128,7 +128,7 @@ func createMinimalOgg(title, artist, album string) []byte {
 	return buf.Bytes()
 }
 
-// createMinimalOpus creates a minimal Ogg Opus file with OpusHead and OpusTags headers
+// createMinimalOpus creates a minimal Ogg Opus file with OpusHead and OpusTags headers.
 func createMinimalOpus(title, artist, album string) []byte {
 	buf := &bytes.Buffer{}
 
@@ -180,13 +180,13 @@ func createMinimalOpus(title, artist, album string) []byte {
 
 	// Page 0: OpusHead identification header (BOS = Beginning of Stream)
 	idHeader := &bytes.Buffer{}
-	idHeader.WriteString("OpusHead")                             // Magic (8 bytes)
-	idHeader.WriteByte(1)                                        // Version
-	idHeader.WriteByte(2)                                        // Channels (stereo)
-	binary.Write(idHeader, binary.LittleEndian, uint16(312))    // Pre-skip
-	binary.Write(idHeader, binary.LittleEndian, uint32(48000))  // Input sample rate
-	binary.Write(idHeader, binary.LittleEndian, int16(0))       // Output gain
-	idHeader.WriteByte(0)                                        // Channel mapping family
+	idHeader.WriteString("OpusHead")                           // Magic (8 bytes)
+	idHeader.WriteByte(1)                                      // Version
+	idHeader.WriteByte(2)                                      // Channels (stereo)
+	binary.Write(idHeader, binary.LittleEndian, uint16(312))   // Pre-skip
+	binary.Write(idHeader, binary.LittleEndian, uint32(48000)) // Input sample rate
+	binary.Write(idHeader, binary.LittleEndian, int16(0))      // Output gain
+	idHeader.WriteByte(0)                                      // Channel mapping family
 
 	createPage(0x02, 0, 54321, 0, idHeader.Bytes()) // BOS flag
 
@@ -564,21 +564,21 @@ func TestParseOpus_BitrateEstimation(t *testing.T) {
 
 func TestOggParser_BothCodecs(t *testing.T) {
 	tests := []struct {
-		name           string
-		data           []byte
-		expectedCodec  string
+		name               string
+		expectedCodec      string
+		data               []byte
 		expectedSampleRate int
 	}{
 		{
-			name:           "Vorbis",
-			data:           createMinimalOgg("Test", "Test", "Test"),
-			expectedCodec:  "Vorbis",
+			name:               "Vorbis",
+			data:               createMinimalOgg("Test", "Test", "Test"),
+			expectedCodec:      "Vorbis",
 			expectedSampleRate: 44100,
 		},
 		{
-			name:           "Opus",
-			data:           createMinimalOpus("Test", "Test", "Test"),
-			expectedCodec:  "Opus",
+			name:               "Opus",
+			data:               createMinimalOpus("Test", "Test", "Test"),
+			expectedCodec:      "Opus",
 			expectedSampleRate: 48000,
 		},
 	}

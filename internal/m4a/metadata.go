@@ -9,7 +9,7 @@ import (
 	"github.com/simonhull/audiometa/internal/types"
 )
 
-// parseMetadataTag extracts the string value from an iTunes metadata tag atom
+// parseMetadataTag extracts the string value from an iTunes metadata tag atom.
 func parseMetadataTag(sr *binary.SafeReader, tagAtom *Atom) (string, error) {
 	// Tag atoms contain a "data" atom with the actual value
 	// Format: tag atom → data atom → version/flags → value
@@ -47,7 +47,7 @@ func parseMetadataTag(sr *binary.SafeReader, tagAtom *Atom) (string, error) {
 	return value, nil
 }
 
-// extractIlstMetadata parses all metadata items from the ilst atom
+// extractIlstMetadata parses all metadata items from the ilst atom.
 func extractIlstMetadata(sr *binary.SafeReader, ilstAtom *Atom, file *types.File) error {
 	offset := ilstAtom.DataOffset()
 	end := offset + int64(ilstAtom.DataSize())
@@ -88,8 +88,7 @@ func extractIlstMetadata(sr *binary.SafeReader, ilstAtom *Atom, file *types.File
 	return nil
 }
 
-// mapTagToField maps an iTunes tag to the appropriate metadata field
-// Note: In MP4, © is represented as byte 0xA9, so "©nam" is "\xA9nam" in Go strings
+// Note: In MP4, © is represented as byte 0xA9, so "©nam" is "\xA9nam" in Go strings.
 func mapTagToField(tag string, value string, file *types.File) {
 	switch tag {
 	case "\xA9nam": // Title (©nam)
@@ -111,13 +110,13 @@ func mapTagToField(tag string, value string, file *types.File) {
 	}
 }
 
-// TrackData holds track number information
+// TrackData holds track number information.
 type TrackData struct {
 	Number int
 	Total  int
 }
 
-// parseTrackNumber extracts track number and total from trkn atom
+// parseTrackNumber extracts track number and total from trkn atom.
 func parseTrackNumber(sr *binary.SafeReader, atom *Atom) (TrackData, error) {
 	result := TrackData{}
 

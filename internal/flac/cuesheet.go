@@ -1,3 +1,4 @@
+// Package flac provides FLAC audio file parsing and metadata extraction.
 package flac
 
 import (
@@ -9,16 +10,16 @@ import (
 	"github.com/simonhull/audiometa/internal/types"
 )
 
-// CueSheet represents a FLAC CUESHEET metadata block
-type CueSheet struct {
+// CueSheet represents a FLAC CUESHEET metadata block.
+type CueSheet struct { //nolint:govet // fieldalignment - readability over micro-optimization
 	MediaCatalogNumber string
 	LeadIn             uint64
 	IsCD               bool
 	Tracks             []CueTrack
 }
 
-// CueTrack represents a track in a cue sheet
-type CueTrack struct {
+// CueTrack represents a track in a cue sheet.
+type CueTrack struct { //nolint:govet // fieldalignment - readability over micro-optimization
 	Offset      uint64 // samples from start of audio
 	Number      byte   // track number (1-99, 170=lead-out)
 	ISRC        string
@@ -27,13 +28,13 @@ type CueTrack struct {
 	Indices     []CueIndex
 }
 
-// CueIndex represents an index point within a track
+// CueIndex represents an index point within a track.
 type CueIndex struct {
 	Offset uint64 // samples from start of track
 	Number byte   // index number
 }
 
-// parseCueSheet parses a FLAC CUESHEET metadata block
+// parseCueSheet parses a FLAC CUESHEET metadata block.
 func parseCueSheet(sr *binary.SafeReader, offset int64, length uint32, file *types.File) error {
 	if length < 396 { // Minimum size: 128+8+1+259+1 = 397 bytes (but some fields can be smaller)
 		return fmt.Errorf("CUESHEET block too short: %d bytes (need at least 396)", length)
@@ -62,7 +63,7 @@ func parseCueSheet(sr *binary.SafeReader, offset int64, length uint32, file *typ
 		return fmt.Errorf("read flags: %w", err)
 	}
 	isCD := (flags & 0x80) != 0
-	offset += 1
+	offset++
 
 	// Skip reserved (259 bytes)
 	offset += 259
@@ -72,7 +73,7 @@ func parseCueSheet(sr *binary.SafeReader, offset int64, length uint32, file *typ
 	if err != nil {
 		return fmt.Errorf("read track count: %w", err)
 	}
-	offset += 1
+	offset++
 
 	// Verify we have enough data for tracks
 	bytesRead := offset - startOffset
@@ -104,7 +105,7 @@ func parseCueSheet(sr *binary.SafeReader, offset int64, length uint32, file *typ
 	return nil
 }
 
-// parseCueTrack parses a single track from CUESHEET
+// parseCueTrack parses a single track from CUESHEET.
 func parseCueTrack(sr *binary.SafeReader, offset, maxOffset int64) (*CueTrack, int64, error) {
 	if offset+36 > maxOffset {
 		return nil, 0, fmt.Errorf("track data exceeds block bounds")
@@ -122,7 +123,7 @@ func parseCueTrack(sr *binary.SafeReader, offset, maxOffset int64) (*CueTrack, i
 	if err != nil {
 		return nil, 0, fmt.Errorf("read track number: %w", err)
 	}
-	offset += 1
+	offset++
 
 	// Read ISRC (12 bytes, ASCII)
 	isrcBytes := make([]byte, 12)
@@ -137,9 +138,9 @@ func parseCueTrack(sr *binary.SafeReader, offset, maxOffset int64) (*CueTrack, i
 	if err != nil {
 		return nil, 0, fmt.Errorf("read track flags: %w", err)
 	}
-	isAudio := (flags & 0x80) == 0       // Audio if bit 7 is NOT set
-	preEmphasis := (flags & 0x40) != 0   // Pre-emphasis if bit 6 is set
-	offset += 1
+	isAudio := (flags & 0x80) == 0     // Audio if bit 7 is NOT set
+	preEmphasis := (flags & 0x40) != 0 // Pre-emphasis if bit 6 is set
+	offset++
 
 	// Skip reserved (13 bytes)
 	offset += 13
@@ -149,7 +150,7 @@ func parseCueTrack(sr *binary.SafeReader, offset, maxOffset int64) (*CueTrack, i
 	if err != nil {
 		return nil, 0, fmt.Errorf("read index count: %w", err)
 	}
-	offset += 1
+	offset++
 
 	// Parse indices
 	indices := make([]CueIndex, 0, indexCount)
@@ -178,7 +179,7 @@ func parseCueTrack(sr *binary.SafeReader, offset, maxOffset int64) (*CueTrack, i
 	return track, offset, nil
 }
 
-// parseCueIndex parses a single index point from CUESHEET
+// parseCueIndex parses a single index point from CUESHEET.
 func parseCueIndex(sr *binary.SafeReader, offset int64) (*CueIndex, int64, error) {
 	// Read index offset (8 bytes, 64-bit big-endian, samples relative to track start)
 	indexOffset, err := binary.Read[uint64](sr, offset, "index offset")
@@ -192,7 +193,7 @@ func parseCueIndex(sr *binary.SafeReader, offset int64) (*CueIndex, int64, error
 	if err != nil {
 		return nil, 0, fmt.Errorf("read index number: %w", err)
 	}
-	offset += 1
+	offset++
 
 	// Skip reserved (3 bytes)
 	offset += 3
@@ -203,7 +204,7 @@ func parseCueIndex(sr *binary.SafeReader, offset int64) (*CueIndex, int64, error
 	}, offset, nil
 }
 
-// cuesheetToChapters converts a CUESHEET to types.Chapter slice
+// cuesheetToChapters converts a CUESHEET to types.Chapter slice.
 func cuesheetToChapters(cuesheet *CueSheet, sampleRate int) []types.Chapter {
 	if len(cuesheet.Tracks) == 0 {
 		return nil

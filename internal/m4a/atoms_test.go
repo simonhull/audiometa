@@ -8,7 +8,7 @@ import (
 	audiobinary "github.com/simonhull/audiometa/internal/binary"
 )
 
-// createMockAtom creates a test atom with given type and data
+// createMockAtom creates a test atom with given type and data.
 func createMockAtom(atomType string, data []byte) []byte {
 	buf := &bytes.Buffer{}
 

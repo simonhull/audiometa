@@ -13,8 +13,7 @@ import (
 	_ "github.com/simonhull/audiometa/internal/ogg"  // Register Ogg Vorbis parser
 )
 
-// createSimpleM4B creates a minimal M4B for testing
-// This duplicates some logic from m4a/parser_test.go but keeps the public API tests independent
+// This duplicates some logic from m4a/parser_test.go but keeps the public API tests independent.
 func createSimpleM4B() []byte {
 	buf := &bytes.Buffer{}
 
@@ -77,7 +76,7 @@ func TestParse_UnsupportedFormat(t *testing.T) {
 	defer os.Remove(tmpFile.Name())
 
 	// Write some random data
-	tmpFile.Write([]byte("not a valid audio file"))
+	tmpFile.WriteString("not a valid audio file")
 	tmpFile.Close()
 
 	_, err = audiometa.Open(tmpFile.Name())

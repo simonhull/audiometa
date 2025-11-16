@@ -2,15 +2,15 @@ package audiometa
 
 import "runtime"
 
-// Version is the semantic version of the audiometa library
+// Version is the semantic version of the audiometa library.
 const Version = "0.1.0"
 
-// GetVersion returns the current version string
+// GetVersion returns the current version string.
 func GetVersion() string {
 	return Version
 }
 
-// VersionInfo contains detailed version information
+// VersionInfo contains detailed version information.
 type VersionInfo struct {
 	// Version is the semantic version (e.g., "0.1.0")
 	Version string
@@ -47,7 +47,7 @@ func GetVersionInfo() VersionInfo {
 	}
 }
 
-// Variables populated at build time via -ldflags
+// Variables populated at build time via -ldflags.
 var (
 	gitCommit = "unknown"
 	buildTime = "unknown"

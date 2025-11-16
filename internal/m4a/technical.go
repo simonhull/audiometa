@@ -7,66 +7,62 @@ import (
 	"github.com/simonhull/audiometa/internal/types"
 )
 
-// parseTechnicalInfo extracts duration, bitrate, sample rate, channels, and codec
-func parseTechnicalInfo(sr *binary.SafeReader, moovAtom *Atom, file *types.File) error {
+// parseTechnicalInfo extracts duration, bitrate, sample rate, channels, and codec.
+// Returns nil (no error) even if atoms are missing - technical info is best-effort.
+func parseTechnicalInfo(sr *binary.SafeReader, moovAtom *Atom, file *types.File) error { //nolint:unparam // Error return kept for consistency with other parsers
 	// Find mvhd (movie header) atom for duration
 	mvhdAtom, err := findAtom(sr, moovAtom.DataOffset(), moovAtom.DataOffset()+int64(moovAtom.DataSize()), "mvhd")
 	if err != nil {
-		// No mvhd - not fatal, just skip duration parsing
-		return nil
+		return nil //nolint:nilerr // Missing atoms are not fatal for technical info parsing
 	}
 
 	// Parse mvhd for duration
 	if err := parseMvhd(sr, mvhdAtom, file); err != nil {
-		// Non-fatal
-		return nil
+		return nil //nolint:nilerr // Parse failures are not fatal
 	}
 
 	// Find trak atom for audio format info
 	// Path: moov -> trak
 	trakAtom, err := findAtom(sr, moovAtom.DataOffset(), moovAtom.DataOffset()+int64(moovAtom.DataSize()), "trak")
 	if err != nil {
-		// No trak - not fatal
-		return nil
+		return nil //nolint:nilerr // Missing atoms are not fatal
 	}
 
 	// Find mdia atom
 	// Path: trak -> mdia
 	mdiaAtom, err := findAtom(sr, trakAtom.DataOffset(), trakAtom.DataOffset()+int64(trakAtom.DataSize()), "mdia")
 	if err != nil {
-		return nil
+		return nil //nolint:nilerr // Missing atoms are not fatal
 	}
 
 	// Find minf atom
 	// Path: mdia -> minf
 	minfAtom, err := findAtom(sr, mdiaAtom.DataOffset(), mdiaAtom.DataOffset()+int64(mdiaAtom.DataSize()), "minf")
 	if err != nil {
-		return nil
+		return nil //nolint:nilerr // Missing atoms are not fatal
 	}
 
 	// Find stbl atom
 	// Path: minf -> stbl
 	stblAtom, err := findAtom(sr, minfAtom.DataOffset(), minfAtom.DataOffset()+int64(minfAtom.DataSize()), "stbl")
 	if err != nil {
-		return nil
+		return nil //nolint:nilerr // Missing atoms are not fatal
 	}
 
 	// Find stsd (sample description) atom
 	// Path: stbl -> stsd
 	stsdAtom, err := findAtom(sr, stblAtom.DataOffset(), stblAtom.DataOffset()+int64(stblAtom.DataSize()), "stsd")
 	if err != nil {
-		return nil
+		return nil //nolint:nilerr // Missing atoms are not fatal
 	}
 
 	// Parse stsd for codec, sample rate, channels
 	if err := parseStsd(sr, stsdAtom, file); err != nil {
-		// Non-fatal
-		return nil
+		return nil //nolint:nilerr // Parse failures are not fatal
 	}
 
 	// Estimate bitrate if we have duration and file size
 	if file.Audio.Duration > 0 && file.Size > 0 {
-		// bitrate = (fileSize * 8) / duration_in_seconds
 		durationSec := file.Audio.Duration.Seconds()
 		if durationSec > 0 {
 			file.Audio.Bitrate = int((float64(file.Size) * 8) / durationSec)
@@ -76,7 +72,7 @@ func parseTechnicalInfo(sr *binary.SafeReader, moovAtom *Atom, file *types.File)
 	return nil
 }
 
-// parseMvhd parses the movie header atom for duration
+// parseMvhd parses the movie header atom for duration.
 func parseMvhd(sr *binary.SafeReader, mvhdAtom *Atom, file *types.File) error {
 	offset := mvhdAtom.DataOffset()
 
@@ -85,48 +81,22 @@ func parseMvhd(sr *binary.SafeReader, mvhdAtom *Atom, file *types.File) error {
 	if err != nil {
 		return err
 	}
-	offset += 1
+	offset++
 
 	// Skip flags (3 bytes)
 	offset += 3
 
-	var timescale, duration uint32
+	var timescale uint32
+	var duration uint64
 
 	if version == 1 {
-		// 64-bit version
-		// Skip creation time (8 bytes) and modification time (8 bytes)
-		offset += 16
-
-		// Read timescale (4 bytes)
-		timescale, err = binary.Read[uint32](sr, offset, "mvhd timescale")
-		if err != nil {
-			return err
-		}
-		offset += 4
-
-		// Read duration (8 bytes)
-		duration64, err := binary.Read[uint64](sr, offset, "mvhd duration")
-		if err != nil {
-			return err
-		}
-		duration = uint32(duration64) // Truncate for now (should be safe for audio files)
+		timescale, duration, err = parseMvhdVersion1(sr, offset)
 	} else {
-		// 32-bit version (version == 0)
-		// Skip creation time (4 bytes) and modification time (4 bytes)
-		offset += 8
+		timescale, duration, err = parseMvhdVersion0(sr, offset)
+	}
 
-		// Read timescale (4 bytes)
-		timescale, err = binary.Read[uint32](sr, offset, "mvhd timescale")
-		if err != nil {
-			return err
-		}
-		offset += 4
-
-		// Read duration (4 bytes)
-		duration, err = binary.Read[uint32](sr, offset, "mvhd duration")
-		if err != nil {
-			return err
-		}
+	if err != nil {
+		return err
 	}
 
 	// Calculate duration: duration / timescale
@@ -138,7 +108,49 @@ func parseMvhd(sr *binary.SafeReader, mvhdAtom *Atom, file *types.File) error {
 	return nil
 }
 
-// parseStsd parses the sample description atom for codec, sample rate, channels
+// parseMvhdVersion0 parses 32-bit mvhd (version 0).
+func parseMvhdVersion0(sr *binary.SafeReader, offset int64) (timescale uint32, duration uint64, err error) {
+	// Skip creation time (4 bytes) and modification time (4 bytes)
+	offset += 8
+
+	// Read timescale (4 bytes)
+	timescale, err = binary.Read[uint32](sr, offset, "mvhd timescale")
+	if err != nil {
+		return 0, 0, err
+	}
+	offset += 4
+
+	// Read duration (4 bytes)
+	duration32, err := binary.Read[uint32](sr, offset, "mvhd duration")
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return timescale, uint64(duration32), nil
+}
+
+// parseMvhdVersion1 parses 64-bit mvhd (version 1).
+func parseMvhdVersion1(sr *binary.SafeReader, offset int64) (timescale uint32, duration uint64, err error) {
+	// Skip creation time (8 bytes) and modification time (8 bytes)
+	offset += 16
+
+	// Read timescale (4 bytes)
+	timescale, err = binary.Read[uint32](sr, offset, "mvhd timescale")
+	if err != nil {
+		return 0, 0, err
+	}
+	offset += 4
+
+	// Read duration (8 bytes)
+	duration, err = binary.Read[uint64](sr, offset, "mvhd duration")
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return timescale, duration, nil
+}
+
+// parseStsd parses the sample description atom for codec, sample rate, channels.
 func parseStsd(sr *binary.SafeReader, stsdAtom *Atom, file *types.File) error {
 	offset := stsdAtom.DataOffset()
 
@@ -183,26 +195,15 @@ func parseStsd(sr *binary.SafeReader, stsdAtom *Atom, file *types.File) error {
 	codec := string(formatBytes)
 	file.Audio.Codec = codec
 
-	// Parse enhanced codec details
-	if err := parseCodecDetails(sr, offset-8, codec, file); err != nil {
-		// Non-fatal, just skip enhanced details
-	}
+	// Parse enhanced codec details (non-fatal if it fails)
+	_ = parseCodecDetails(sr, offset-8, codec, file) //nolint:errcheck // Enhanced details are optional
 
 	// Skip reserved (6 bytes) and data reference index (2 bytes)
 	offset += 8
 
 	// Audio sample entry specific fields:
-	// [2 bytes] version (usually 0 or 1)
-	// [2 bytes] revision level
-	// [4 bytes] vendor
-	audioVersion, err := binary.Read[uint16](sr, offset, "audio version")
-	if err != nil {
-		return err
-	}
-	offset += 2
-
-	// Skip revision level (2 bytes) and vendor (4 bytes)
-	offset += 6
+	// Skip version (2 bytes), revision level (2 bytes), and vendor (4 bytes)
+	offset += 8
 
 	// [2 bytes] number of channels
 	channels, err := binary.Read[uint16](sr, offset, "channels")
@@ -212,8 +213,7 @@ func parseStsd(sr *binary.SafeReader, stsdAtom *Atom, file *types.File) error {
 	file.Audio.Channels = int(channels)
 	offset += 2
 
-	// [2 bytes] sample size (bits per sample)
-	// sampleSize, _ := binary.Read[uint16](sr, offset, "sample size")
+	// Skip sample size (2 bytes - bits per sample)
 	offset += 2
 
 	// Skip compression ID (2 bytes) and packet size (2 bytes)
@@ -228,10 +228,6 @@ func parseStsd(sr *binary.SafeReader, stsdAtom *Atom, file *types.File) error {
 	// Convert 16.16 fixed point to integer
 	// High 16 bits = integer part, low 16 bits = fractional part
 	file.Audio.SampleRate = int(sampleRateFixed >> 16)
-
-	// For version 1 and 2, there are additional fields, but we'll skip them for now
-
-	_ = audioVersion // Unused for now
 
 	return nil
 }

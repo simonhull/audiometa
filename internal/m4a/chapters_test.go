@@ -9,7 +9,7 @@ import (
 	audiobinary "github.com/simonhull/audiometa/internal/binary"
 )
 
-// createChplAtom creates a chapter list atom
+// createChplAtom creates a chapter list atom.
 func createChplAtom(chapters []struct {
 	time  int64
 	title string

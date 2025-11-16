@@ -10,7 +10,7 @@ import (
 	"github.com/simonhull/audiometa/internal/types"
 )
 
-// createMinimalFLAC creates a minimal FLAC file with STREAMINFO and VORBIS_COMMENT blocks
+// createMinimalFLAC creates a minimal FLAC file with STREAMINFO and VORBIS_COMMENT blocks.
 func createMinimalFLAC(title, artist, album string) []byte {
 	buf := &bytes.Buffer{}
 
@@ -47,8 +47,8 @@ func createMinimalFLAC(title, artist, album string) []byte {
 	// Total samples: 44100 (1 second) = 0xAC44
 	// Pack into 64 bits: [sample_rate(20)] [channels-1(3)] [bits-1(5)] [total_samples(36)]
 	sampleRate := uint64(44100)
-	channels := uint64(1) // 2 channels - 1
-	bitsPerSample := uint64(15) // 16 bits - 1
+	channels := uint64(1)         // 2 channels - 1
+	bitsPerSample := uint64(15)   // 16 bits - 1
 	totalSamples := uint64(44100) // 1 second at 44.1kHz
 
 	packed := (sampleRate << 44) | (channels << 41) | (bitsPerSample << 36) | totalSamples

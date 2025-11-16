@@ -21,8 +21,8 @@ import "time"
 //	        chapter.EndTime)
 //	}
 type Chapter struct {
-	Index     int           `json:"index"`
 	Title     string        `json:"title"`
+	Index     int           `json:"index"`
 	StartTime time.Duration `json:"start_time"`
 	EndTime   time.Duration `json:"end_time"`
 }

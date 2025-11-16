@@ -46,7 +46,7 @@ func parseOpusHead(data []byte, file *types.File) error {
 
 	// Populate file.Audio
 	file.Audio.Codec = "Opus"
-	file.Audio.Container = "Ogg"
+	file.Audio.Container = containerOgg
 	file.Audio.SampleRate = 48000 // Opus always outputs at 48kHz
 	file.Audio.Channels = int(channels)
 	file.Audio.Lossless = false

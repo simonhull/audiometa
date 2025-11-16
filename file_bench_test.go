@@ -8,14 +8,14 @@ import (
 	"testing"
 
 	"github.com/simonhull/audiometa"
-	"github.com/simonhull/audiometa/internal/types"
 	_ "github.com/simonhull/audiometa/internal/flac" // Register FLAC parser
 	_ "github.com/simonhull/audiometa/internal/m4a"  // Register M4A/M4B parser
 	_ "github.com/simonhull/audiometa/internal/mp3"  // Register MP3 parser
 	_ "github.com/simonhull/audiometa/internal/ogg"  // Register Ogg Vorbis parser
+	"github.com/simonhull/audiometa/internal/types"
 )
 
-// createBenchmarkM4B creates a minimal but valid M4B file for benchmarking
+// createBenchmarkM4B creates a minimal but valid M4B file for benchmarking.
 func createBenchmarkM4B(b *testing.B) string {
 	b.Helper()
 
@@ -49,7 +49,7 @@ func createBenchmarkM4B(b *testing.B) string {
 	return tmpFile.Name()
 }
 
-// BenchmarkOpen measures the performance of opening a single audio file
+// BenchmarkOpen measures the performance of opening a single audio file.
 func BenchmarkOpen(b *testing.B) {
 	path := createBenchmarkM4B(b)
 
@@ -65,7 +65,7 @@ func BenchmarkOpen(b *testing.B) {
 	}
 }
 
-// BenchmarkOpenContext measures the performance with context support
+// BenchmarkOpenContext measures the performance with context support.
 func BenchmarkOpenContext(b *testing.B) {
 	path := createBenchmarkM4B(b)
 	ctx := context.Background()
@@ -82,7 +82,7 @@ func BenchmarkOpenContext(b *testing.B) {
 	}
 }
 
-// BenchmarkOpenMany measures concurrent file opening performance
+// BenchmarkOpenMany measures concurrent file opening performance.
 func BenchmarkOpenMany(b *testing.B) {
 	// Create multiple test files
 	paths := make([]string, 10)
@@ -106,7 +106,7 @@ func BenchmarkOpenMany(b *testing.B) {
 	}
 }
 
-// BenchmarkOpenManyParallel measures OpenMany scalability
+// BenchmarkOpenManyParallel measures OpenMany scalability.
 func BenchmarkOpenManyParallel(b *testing.B) {
 	// Create test files in different sizes
 	for _, n := range []int{1, 5, 10, 20, 50} {
@@ -134,7 +134,7 @@ func BenchmarkOpenManyParallel(b *testing.B) {
 	}
 }
 
-// BenchmarkDetectFormat measures format detection performance
+// BenchmarkDetectFormat measures format detection performance.
 func BenchmarkDetectFormat(b *testing.B) {
 	buf := &bytes.Buffer{}
 
@@ -163,7 +163,7 @@ func BenchmarkDetectFormat(b *testing.B) {
 	}
 }
 
-// BenchmarkTagAccess measures tag access performance
+// BenchmarkTagAccess measures tag access performance.
 func BenchmarkTagAccess(b *testing.B) {
 	path := createBenchmarkM4B(b)
 	file, err := audiometa.Open(path)
@@ -184,7 +184,7 @@ func BenchmarkTagAccess(b *testing.B) {
 	}
 }
 
-// BenchmarkFileAllocation measures the overhead of File struct allocation
+// BenchmarkFileAllocation measures the overhead of File struct allocation.
 func BenchmarkFileAllocation(b *testing.B) {
 	b.ReportAllocs()
 

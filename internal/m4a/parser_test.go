@@ -9,7 +9,7 @@ import (
 	"github.com/simonhull/audiometa/internal/types"
 )
 
-// createMinimalM4B creates a minimal M4B file with ftyp, moov, udta, meta, and ilst atoms
+// createMinimalM4B creates a minimal M4B file with ftyp, moov, udta, meta, and ilst atoms.
 func createMinimalM4B(title, artist, album string) []byte {
 	buf := &bytes.Buffer{}
 

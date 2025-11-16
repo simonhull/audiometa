@@ -12,15 +12,15 @@ package audiometa
 //	)
 type Option func(*openOptions)
 
-// openOptions holds configuration for opening files
+// openOptions holds configuration for opening files.
 type openOptions struct {
-	strictParsing   bool // Fail on any warning
-	preloadArtwork  bool // Load artwork immediately instead of lazily
-	ignoreWarnings  bool // Suppress all warnings
-	maxArtworkSize  int  // Maximum artwork size in bytes (0 = no limit)
+	strictParsing  bool // Fail on any warning
+	preloadArtwork bool // Load artwork immediately instead of lazily
+	ignoreWarnings bool // Suppress all warnings
+	maxArtworkSize int  // Maximum artwork size in bytes (0 = no limit)
 }
 
-// defaultOptions returns the default configuration
+// defaultOptions returns the default configuration.
 func defaultOptions() *openOptions {
 	return &openOptions{
 		strictParsing:  false,

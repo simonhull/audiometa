@@ -8,10 +8,10 @@ import (
 	"github.com/simonhull/audiometa/internal/types"
 )
 
-// parser implements the audiometa.FormatParser interface
+// parser implements the audiometa.FormatParser interface.
 type parser struct{}
 
-// Parse parses a single MP3 file and extracts metadata
+// Parse parses a single MP3 file and extracts metadata.
 func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, error) {
 	// Create safe reader
 	sr := binutil.NewSafeReader(r, size, path)
@@ -54,13 +54,13 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, err
 	return file, nil
 }
 
-// ExtractArtwork extracts embedded artwork from MP3 files
+// ExtractArtwork extracts embedded artwork from MP3 files.
 func (p *parser) ExtractArtwork(r io.ReaderAt, size int64, path string) ([]types.Artwork, error) {
 	// TODO: Implement artwork extraction from APIC frames
 	return nil, nil
 }
 
-// init registers the MP3 parser
+// init registers the MP3 parser.
 func init() {
 	registry.Register(types.FormatMP3, &parser{})
 }

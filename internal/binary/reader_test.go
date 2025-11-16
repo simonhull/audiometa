@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// mockReader implements io.ReaderAt for testing
+// mockReader implements io.ReaderAt for testing.
 type mockReader struct {
 	data []byte
 }
