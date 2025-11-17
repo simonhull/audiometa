@@ -45,7 +45,7 @@ func parseChplChapters(sr *binary.SafeReader, moovAtom *Atom, fileDuration time.
 	udtaAtom, err := findAtom(sr, moovAtom.DataOffset(), moovAtom.DataOffset()+int64(moovAtom.DataSize()), "udta")
 	if err != nil {
 		// No udta - no chapters (not an error, just means no chapters)
-		return nil, nil //nolint:nilerr // Not an error, just means no chapters found
+		return nil, nil
 	}
 
 	// Find chpl atom (chapter list)
@@ -53,7 +53,7 @@ func parseChplChapters(sr *binary.SafeReader, moovAtom *Atom, fileDuration time.
 	chplAtom, err := findAtom(sr, udtaAtom.DataOffset(), udtaAtom.DataOffset()+int64(udtaAtom.DataSize()), "chpl")
 	if err != nil {
 		// No chpl - no chapters (not an error, just means no chapters)
-		return nil, nil //nolint:nilerr // Not an error, just means no chapters found
+		return nil, nil
 	}
 
 	// Parse chpl atom
@@ -316,7 +316,7 @@ func parseTrackTimescale(sr *binary.SafeReader, mdiaAtom *Atom) (uint32, error) 
 	mdhdOffset := mdhdAtom.DataOffset()
 	version, err := binary.Read[uint8](sr, mdhdOffset, "mdhd version")
 	if err != nil {
-		return 1000, nil //nolint:nilerr // Default fallback on read failure
+		return 1000, nil
 	}
 
 	var timescale uint32
@@ -327,7 +327,7 @@ func parseTrackTimescale(sr *binary.SafeReader, mdiaAtom *Atom) (uint32, error) 
 	}
 
 	if err != nil || timescale == 0 {
-		return 1000, nil //nolint:nilerr // Default fallback on read failure or zero timescale
+		return 1000, nil
 	}
 
 	return timescale, nil
@@ -368,7 +368,7 @@ func parseChapterTimings(sr *binary.SafeReader, stblAtom *Atom, timescale uint32
 		}
 	}
 
-	return chapterTimes, nil //nolint:nilerr // Partial results are acceptable
+	return chapterTimes, nil
 }
 
 // parseSampleSizes extracts sample sizes from the stsz atom.
@@ -403,7 +403,7 @@ func parseSampleSizes(sr *binary.SafeReader, stblAtom *Atom) ([]uint32, error) {
 		offset += 4
 	}
 
-	return sampleSizes, nil //nolint:nilerr // Partial results are acceptable
+	return sampleSizes, nil
 }
 
 // parseChunkOffsets extracts chunk offsets from stco or co64 atom.
@@ -443,7 +443,7 @@ func parseChunkOffsets(sr *binary.SafeReader, stblAtom *Atom) ([]uint64, error) 
 		}
 	}
 
-	return chunkOffsets, nil //nolint:nilerr // Partial results are acceptable
+	return chunkOffsets, nil
 }
 
 // buildChaptersFromText reads text samples and builds chapter list.

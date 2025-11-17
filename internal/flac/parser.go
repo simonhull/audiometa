@@ -184,7 +184,7 @@ func (p *parser) ExtractArtwork(r io.ReaderAt, size int64, path string) ([]types
 		}
 	}
 
-	return artwork, nil //nolint:nilerr // We return all successfully parsed artwork, errors are non-fatal
+	return artwork, nil
 }
 
 // parseStreamInfo extracts audio info from STREAMINFO block.
@@ -239,7 +239,7 @@ func parseStreamInfo(sr *binary.SafeReader, offset, blockLength int64, file *typ
 }
 
 // parseVorbisComment extracts tags from VORBIS_COMMENT block.
-func parseVorbisComment(sr *binary.SafeReader, offset, _ int64, file *types.File) error { //nolint:revive // Unused blockLength parameter kept for interface consistency
+func parseVorbisComment(sr *binary.SafeReader, offset, _ int64, file *types.File) error {
 	currentOffset := offset
 
 	// Read vendor string length (32-bit little-endian)
@@ -290,7 +290,7 @@ func parseVorbisComment(sr *binary.SafeReader, offset, _ int64, file *types.File
 }
 
 // parsePicture extracts artwork from PICTURE block.
-func parsePicture(sr *binary.SafeReader, offset, _ int64) (types.Artwork, error) { //nolint:revive // Unused blockLength parameter kept for interface consistency
+func parsePicture(sr *binary.SafeReader, offset, _ int64) (types.Artwork, error) {
 	currentOffset := offset
 
 	// Read picture type (32-bit big-endian)

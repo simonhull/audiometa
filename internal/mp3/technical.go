@@ -114,7 +114,7 @@ func parseMP3FrameHeader(header uint32) (bitrate, sampleRate, channels int) {
 }
 
 // parseVBRHeader checks for Xing/VBRI VBR headers and calculates accurate duration.
-func parseVBRHeader(sr *binutil.SafeReader, frameOffset int64, sampleRate int, fileSize int64, tagSize int64) (time.Duration, bool) {
+func parseVBRHeader(sr *binutil.SafeReader, frameOffset int64, sampleRate int, _ int64, _ int64) (time.Duration, bool) {
 	// Xing/Info header is 36 bytes after frame header for MPEG1
 	// Check for "Xing" or "Info" marker
 	xingOffset := frameOffset + 36

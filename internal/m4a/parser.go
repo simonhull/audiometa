@@ -142,7 +142,7 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, err
 }
 
 // ExtractArtwork extracts embedded artwork from M4A/M4B files.
-func (p *parser) ExtractArtwork(r io.ReaderAt, size int64, path string) ([]types.Artwork, error) {
+func (p *parser) ExtractArtwork(_ io.ReaderAt, _ int64, _ string) ([]types.Artwork, error) {
 	// TODO: Implement artwork extraction from covr atom
 	return nil, nil
 }

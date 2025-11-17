@@ -9,56 +9,56 @@ import (
 
 // parseTechnicalInfo extracts duration, bitrate, sample rate, channels, and codec.
 // Returns nil (no error) even if atoms are missing - technical info is best-effort.
-func parseTechnicalInfo(sr *binary.SafeReader, moovAtom *Atom, file *types.File) error { //nolint:unparam // Error return kept for consistency with other parsers
+func parseTechnicalInfo(sr *binary.SafeReader, moovAtom *Atom, file *types.File) error {
 	// Find mvhd (movie header) atom for duration
 	mvhdAtom, err := findAtom(sr, moovAtom.DataOffset(), moovAtom.DataOffset()+int64(moovAtom.DataSize()), "mvhd")
 	if err != nil {
-		return nil //nolint:nilerr // Missing atoms are not fatal for technical info parsing
+		return nil
 	}
 
 	// Parse mvhd for duration
 	if err := parseMvhd(sr, mvhdAtom, file); err != nil {
-		return nil //nolint:nilerr // Parse failures are not fatal
+		return nil
 	}
 
 	// Find trak atom for audio format info
 	// Path: moov -> trak
 	trakAtom, err := findAtom(sr, moovAtom.DataOffset(), moovAtom.DataOffset()+int64(moovAtom.DataSize()), "trak")
 	if err != nil {
-		return nil //nolint:nilerr // Missing atoms are not fatal
+		return nil
 	}
 
 	// Find mdia atom
 	// Path: trak -> mdia
 	mdiaAtom, err := findAtom(sr, trakAtom.DataOffset(), trakAtom.DataOffset()+int64(trakAtom.DataSize()), "mdia")
 	if err != nil {
-		return nil //nolint:nilerr // Missing atoms are not fatal
+		return nil
 	}
 
 	// Find minf atom
 	// Path: mdia -> minf
 	minfAtom, err := findAtom(sr, mdiaAtom.DataOffset(), mdiaAtom.DataOffset()+int64(mdiaAtom.DataSize()), "minf")
 	if err != nil {
-		return nil //nolint:nilerr // Missing atoms are not fatal
+		return nil
 	}
 
 	// Find stbl atom
 	// Path: minf -> stbl
 	stblAtom, err := findAtom(sr, minfAtom.DataOffset(), minfAtom.DataOffset()+int64(minfAtom.DataSize()), "stbl")
 	if err != nil {
-		return nil //nolint:nilerr // Missing atoms are not fatal
+		return nil
 	}
 
 	// Find stsd (sample description) atom
 	// Path: stbl -> stsd
 	stsdAtom, err := findAtom(sr, stblAtom.DataOffset(), stblAtom.DataOffset()+int64(stblAtom.DataSize()), "stsd")
 	if err != nil {
-		return nil //nolint:nilerr // Missing atoms are not fatal
+		return nil
 	}
 
 	// Parse stsd for codec, sample rate, channels
 	if err := parseStsd(sr, stsdAtom, file); err != nil {
-		return nil //nolint:nilerr // Parse failures are not fatal
+		return nil
 	}
 
 	// Estimate bitrate if we have duration and file size

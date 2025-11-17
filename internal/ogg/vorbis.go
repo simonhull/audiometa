@@ -40,9 +40,9 @@ func parseVorbisIdentification(data []byte, file *types.File) error {
 	// Parse audio properties (all little-endian)
 	channels := data[11]
 	sampleRate := binary.LittleEndian.Uint32(data[12:16])
-	// bitrateMaximum := binary.LittleEndian.Uint32(data[16:20]) // Optional, can be 0 //nolint:gocritic // commentedOutCode - kept for documentation
+	// bitrateMaximum is at data[16:20] but is optional and often 0, so we skip it
 	bitrateNominal := binary.LittleEndian.Uint32(data[20:24])
-	// bitrateMinimum := binary.LittleEndian.Uint32(data[24:28]) // Optional, can be 0 //nolint:gocritic // commentedOutCode - kept for documentation
+	// bitrateMinimum is at data[24:28] but is optional and often 0, so we skip it
 
 	// Populate file.Audio
 	file.Audio.Codec = "Vorbis"

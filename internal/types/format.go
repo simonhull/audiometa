@@ -12,15 +12,24 @@ import (
 type Format int
 
 const (
+	// FormatUnknown represents an unknown or unsupported format.
 	FormatUnknown Format = iota // Unknown
-	FormatFLAC                  // FLAC
-	FormatMP3                   // MP3
-	FormatM4A                   // M4A
-	FormatM4B                   // M4B
-	FormatOgg                   // Ogg Vorbis
-	FormatOpus                  // Opus
-	FormatWAV                   // WAV
-	FormatAIFF                  // AIFF
+	// FormatFLAC represents FLAC audio files.
+	FormatFLAC // FLAC
+	// FormatMP3 represents MP3 audio files.
+	FormatMP3 // MP3
+	// FormatM4A represents M4A audio files.
+	FormatM4A // M4A
+	// FormatM4B represents M4B audiobook files.
+	FormatM4B // M4B
+	// FormatOgg represents Ogg Vorbis audio files.
+	FormatOgg // Ogg Vorbis
+	// FormatOpus represents Opus audio files.
+	FormatOpus // Opus
+	// FormatWAV represents WAV audio files.
+	FormatWAV // WAV
+	// FormatAIFF represents AIFF audio files.
+	FormatAIFF // AIFF
 )
 
 // Extensions returns common file extensions for this format.

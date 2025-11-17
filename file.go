@@ -66,7 +66,7 @@ func Open(path string, opts ...Option) (*File, error) {
 	// Get file size
 	stat, err := f.Stat()
 	if err != nil {
-		_ = f.Close()
+		_ = f.Close() //nolint:errcheck // Closing on error path, error already being returned
 		return nil, fmt.Errorf("stat file: %w", err)
 	}
 	size := stat.Size()
@@ -74,7 +74,7 @@ func Open(path string, opts ...Option) (*File, error) {
 	// Parse with the reader
 	typesFile, err := openReader(f, size, path, options)
 	if err != nil {
-		_ = f.Close()
+		_ = f.Close() //nolint:errcheck // Closing on error path, error already being returned
 		return nil, err
 	}
 
@@ -86,7 +86,7 @@ func Open(path string, opts ...Option) (*File, error) {
 
 	// Check strict parsing mode
 	if options.strictParsing && len(file.Warnings) > 0 {
-		_ = f.Close()
+		_ = f.Close() //nolint:errcheck // Closing on error path, error already being returned
 		return nil, fmt.Errorf("strict parsing failed: %s", file.Warnings[0].Message)
 	}
 
@@ -297,7 +297,7 @@ func OpenMany(ctx context.Context, paths ...string) ([]*File, error) {
 		// Close any successfully opened files
 		for _, file := range results {
 			if file != nil {
-				_ = file.Close()
+				_ = file.Close() //nolint:errcheck // Best effort cleanup on error path
 			}
 		}
 		return nil, err

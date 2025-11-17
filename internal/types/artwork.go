@@ -24,29 +24,51 @@ type Artwork struct {
 type ArtworkType int
 
 const (
-	ArtworkOther             ArtworkType = iota // Other
-	ArtworkIcon                                 // File icon (32x32 PNG)
-	ArtworkOtherIcon                            // Other file icon
-	ArtworkFrontCover                           // Front cover
-	ArtworkBackCover                            // Back cover
-	ArtworkLeaflet                              // Leaflet page
-	ArtworkMedia                                // Media (CD/vinyl label)
-	ArtworkLeadArtist                           // Lead artist/performer/soloist
-	ArtworkArtist                               // Artist/performer
-	ArtworkConductor                            // Conductor
-	ArtworkBand                                 // Band/orchestra
-	ArtworkComposer                             // Composer
-	ArtworkLyricist                             // Lyricist/text writer
-	ArtworkRecordingLocation                    // Recording location
-	ArtworkDuringRecording                      // During recording
-	ArtworkDuringPerformance                    // During performance
-	ArtworkVideoCapture                         // Movie/video screen capture
-	ArtworkBrightFish                           // A bright colored fish
-	ArtworkIllustration                         // Illustration
-	ArtworkBandLogotype                         // Band/artist logotype
-	ArtworkPublisherLogotype                    // Publisher/studio logotype
+	// ArtworkOther represents other/unspecified artwork.
+	ArtworkOther ArtworkType = iota // Other
+	// ArtworkIcon represents a file icon (32x32 PNG).
+	ArtworkIcon // File icon (32x32 PNG)
+	// ArtworkOtherIcon represents another file icon.
+	ArtworkOtherIcon // Other file icon
+	// ArtworkFrontCover represents front cover artwork.
+	ArtworkFrontCover // Front cover
+	// ArtworkBackCover represents back cover artwork.
+	ArtworkBackCover // Back cover
+	// ArtworkLeaflet represents leaflet page artwork.
+	ArtworkLeaflet // Leaflet page
+	// ArtworkMedia represents media artwork (CD/vinyl label).
+	ArtworkMedia // Media (CD/vinyl label)
+	// ArtworkLeadArtist represents lead artist/performer/soloist artwork.
+	ArtworkLeadArtist // Lead artist/performer/soloist
+	// ArtworkArtist represents artist/performer artwork.
+	ArtworkArtist // Artist/performer
+	// ArtworkConductor represents conductor artwork.
+	ArtworkConductor // Conductor
+	// ArtworkBand represents band/orchestra artwork.
+	ArtworkBand // Band/orchestra
+	// ArtworkComposer represents composer artwork.
+	ArtworkComposer // Composer
+	// ArtworkLyricist represents lyricist/text writer artwork.
+	ArtworkLyricist // Lyricist/text writer
+	// ArtworkRecordingLocation represents recording location artwork.
+	ArtworkRecordingLocation // Recording location
+	// ArtworkDuringRecording represents during recording artwork.
+	ArtworkDuringRecording // During recording
+	// ArtworkDuringPerformance represents during performance artwork.
+	ArtworkDuringPerformance // During performance
+	// ArtworkVideoCapture represents movie/video screen capture artwork.
+	ArtworkVideoCapture // Movie/video screen capture
+	// ArtworkBrightFish represents a bright colored fish artwork.
+	ArtworkBrightFish // A bright colored fish
+	// ArtworkIllustration represents illustration artwork.
+	ArtworkIllustration // Illustration
+	// ArtworkBandLogotype represents band/artist logotype artwork.
+	ArtworkBandLogotype // Band/artist logotype
+	// ArtworkPublisherLogotype represents publisher/studio logotype artwork.
+	ArtworkPublisherLogotype // Publisher/studio logotype
 )
 
+// String returns a human-readable representation of the artwork.
 // Example output: "Front cover (1200x1200 JPEG, 245KB)".
 func (a Artwork) String() string {
 	size := len(a.Data)
@@ -116,11 +138,16 @@ type RawTag struct {
 type RawTagType int
 
 const (
-	RawTagText    RawTagType = iota // Text string
-	RawTagBinary                    // Binary data
-	RawTagImage                     // Image data
-	RawTagCounter                   // Numeric counter
-	RawTagURL                       // URL string
+	// RawTagText represents a text string value.
+	RawTagText RawTagType = iota // Text string
+	// RawTagBinary represents binary data.
+	RawTagBinary // Binary data
+	// RawTagImage represents image data.
+	RawTagImage // Image data
+	// RawTagCounter represents a numeric counter.
+	RawTagCounter // Numeric counter
+	// RawTagURL represents a URL string.
+	RawTagURL // URL string
 )
 
 // String returns the raw tag value as a string.

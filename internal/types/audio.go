@@ -35,6 +35,7 @@ type ReplayGainInfo struct {
 	AlbumPeak float64 // Album peak amplitude (0.0 to 1.0+)
 }
 
+// String returns a human-readable representation of the audio info.
 // Example output: "FLAC 44.1kHz 16-bit stereo".
 func (a AudioInfo) String() string {
 	// Format sample rate

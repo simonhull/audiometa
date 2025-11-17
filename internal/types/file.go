@@ -24,13 +24,13 @@ import (
 //	}
 //	defer file.Close()
 type File struct {
-	Reader_  io.ReaderAt
-	Parser_  interface{}
-	RawTags_ map[string][]RawTag
+	Reader_  io.ReaderAt         //nolint:revive // Underscore indicates internal/unexported semantics
+	Parser_  interface{}         //nolint:revive // Underscore indicates internal/unexported semantics
+	RawTags_ map[string][]RawTag //nolint:revive // Underscore indicates internal/unexported semantics
 	Path     string
 	Chapters []Chapter
 	Warnings []Warning
-	Artwork_ []Artwork
+	Artwork_ []Artwork //nolint:revive // Underscore indicates internal/unexported semantics
 	Tags     Tags
 	Audio    AudioInfo
 	Format   Format

@@ -56,7 +56,7 @@ func (sr *SafeReader) ReadAt(b []byte, off int64, what string) error {
 
 // Read reads a value of type T from the given offset.
 // T must be uint8, uint16, uint32, or uint64.
-func Read[T uint8 | uint16 | uint32 | uint64](sr *SafeReader, off int64, what string) (T, error) { //nolint:revive // Function name Read is clear in context
+func Read[T uint8 | uint16 | uint32 | uint64](sr *SafeReader, off int64, what string) (T, error) {
 	var zero T
 	var size int
 
@@ -158,7 +158,7 @@ func (r *Reader) Offset() int64 {
 
 // ChainReader allows chaining multiple reads with deferred error checking.
 // This avoids repetitive "if err != nil" checks.
-type ChainReader struct { //nolint:revive // Type name ChainReader is clear and conventional
+type ChainReader struct {
 	*Reader
 	err error
 }
@@ -170,7 +170,7 @@ func NewChainReader(r *Reader) *ChainReader {
 
 // ReadChained reads a value with deferred error checking.
 // If a previous read failed, returns zero value without attempting read.
-func ReadChained[T uint8 | uint16 | uint32 | uint64](cr *ChainReader, what string) T { //nolint:revive // Function name ReadChained is clear and descriptive
+func ReadChained[T uint8 | uint16 | uint32 | uint64](cr *ChainReader, what string) T {
 	if cr.err != nil {
 		var zero T
 		return zero
