@@ -197,3 +197,114 @@ func TestParse_NoMetadata(t *testing.T) {
 		t.Error("expected empty metadata")
 	}
 }
+
+func TestParse_WithArtwork_Integration(t *testing.T) {
+	// Create M4B with both metadata and artwork
+	jpegData := []byte{
+		0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46,
+		0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01,
+		0x00, 0x01, 0x00, 0x00, 0xFF, 0xD9,
+	}
+
+	// Use modified helper that includes both metadata and artwork
+	fileData := createM4BWithMetadataAndCover("Test Book", "Test Author", jpegData)
+
+	tmpFile, err := os.CreateTemp("", "test-integration-*.m4b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	tmpFile.Write(fileData)
+	tmpFile.Close()
+
+	// Use high-level audiometa API
+	file, err := os.Open(tmpFile.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+
+	stat, err := file.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Parse with parser
+	p := &parser{}
+	parsedFile, err := p.Parse(file, stat.Size(), tmpFile.Name())
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	// Verify metadata parsed
+	if parsedFile.Tags.Title != "Test Book" {
+		t.Errorf("expected title 'Test Book', got '%s'", parsedFile.Tags.Title)
+	}
+
+	// Now extract artwork separately (lazy loading)
+	artwork, err := p.ExtractArtwork(file, stat.Size(), tmpFile.Name())
+	if err != nil {
+		t.Fatalf("ExtractArtwork failed: %v", err)
+	}
+
+	if len(artwork) == 0 {
+		t.Fatal("expected artwork to be extracted")
+	}
+
+	if artwork[0].MIMEType != "image/jpeg" {
+		t.Errorf("expected JPEG, got %s", artwork[0].MIMEType)
+	}
+}
+
+// Helper: creates M4B with both metadata and cover.
+func createM4BWithMetadataAndCover(title, artist string, coverData []byte) []byte {
+	buf := &bytes.Buffer{}
+
+	// ftyp
+	ftypData := &bytes.Buffer{}
+	ftypData.WriteString("M4B ")
+	binary.Write(ftypData, binary.BigEndian, uint32(0))
+	ftypData.WriteString("M4B ")
+	buf.Write(createMockAtom("ftyp", ftypData.Bytes()))
+
+	// Build ilst with metadata + covr
+	var ilstData []byte
+
+	// Add title
+	if title != "" {
+		ilstData = append(ilstData, createMetadataItem([]byte{0xA9, 'n', 'a', 'm'}, title)...)
+	}
+
+	// Add artist
+	if artist != "" {
+		ilstData = append(ilstData, createMetadataItem([]byte{0xA9, 'A', 'R', 'T'}, artist)...)
+	}
+
+	// Add covr
+	if len(coverData) > 0 {
+		dataAtomData := &bytes.Buffer{}
+		dataAtomData.WriteByte(0)
+		dataAtomData.WriteByte(0)
+		dataAtomData.WriteByte(0)
+		dataAtomData.WriteByte(0x0D) // JPEG
+		binary.Write(dataAtomData, binary.BigEndian, uint32(0))
+		dataAtomData.Write(coverData)
+		covrAtom := createMockAtom("covr", createMockAtom("data", dataAtomData.Bytes()))
+		ilstData = append(ilstData, covrAtom...)
+	}
+
+	ilstAtom := createMockAtom("ilst", ilstData)
+
+	// meta → udta → moov
+	metaData := make([]byte, 4)
+	binary.BigEndian.PutUint32(metaData, 0)
+	metaData = append(metaData, ilstAtom...)
+
+	metaAtom := createMockAtom("meta", metaData)
+	udtaAtom := createMockAtom("udta", metaAtom)
+	moovAtom := createMockAtom("moov", udtaAtom)
+
+	buf.Write(moovAtom)
+	return buf.Bytes()
+}
