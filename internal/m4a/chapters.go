@@ -447,9 +447,35 @@ func parseChunkOffsets(sr *binary.SafeReader, stblAtom *Atom) ([]uint64, error) 
 }
 
 // buildChaptersFromText reads text samples and builds chapter list.
+// Handles both single-chunk (all samples in one chunk) and multi-chunk layouts.
 func buildChaptersFromText(sr *binary.SafeReader, chapterTimes []time.Duration, sampleSizes []uint32, chunkOffsets []uint64) []types.Chapter {
 	chapters := make([]types.Chapter, 0, len(chapterTimes))
-	maxSamples := min(len(chunkOffsets), len(sampleSizes), len(chapterTimes))
+
+	if len(chunkOffsets) == 0 || len(sampleSizes) == 0 {
+		return chapters
+	}
+
+	// Calculate sample offsets
+	// If there's only one chunk, all samples are sequential within it
+	// If there are multiple chunks, we need sample-to-chunk mapping (simplified: assume 1:1)
+	sampleOffsets := make([]uint64, len(sampleSizes))
+
+	if len(chunkOffsets) == 1 {
+		// All samples are in a single chunk - calculate offsets by summing sizes
+		currentOffset := chunkOffsets[0]
+		for i := range sampleSizes {
+			sampleOffsets[i] = currentOffset
+			currentOffset += uint64(sampleSizes[i])
+		}
+	} else {
+		// Multiple chunks - assume 1:1 mapping (one sample per chunk)
+		// This is a simplification; proper handling would parse stsc atom
+		for i := 0; i < len(chunkOffsets) && i < len(sampleSizes); i++ {
+			sampleOffsets[i] = chunkOffsets[i]
+		}
+	}
+
+	maxSamples := min(len(sampleOffsets), len(sampleSizes), len(chapterTimes))
 
 	for i := 0; i < maxSamples; i++ {
 		sampleSize := sampleSizes[i]
@@ -457,7 +483,7 @@ func buildChaptersFromText(sr *binary.SafeReader, chapterTimes []time.Duration, 
 			continue // Skip invalid sizes
 		}
 
-		title := extractChapterTitle(sr, int64(chunkOffsets[i]), sampleSize)
+		title := extractChapterTitle(sr, int64(sampleOffsets[i]), sampleSize)
 
 		chapter := types.Chapter{
 			Index:     i + 1,
