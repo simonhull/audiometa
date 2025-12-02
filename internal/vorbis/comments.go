@@ -38,6 +38,8 @@ func ParseComment(comment string, tags *types.Tags) error { //nolint:gocyclo // 
 	switch key {
 	case "TITLE":
 		tags.Title = value
+	case "SUBTITLE":
+		tags.Subtitle = value
 	case "ARTIST":
 		tags.Artist = value
 		tags.Artists = append(tags.Artists, value)

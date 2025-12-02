@@ -216,6 +216,8 @@ func parseTextFrame(frame ID3v2Frame, file *types.File) { //nolint:gocyclo // Co
 	switch frame.ID {
 	case "TIT2": // Title
 		file.Tags.Title = text
+	case "TIT3": // Subtitle/Description refinement
+		file.Tags.Subtitle = text
 	case "TPE1": // Artist
 		file.Tags.Artist = text
 	case "TALB": // Album

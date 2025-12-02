@@ -121,6 +121,8 @@ func mapAudiobookField(fieldName, value string, file *types.File) {
 	fieldName = strings.ToLower(fieldName)
 
 	switch fieldName {
+	case "subtitle":
+		file.Tags.Subtitle = value
 	case "narrator":
 		file.Tags.Narrator = value
 	case "series":

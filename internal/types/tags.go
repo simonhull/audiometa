@@ -29,6 +29,7 @@ type Tags struct {
 	ISRC                string
 	MusicBrainzArtistID string
 	Title               string
+	Subtitle            string // Book/album subtitle (TIT3 in ID3v2)
 	MusicBrainzTrackID  string
 	Album               string
 	Comment             string
@@ -177,6 +178,9 @@ func (t *Tags) Merge(other *Tags) { //nolint:gocyclo // Merging requires checkin
 	if t.Title == "" {
 		t.Title = other.Title
 	}
+	if t.Subtitle == "" {
+		t.Subtitle = other.Subtitle
+	}
 	if t.Artist == "" {
 		t.Artist = other.Artist
 	}
@@ -286,6 +290,7 @@ func (t *Tags) Clone() *Tags {
 	clone := &Tags{
 		// Copy all standard fields
 		Title:               t.Title,
+		Subtitle:            t.Subtitle,
 		Artist:              t.Artist,
 		Album:               t.Album,
 		AlbumArtist:         t.AlbumArtist,
@@ -350,6 +355,7 @@ func (t *Tags) Equal(other *Tags) bool { //nolint:gocyclo // Equality check requ
 
 	// Compare standard fields
 	if t.Title != other.Title ||
+		t.Subtitle != other.Subtitle ||
 		t.Artist != other.Artist ||
 		t.Album != other.Album ||
 		t.AlbumArtist != other.AlbumArtist ||
