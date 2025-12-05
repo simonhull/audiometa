@@ -34,6 +34,7 @@ type Tags struct {
 	Album               string
 	Comment             string
 	Series              string
+	Grouping            string // Content grouping (©grp in M4A, TIT1 in ID3v2) - often contains series info
 	Publisher           string
 	Lyrics              string
 	SeriesPart          string
@@ -214,6 +215,9 @@ func (t *Tags) Merge(other *Tags) { //nolint:gocyclo // Merging requires checkin
 	if t.Series == "" {
 		t.Series = other.Series
 	}
+	if t.Grouping == "" {
+		t.Grouping = other.Grouping
+	}
 	if t.SeriesPart == "" {
 		t.SeriesPart = other.SeriesPart
 	}
@@ -306,6 +310,7 @@ func (t *Tags) Clone() *Tags {
 		Narrator:            t.Narrator,
 		Publisher:           t.Publisher,
 		Series:              t.Series,
+		Grouping:            t.Grouping,
 		SeriesPart:          t.SeriesPart,
 		ISBN:                t.ISBN,
 		ASIN:                t.ASIN,
@@ -371,6 +376,7 @@ func (t *Tags) Equal(other *Tags) bool { //nolint:gocyclo // Equality check requ
 		t.Narrator != other.Narrator ||
 		t.Publisher != other.Publisher ||
 		t.Series != other.Series ||
+		t.Grouping != other.Grouping ||
 		t.SeriesPart != other.SeriesPart ||
 		t.ISBN != other.ISBN ||
 		t.ASIN != other.ASIN ||

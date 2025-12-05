@@ -42,9 +42,21 @@ func parseAudiobookTags(sr *binary.SafeReader, ilstAtom *Atom, file *types.File)
 		file.Tags.Narrator = file.Tags.Composers[0]
 	}
 
+	// If no explicit Series atom, try to extract from Grouping tag
+	// Grouping often contains series info in formats like "Series Name #5"
+	if file.Tags.Series == "" && file.Tags.Grouping != "" {
+		series, part := parsing.ParseGrouping(file.Tags.Grouping)
+		if series != "" {
+			file.Tags.Series = series
+			if file.Tags.SeriesPart == "" && part != "" {
+				file.Tags.SeriesPart = part
+			}
+		}
+	}
+
 	// If series exists, always resolve series part from multiple sources
 	// This allows validation/override of potentially incorrect custom atom data
-	if file.Tags.Series != "" {
+	if file.Tags.Series != "" && file.Tags.SeriesPart == "" {
 		file.Tags.SeriesPart = resolveSeriesPart(sr, file, customTags)
 	}
 

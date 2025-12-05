@@ -107,6 +107,8 @@ func mapTagToField(tag string, value string, file *types.File) {
 		if year, err := strconv.Atoi(value); err == nil {
 			file.Tags.Year = year
 		}
+	case "\xA9grp": // Grouping (©grp) - often contains series info for audiobooks
+		file.Tags.Grouping = value
 	}
 }
 

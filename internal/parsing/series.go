@@ -68,6 +68,51 @@ func normalizeSeriesPart(part string) string {
 	return part
 }
 
+// ParseGrouping extracts series name and part from a grouping tag.
+//
+// Handles common audiobook grouping formats:
+//   - "Series Name #5" → ("Series Name", "5")
+//   - "Series Name, Book 5" → ("Series Name", "5")
+//   - "Series Name - Book 5" → ("Series Name", "5")
+//   - "Series Name, Part 3" → ("Series Name", "3")
+//   - "Series Name" → ("Series Name", "")
+//
+// Returns empty strings if the input is empty.
+func ParseGrouping(grouping string) (series, part string) {
+	grouping = strings.TrimSpace(grouping)
+	if grouping == "" {
+		return "", ""
+	}
+
+	// Patterns that capture series name and part number
+	// Order matters: more specific patterns first
+	patterns := []struct {
+		re          *regexp.Regexp
+		seriesGroup int
+		partGroup   int
+	}{
+		// "Series Name #5" or "Series Name #5.5"
+		{regexp.MustCompile(`^(.+?)\s*#(\d+(?:\.\d+)?)\s*$`), 1, 2},
+		// "Series Name, Book 5" or "Series Name - Book 5"
+		{regexp.MustCompile(`(?i)^(.+?)\s*[,\-–—]\s*book\s+(\d+(?:\.\d+)?)\s*$`), 1, 2},
+		// "Series Name, Part 5" or "Series Name - Part 5"
+		{regexp.MustCompile(`(?i)^(.+?)\s*[,\-–—]\s*part\s+(\d+(?:\.\d+)?)\s*$`), 1, 2},
+		// "Series Name, Vol 5" or "Series Name - Volume 5"
+		{regexp.MustCompile(`(?i)^(.+?)\s*[,\-–—]\s*vol(?:ume)?\.?\s+(\d+(?:\.\d+)?)\s*$`), 1, 2},
+	}
+
+	for _, p := range patterns {
+		if matches := p.re.FindStringSubmatch(grouping); matches != nil {
+			series = strings.TrimSpace(matches[p.seriesGroup])
+			part = normalizeSeriesPart(matches[p.partGroup])
+			return series, part
+		}
+	}
+
+	// No part number found - treat entire string as series name
+	return grouping, ""
+}
+
 // ExtractSeriesPartFromPath extracts series part numbers from file paths.
 // Example: "/audiobooks/Author/Series/2 - North or Be Eaten/file.m4b" → "2".
 func ExtractSeriesPartFromPath(path string) string {
