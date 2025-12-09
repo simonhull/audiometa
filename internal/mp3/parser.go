@@ -55,9 +55,8 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, err
 }
 
 // ExtractArtwork extracts embedded artwork from MP3 files.
-func (p *parser) ExtractArtwork(_ io.ReaderAt, _ int64, _ string) ([]types.Artwork, error) {
-	// TODO: Implement artwork extraction from APIC frames
-	return nil, nil
+func (p *parser) ExtractArtwork(r io.ReaderAt, size int64, path string) ([]types.Artwork, error) {
+	return extractArtwork(r, size, path)
 }
 
 // init registers the MP3 parser.
