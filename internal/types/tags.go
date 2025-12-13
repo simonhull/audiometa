@@ -33,6 +33,7 @@ type Tags struct {
 	MusicBrainzTrackID  string
 	Album               string
 	Comment             string
+	Description         string // Longer description text (separate from comment)
 	Series              string
 	Grouping            string // Content grouping (©grp in M4A, TIT1 in ID3v2) - often contains series info
 	Publisher           string
@@ -40,6 +41,7 @@ type Tags struct {
 	SeriesPart          string
 	ISBN                string
 	ASIN                string
+	Language            string // Language code or name (e.g., "en", "English")
 	Performers          []string
 	Composers           []string
 	Genres              []string
@@ -203,6 +205,9 @@ func (t *Tags) Merge(other *Tags) { //nolint:gocyclo // Merging requires checkin
 	if t.Comment == "" {
 		t.Comment = other.Comment
 	}
+	if t.Description == "" {
+		t.Description = other.Description
+	}
 	if t.Lyrics == "" {
 		t.Lyrics = other.Lyrics
 	}
@@ -226,6 +231,9 @@ func (t *Tags) Merge(other *Tags) { //nolint:gocyclo // Merging requires checkin
 	}
 	if t.ASIN == "" {
 		t.ASIN = other.ASIN
+	}
+	if t.Language == "" {
+		t.Language = other.Language
 	}
 	if t.TrackNumber == 0 {
 		t.TrackNumber = other.TrackNumber
@@ -306,6 +314,7 @@ func (t *Tags) Clone() *Tags {
 		DiscNumber:          t.DiscNumber,
 		DiscTotal:           t.DiscTotal,
 		Comment:             t.Comment,
+		Description:         t.Description,
 		Lyrics:              t.Lyrics,
 		Narrator:            t.Narrator,
 		Publisher:           t.Publisher,
@@ -314,6 +323,7 @@ func (t *Tags) Clone() *Tags {
 		SeriesPart:          t.SeriesPart,
 		ISBN:                t.ISBN,
 		ASIN:                t.ASIN,
+		Language:            t.Language,
 		MusicBrainzTrackID:  t.MusicBrainzTrackID,
 		MusicBrainzAlbumID:  t.MusicBrainzAlbumID,
 		MusicBrainzArtistID: t.MusicBrainzArtistID,
@@ -372,6 +382,7 @@ func (t *Tags) Equal(other *Tags) bool { //nolint:gocyclo // Equality check requ
 		t.DiscNumber != other.DiscNumber ||
 		t.DiscTotal != other.DiscTotal ||
 		t.Comment != other.Comment ||
+		t.Description != other.Description ||
 		t.Lyrics != other.Lyrics ||
 		t.Narrator != other.Narrator ||
 		t.Publisher != other.Publisher ||
@@ -380,6 +391,7 @@ func (t *Tags) Equal(other *Tags) bool { //nolint:gocyclo // Equality check requ
 		t.SeriesPart != other.SeriesPart ||
 		t.ISBN != other.ISBN ||
 		t.ASIN != other.ASIN ||
+		t.Language != other.Language ||
 		t.MusicBrainzTrackID != other.MusicBrainzTrackID ||
 		t.MusicBrainzAlbumID != other.MusicBrainzAlbumID ||
 		t.MusicBrainzArtistID != other.MusicBrainzArtistID ||

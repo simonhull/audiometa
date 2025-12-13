@@ -86,8 +86,14 @@ func ParseComment(comment string, tags *types.Tags) error { //nolint:gocyclo // 
 		tags.SeriesPart = value
 	case "ISBN":
 		tags.ISBN = value
-	case "ASIN":
+	case "ASIN", "AUDIBLE_ASIN":
 		tags.ASIN = value
+	case "LANGUAGE", "LANG":
+		tags.Language = value
+	case "DESCRIPTION":
+		if tags.Description == "" {
+			tags.Description = value
+		}
 	case "MUSICBRAINZ_TRACKID":
 		tags.MusicBrainzTrackID = value
 	case "MUSICBRAINZ_ALBUMID":

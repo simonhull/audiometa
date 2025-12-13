@@ -109,6 +109,16 @@ func mapTagToField(tag string, value string, file *types.File) {
 		}
 	case "\xA9grp": // Grouping (©grp) - often contains series info for audiobooks
 		file.Tags.Grouping = value
+	case "\xA9des": // Description (©des) - long description separate from comment
+		file.Tags.Description = value
+	case "\xA9mvn": // Movement Name (©mvn) - used for series in audiobooks
+		if file.Tags.Series == "" {
+			file.Tags.Series = value
+		}
+	case "\xA9mvi": // Movement Index (©mvi) - used for series position
+		if file.Tags.SeriesPart == "" {
+			file.Tags.SeriesPart = value
+		}
 	}
 }
 

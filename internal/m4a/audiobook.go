@@ -145,8 +145,22 @@ func mapAudiobookField(fieldName, value string, file *types.File) {
 		file.Tags.Publisher = value
 	case "isbn":
 		file.Tags.ISBN = value
-	case "asin":
+	case "asin", "audible_asin":
 		file.Tags.ASIN = value
+	case "language", "lang":
+		file.Tags.Language = value
+	case "description":
+		if file.Tags.Description == "" {
+			file.Tags.Description = value
+		}
+	case "mvnm", "movement name", "movement":
+		if file.Tags.Series == "" {
+			file.Tags.Series = value
+		}
+	case "mvin", "movement number", "movement index":
+		if file.Tags.SeriesPart == "" {
+			file.Tags.SeriesPart = value
+		}
 	}
 }
 
