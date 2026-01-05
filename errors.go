@@ -16,6 +16,10 @@ type UnsupportedFormatError = types.UnsupportedFormatError
 // Re-exporting from internal/types to maintain public API.
 type CorruptedFileError = types.CorruptedFileError
 
+// UnsupportedWriteError is an alias to types.UnsupportedWriteError for backwards compatibility.
+// Re-exporting from internal/types to maintain public API.
+type UnsupportedWriteError = types.UnsupportedWriteError
+
 // Warning is an alias to types.Warning for backwards compatibility.
 // Re-exporting from internal/types to maintain public API.
 type Warning = types.Warning

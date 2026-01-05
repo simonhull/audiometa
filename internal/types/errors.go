@@ -69,3 +69,16 @@ func (w Warning) String() string {
 	}
 	return fmt.Sprintf("%s: %s", w.Stage, w.Message)
 }
+
+// UnsupportedWriteError indicates write is not supported for this format.
+type UnsupportedWriteError struct {
+	Reason string
+	Format Format
+}
+
+func (e *UnsupportedWriteError) Error() string {
+	if e.Reason != "" {
+		return fmt.Sprintf("write not supported for %s: %s", e.Format, e.Reason)
+	}
+	return fmt.Sprintf("write not supported for %s", e.Format)
+}

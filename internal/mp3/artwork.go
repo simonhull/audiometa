@@ -10,10 +10,10 @@ import (
 )
 
 var (
-	errAPICTooShort     = errors.New("APIC frame too short")
-	errAPICNoMIMETerm   = errors.New("APIC MIME type not null-terminated")
-	errAPICTruncated    = errors.New("APIC frame truncated after MIME type")
-	errAPICNoImageData  = errors.New("APIC frame has no image data")
+	errAPICTooShort    = errors.New("APIC frame too short")
+	errAPICNoMIMETerm  = errors.New("APIC MIME type not null-terminated")
+	errAPICTruncated   = errors.New("APIC frame truncated after MIME type")
+	errAPICNoImageData = errors.New("APIC frame has no image data")
 )
 
 // extractArtwork extracts embedded artwork from MP3 files.

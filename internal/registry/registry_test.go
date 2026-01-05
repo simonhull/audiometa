@@ -16,6 +16,15 @@ func (m *mockParser) Parse(r io.ReaderAt, size int64, path string) (*types.File,
 	return &types.File{Path: m.name}, nil
 }
 
+// mockWriter implements FormatWriter for testing.
+type mockWriter struct {
+	name string
+}
+
+func (m *mockWriter) Write(w io.Writer, file *types.File, original io.ReaderAt, originalSize int64) error {
+	return nil
+}
+
 func TestRegisterAndGet(t *testing.T) {
 	// Use a format that's unlikely to conflict with real registrations
 	format := types.Format(999)
@@ -120,5 +129,37 @@ func TestRealParsersRegistered(t *testing.T) {
 		// parser may be nil if tests run in isolation without init()
 		// If registered, the type is guaranteed to be FormatParser by the interface
 		_ = parser
+	}
+}
+
+func TestRegisterWriter(t *testing.T) {
+	// Use a format that's unlikely to conflict with real registrations
+	format := types.Format(899)
+	writer := &mockWriter{name: "test-writer"}
+
+	RegisterWriter(format, writer)
+
+	got := GetWriter(format)
+	if got == nil {
+		t.Fatal("GetWriter() returned nil for registered format")
+	}
+
+	// Verify it's our writer
+	mw, ok := got.(*mockWriter)
+	if !ok {
+		t.Fatal("GetWriter() returned wrong writer type")
+	}
+	if mw.name != "test-writer" {
+		t.Errorf("Writer name = %q, want %q", mw.name, "test-writer")
+	}
+}
+
+func TestGetWriter_Unregistered(t *testing.T) {
+	// Use a format that's definitely not registered
+	format := types.Format(898)
+
+	got := GetWriter(format)
+	if got != nil {
+		t.Errorf("GetWriter() = %v for unregistered format, want nil", got)
 	}
 }
