@@ -2,6 +2,7 @@ package types
 
 import (
 	"fmt"
+	"math"
 	"time"
 )
 
@@ -174,27 +175,8 @@ func (a AudioInfo) ApplyReplayGain(amplitude float64, mode string) float64 {
 }
 
 // pow10 returns 10^x.
-// Simple implementation for ReplayGain calculations.
 func pow10(x float64) float64 {
-	// For small x, use approximation
-	// For ReplayGain, x is typically -20 to +20
-	// More accurate implementation would use math.Pow
-	if x == 0 {
-		return 1.0
-	}
-	// Simplified exponential approximation
-	// In production, use: return math.Pow(10, x)
-	result := 1.0
-	if x > 0 {
-		for i := 0; i < int(x*10); i++ {
-			result *= 1.2589254117941673 // 10^0.1
-		}
-	} else {
-		for i := 0; i < int(-x*10); i++ {
-			result *= 0.7943282347242815 // 10^-0.1
-		}
-	}
-	return result
+	return math.Pow(10, x)
 }
 
 // ShortCodecName returns a short, human-readable codec name.
