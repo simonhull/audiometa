@@ -137,7 +137,7 @@ func parseVorbisComment(data []byte, file *types.File) error {
 		allComments = append(allComments, comment)
 
 		// Parse comment using shared Vorbis comment parser
-		if err := vorbis.ParseComment(comment, &file.Tags); err != nil {
+		if err := vorbis.ParseComment(comment, file); err != nil {
 			// Non-fatal - add warning and continue
 			file.Warnings = append(file.Warnings, types.Warning{
 				Stage:   "metadata",

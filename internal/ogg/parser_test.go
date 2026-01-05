@@ -454,8 +454,8 @@ func TestParseOpus_Success(t *testing.T) {
 	}
 
 	// Check format
-	if file.Format != types.FormatOgg {
-		t.Errorf("expected format Ogg, got %v", file.Format)
+	if file.Format != types.FormatOpus {
+		t.Errorf("expected format Opus, got %v", file.Format)
 	}
 
 	// Check tags

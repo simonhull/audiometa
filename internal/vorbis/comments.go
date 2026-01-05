@@ -6,18 +6,21 @@ package vorbis
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/simonhull/audiometa/internal/types"
 )
 
 // ParseComment parses a single Vorbis comment in "KEY=VALUE" format
-// and populates the appropriate fields in the Tags struct.
+// and populates the appropriate fields in the File struct.
 //
 // Vorbis comment field names are case-insensitive but typically uppercase.
 // The comment is also stored in the raw tags map.
 //
 // Returns an error if the comment is not in valid "KEY=VALUE" format.
-func ParseComment(comment string, tags *types.Tags) error { //nolint:gocyclo // Complexity from many simple field mappings - intentionally kept together
+func ParseComment(comment string, file *types.File) error { //nolint:gocyclo // Complexity from many simple field mappings - intentionally kept together
+	tags := &file.Tags
 	// Find the '=' separator
 	eq := -1
 	for i := 0; i < len(comment); i++ {
@@ -110,10 +113,48 @@ func ParseComment(comment string, tags *types.Tags) error { //nolint:gocyclo // 
 		tags.Label = value
 	case "COPYRIGHT":
 		tags.Copyright = value
+
+	// ReplayGain tags
+	case "REPLAYGAIN_TRACK_GAIN":
+		if file.Audio.ReplayGain == nil {
+			file.Audio.ReplayGain = &types.ReplayGainInfo{}
+		}
+		file.Audio.ReplayGain.TrackGain = parseReplayGainValue(value)
+	case "REPLAYGAIN_TRACK_PEAK":
+		if file.Audio.ReplayGain == nil {
+			file.Audio.ReplayGain = &types.ReplayGainInfo{}
+		}
+		file.Audio.ReplayGain.TrackPeak = parseReplayGainPeak(value)
+	case "REPLAYGAIN_ALBUM_GAIN":
+		if file.Audio.ReplayGain == nil {
+			file.Audio.ReplayGain = &types.ReplayGainInfo{}
+		}
+		file.Audio.ReplayGain.AlbumGain = parseReplayGainValue(value)
+	case "REPLAYGAIN_ALBUM_PEAK":
+		if file.Audio.ReplayGain == nil {
+			file.Audio.ReplayGain = &types.ReplayGainInfo{}
+		}
+		file.Audio.ReplayGain.AlbumPeak = parseReplayGainPeak(value)
 	}
 
 	// Store in raw tags as well
 	tags.Set(key, value)
 
 	return nil
+}
+
+// parseReplayGainValue parses a ReplayGain gain value like "-6.50 dB" or "-6.50".
+func parseReplayGainValue(s string) float64 {
+	s = strings.TrimSpace(s)
+	s = strings.TrimSuffix(s, " dB")
+	s = strings.TrimSuffix(s, "dB")
+	s = strings.TrimSpace(s)
+	val, _ := strconv.ParseFloat(s, 64) //nolint:errcheck // Best effort parsing, zero value is fine
+	return val
+}
+
+// parseReplayGainPeak parses a ReplayGain peak value like "0.988127".
+func parseReplayGainPeak(s string) float64 {
+	val, _ := strconv.ParseFloat(strings.TrimSpace(s), 64) //nolint:errcheck // Best effort parsing, zero value is fine
+	return val
 }

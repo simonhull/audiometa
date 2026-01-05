@@ -100,10 +100,27 @@ func DetectFormat(r io.ReaderAt, size int64, path string) (Format, error) { //no
 		return FormatMP3, nil
 	}
 
-	// Check for Ogg (OggS)
-	if string(magic) == "OggS" {
-		// Could be Ogg Vorbis or Opus - need to read more
-		// For now, detect as Ogg (we'll enhance this when adding Opus/Vorbis parsers)
+	// Check for Ogg (OggS) - could be Vorbis or Opus
+	if string(magic) == "OggS" { //nolint:nestif // Nested structure is clearer than extracting to separate function
+		// Need to read into first Ogg page to find codec magic.
+		// Ogg page header: 27 bytes fixed + segment table (variable).
+		// Minimum needed: 27 (header) + 1 (segment table) + 8 (OpusHead) = 36 bytes
+		if size >= 36 {
+			// Read segment count at offset 26
+			segCount := make([]byte, 1)
+			if err := sr.ReadAt(segCount, 26, "segment count"); err == nil {
+				// First packet starts after: 27 (header) + segment_count (segment table)
+				packetOffset := int64(27 + int(segCount[0]))
+				if packetOffset+8 <= size {
+					codecMagic := make([]byte, 8)
+					if err := sr.ReadAt(codecMagic, packetOffset, "codec magic"); err == nil {
+						if string(codecMagic) == "OpusHead" {
+							return FormatOpus, nil
+						}
+					}
+				}
+			}
+		}
 		return FormatOgg, nil
 	}
 

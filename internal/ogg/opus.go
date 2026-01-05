@@ -151,7 +151,7 @@ func parseOpusTags(data []byte, file *types.File) error {
 
 		// Parse comment using shared Vorbis comment parser
 		// (OpusTags uses identical format to Vorbis comments)
-		if err := vorbis.ParseComment(comment, &file.Tags); err != nil {
+		if err := vorbis.ParseComment(comment, file); err != nil {
 			// Non-fatal - add warning and continue
 			file.Warnings = append(file.Warnings, types.Warning{
 				Stage:   "metadata",

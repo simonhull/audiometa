@@ -85,6 +85,7 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, err
 
 	switch codec {
 	case codecVorbis:
+		file.Format = types.FormatOgg
 		// Parse Vorbis identification header (packet 0)
 		if err := parseVorbisIdentification(packets[0], file); err != nil {
 			return nil, fmt.Errorf("failed to parse Vorbis identification header: %w", err)
@@ -114,6 +115,7 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, err
 		}
 
 	case "opus":
+		file.Format = types.FormatOpus
 		// Parse OpusHead identification header (packet 0)
 		if err := parseOpusHead(packets[0], file); err != nil {
 			return nil, fmt.Errorf("failed to parse OpusHead header: %w", err)
@@ -222,7 +224,9 @@ func calculateDuration(sr *binary.SafeReader, fileSize int64, sampleRate int) (t
 	return time.Duration(seconds * float64(time.Second)), nil
 }
 
-// init registers the Ogg Vorbis parser.
+// init registers the Ogg parser for both Vorbis and Opus formats.
 func init() {
-	registry.Register(types.FormatOgg, &parser{})
+	p := &parser{}
+	registry.Register(types.FormatOgg, p)
+	registry.Register(types.FormatOpus, p)
 }

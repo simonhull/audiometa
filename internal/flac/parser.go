@@ -277,7 +277,7 @@ func parseVorbisComment(sr *binary.SafeReader, offset, _ int64, file *types.File
 
 		// Parse "KEY=VALUE" format
 		comment := string(commentData)
-		if err := vorbis.ParseComment(comment, &file.Tags); err != nil {
+		if err := vorbis.ParseComment(comment, file); err != nil {
 			// Non-fatal - add warning and continue
 			file.Warnings = append(file.Warnings, types.Warning{
 				Stage:   "metadata",
