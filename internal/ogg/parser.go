@@ -7,6 +7,7 @@ import (
 
 	"github.com/simonhull/audiometa/internal/binary"
 	"github.com/simonhull/audiometa/internal/registry"
+	"github.com/simonhull/audiometa/internal/parsing"
 	"github.com/simonhull/audiometa/internal/types"
 )
 
@@ -149,6 +150,22 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, err
 
 	default:
 		return nil, fmt.Errorf("unknown or unsupported Ogg codec: %q", codec)
+	}
+
+	// Post-parse fallbacks for audiobook series metadata.
+	if file.Tags.Series == "" && file.Tags.Grouping != "" {
+		series, part := parsing.ParseGrouping(file.Tags.Grouping)
+		if series != "" {
+			file.Tags.Series = series
+			if file.Tags.SeriesPart == "" && part != "" {
+				file.Tags.SeriesPart = part
+			}
+		}
+	}
+	if file.Tags.Series != "" && file.Tags.SeriesPart == "" {
+		if part := parsing.ExtractSeriesPartFromPath(path); part != "" {
+			file.Tags.SeriesPart = part
+		}
 	}
 
 	return file, nil

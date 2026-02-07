@@ -68,6 +68,15 @@ func TestExtractSeriesPartFromText(t *testing.T) {
 		{"Fractional 01.5", "Book 01.5", "1.5"},
 		{"Fractional 00.5", "Book 00.5", "0.5"},
 
+		// Bracket notation (common in Audiobookshelf folder structure: [01] Title)
+		{"Brackets single digit", "[2]", "2"},
+		{"Brackets leading zero", "[01]", "1"},
+		{"Brackets double digit", "[12]", "12"},
+		{"Brackets fractional", "[1.5]", "1.5"},
+		{"Brackets zero", "[0]", "0"},
+		{"Brackets in title", "[01] The Cuckoo's Calling", "1"},
+		{"Brackets in middle", "Title [03] Subtitle", "3"},
+
 		// Edge cases
 		{"Multiple numbers", "Book 2 Chapter 5", "2"}, // First match wins
 		{"Roman numerals ignored", "Book II", ""},     // Not supported
@@ -131,6 +140,16 @@ func TestExtractSeriesPartFromPath(t *testing.T) {
 			"Book keyword variant",
 			"/audiobooks/Author/Series/Part 4 - Title/file.m4b",
 			"4",
+		},
+		{
+			"Bracket notation in folder",
+			"/audiobooks/Author/Series/[01] The Cuckoo's Calling/file.m4b",
+			"1",
+		},
+		{
+			"Bracket double digit",
+			"/audiobooks/Author/Series/[12] Title/file.m4b",
+			"12",
 		},
 		{
 			"Empty path",

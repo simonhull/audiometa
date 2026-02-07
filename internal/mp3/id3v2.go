@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	binutil "github.com/simonhull/audiometa/internal/binary"
+	"github.com/simonhull/audiometa/internal/parsing"
 	"github.com/simonhull/audiometa/internal/types"
 )
 
@@ -48,8 +49,34 @@ func parseID3v2(sr *binutil.SafeReader, file *types.File) (int64, error) {
 		file.Chapters = parseChapterFrames(chapters, file.Audio.Duration)
 	}
 
+	// Post-parse fallbacks for audiobook series metadata.
+	resolveSeriesFallbacks(sr, file)
+
 	// Total tag size including header
 	return int64(10 + header.Size), nil
+}
+
+// resolveSeriesFallbacks applies fallback logic for series metadata after all frames are parsed.
+// This mirrors the M4A audiobook tag resolution: Grouping → Series, then path-based series part.
+func resolveSeriesFallbacks(sr *binutil.SafeReader, file *types.File) {
+	// If no explicit Series, try to extract from Grouping tag.
+	// Grouping often contains series info in formats like "Series Name #5".
+	if file.Tags.Series == "" && file.Tags.Grouping != "" {
+		series, part := parsing.ParseGrouping(file.Tags.Grouping)
+		if series != "" {
+			file.Tags.Series = series
+			if file.Tags.SeriesPart == "" && part != "" {
+				file.Tags.SeriesPart = part
+			}
+		}
+	}
+
+	// If series exists but no part, try to extract from file path.
+	if file.Tags.Series != "" && file.Tags.SeriesPart == "" {
+		if part := parsing.ExtractSeriesPartFromPath(sr.Path()); part != "" {
+			file.Tags.SeriesPart = part
+		}
+	}
 }
 
 // parseID3v2Header reads and validates the ID3v2 header.
@@ -244,6 +271,20 @@ func parseTextFrame(frame ID3v2Frame, file *types.File) { //nolint:gocyclo // Co
 		file.Tags.DiscNumber, file.Tags.DiscTotal = parseTrackNumber(text)
 	case "TPE2": // Album artist
 		file.Tags.AlbumArtist = text
+	case "GRP1": // Grouping (often contains series info for audiobooks)
+		file.Tags.Grouping = text
+	case "TIT1": // Content group description (alternative grouping)
+		if file.Tags.Grouping == "" {
+			file.Tags.Grouping = text
+		}
+	case "MVNM": // Movement name (series name in ID3v2.4)
+		if file.Tags.Series == "" {
+			file.Tags.Series = text
+		}
+	case "MVIN": // Movement number (series position in ID3v2.4)
+		if file.Tags.SeriesPart == "" {
+			file.Tags.SeriesPart = text
+		}
 	}
 }
 
@@ -288,13 +329,17 @@ func parseTXXXFrame(frame ID3v2Frame, file *types.File) {
 		if file.Tags.Description == "" {
 			file.Tags.Description = value
 		}
-	case "mvnm", "movement name", "movement":
+	case "mvnm", "movement name", "movement", "show":
 		if file.Tags.Series == "" {
 			file.Tags.Series = value
 		}
-	case "mvin", "movement number", "movement index":
+	case "mvin", "movement number", "movement index", "episode_id":
 		if file.Tags.SeriesPart == "" {
 			file.Tags.SeriesPart = value
+		}
+	case "grouping":
+		if file.Tags.Grouping == "" {
+			file.Tags.Grouping = value
 		}
 	}
 }
