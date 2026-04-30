@@ -56,7 +56,7 @@ func BenchmarkOpen(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		file, err := audiometa.Open(path)
 		if err != nil {
 			b.Fatal(err)
@@ -73,7 +73,7 @@ func BenchmarkOpenContext(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		file, err := audiometa.OpenContext(ctx, path)
 		if err != nil {
 			b.Fatal(err)
@@ -95,7 +95,7 @@ func BenchmarkOpenMany(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		files, err := audiometa.OpenMany(ctx, paths...)
 		if err != nil {
 			b.Fatal(err)
@@ -121,7 +121,7 @@ func BenchmarkOpenManyParallel(b *testing.B) {
 			b.ResetTimer()
 			b.ReportAllocs()
 
-			for i := 0; i < b.N; i++ {
+			for range b.N {
 				files, err := audiometa.OpenMany(ctx, paths...)
 				if err != nil {
 					b.Fatal(err)
@@ -155,7 +155,7 @@ func BenchmarkDetectFormat(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_, err := audiometa.DetectFormat(reader, int64(len(data)), "test.m4b")
 		if err != nil {
 			b.Fatal(err)
@@ -175,7 +175,7 @@ func BenchmarkTagAccess(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = file.Tags.Title
 		_ = file.Tags.Artist
 		_ = file.Tags.Album
@@ -188,7 +188,7 @@ func BenchmarkTagAccess(b *testing.B) {
 func BenchmarkFileAllocation(b *testing.B) {
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = &audiometa.File{
 			File: types.File{
 				Path:   "/test/path.m4b",

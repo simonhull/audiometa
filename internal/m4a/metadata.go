@@ -74,6 +74,7 @@ func extractIlstMetadata(sr *binary.SafeReader, ilstAtom *Atom, file *types.File
 				file.Warnings = append(file.Warnings, types.Warning{
 					Stage:   "metadata",
 					Message: fmt.Sprintf("failed to parse tag %s: %v", tagAtom.Type, err),
+					Err:     err,
 				})
 			} else {
 				// Map tag to metadata field

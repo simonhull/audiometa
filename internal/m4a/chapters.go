@@ -86,7 +86,7 @@ func parseChplChapters(sr *binary.SafeReader, moovAtom *Atom, fileDuration time.
 	chapters := make([]types.Chapter, 0, chapterCount)
 
 	// Read each chapter
-	for i := uint8(0); i < chapterCount; i++ {
+	for i := range chapterCount {
 		// Read start time (8 bytes, in 100-nanosecond units)
 		startTime100ns, err := binary.Read[uint64](sr, offset, "chapter start time")
 		if err != nil {
@@ -127,7 +127,7 @@ func parseChplChapters(sr *binary.SafeReader, moovAtom *Atom, fileDuration time.
 	// Calculate end times
 	// Each chapter ends where the next one starts
 	// Last chapter ends at file duration
-	for i := 0; i < len(chapters); i++ {
+	for i := range chapters {
 		if i < len(chapters)-1 {
 			// End time is the start of the next chapter
 			chapters[i].EndTime = chapters[i+1].StartTime
@@ -350,7 +350,7 @@ func parseChapterTimings(sr *binary.SafeReader, stblAtom *Atom, timescale uint32
 	var currentTime uint64
 	chapterTimes := []time.Duration{}
 
-	for i := uint32(0); i < entryCount; i++ {
+	for range entryCount {
 		sampleCount, err := binary.Read[uint32](sr, offset, "sample count")
 		if err != nil {
 			break // Return partial results
@@ -361,7 +361,7 @@ func parseChapterTimings(sr *binary.SafeReader, stblAtom *Atom, timescale uint32
 		}
 		offset += 8
 
-		for j := uint32(0); j < sampleCount; j++ {
+		for range sampleCount {
 			timeNs := (currentTime * 1_000_000_000) / uint64(timescale)
 			chapterTimes = append(chapterTimes, time.Duration(timeNs))
 			currentTime += uint64(sampleDuration)
@@ -394,7 +394,7 @@ func parseSampleSizes(sr *binary.SafeReader, stblAtom *Atom) ([]uint32, error) {
 	offset += 4
 
 	sampleSizes := make([]uint32, sampleCount)
-	for i := uint32(0); i < sampleCount; i++ {
+	for i := range sampleCount {
 		size, err := binary.Read[uint32](sr, offset, "sample size")
 		if err != nil {
 			break // Return partial results
@@ -425,7 +425,7 @@ func parseChunkOffsets(sr *binary.SafeReader, stblAtom *Atom) ([]uint64, error) 
 	offset += 4
 
 	chunkOffsets := make([]uint64, chunkCount)
-	for i := uint32(0); i < chunkCount; i++ {
+	for i := range chunkCount {
 		var readErr error
 		if stcoAtom.Type == "co64" {
 			chunkOffsets[i], readErr = binary.Read[uint64](sr, offset, "chunk offset")
@@ -477,7 +477,7 @@ func buildChaptersFromText(sr *binary.SafeReader, chapterTimes []time.Duration, 
 
 	maxSamples := min(len(sampleOffsets), len(sampleSizes), len(chapterTimes))
 
-	for i := 0; i < maxSamples; i++ {
+	for i := range maxSamples {
 		sampleSize := sampleSizes[i]
 		if sampleSize == 0 || sampleSize >= 10000 {
 			continue // Skip invalid sizes
@@ -518,7 +518,7 @@ func extractChapterTitle(sr *binary.SafeReader, chunkOffset int64, sampleSize ui
 
 // calculateChapterEndTimes sets the EndTime for each chapter.
 func calculateChapterEndTimes(chapters []types.Chapter, fileDuration time.Duration) {
-	for i := 0; i < len(chapters); i++ {
+	for i := range chapters {
 		if i < len(chapters)-1 {
 			chapters[i].EndTime = chapters[i+1].StartTime
 		} else {

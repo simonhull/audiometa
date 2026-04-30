@@ -1,6 +1,7 @@
 package flac
 
 import (
+	"context"
 	"bytes"
 	"encoding/binary"
 	"errors"
@@ -132,7 +133,7 @@ func TestParse_Success(t *testing.T) {
 
 	// Parse the file
 	p := &parser{}
-	file, err := p.Parse(f, stat.Size(), tmpFile.Name())
+	file, err := p.Parse(context.Background(), f, stat.Size(), tmpFile.Name())
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
 	}
@@ -222,7 +223,7 @@ func TestParse_InvalidMagic(t *testing.T) {
 
 	// Parse should fail
 	p := &parser{}
-	_, err = p.Parse(f, stat.Size(), tmpFile.Name())
+	_, err = p.Parse(context.Background(), f, stat.Size(), tmpFile.Name())
 	if err == nil {
 		t.Fatal("expected error for invalid magic, got nil")
 	}
@@ -264,7 +265,7 @@ func TestExtractArtwork_NoPictures(t *testing.T) {
 
 	// Extract artwork should return empty slice
 	p := &parser{}
-	artwork, err := p.ExtractArtwork(f, stat.Size(), tmpFile.Name())
+	artwork, err := p.ExtractArtwork(context.Background(), f, stat.Size(), tmpFile.Name())
 	if err != nil {
 		t.Fatalf("ExtractArtwork failed: %v", err)
 	}
@@ -304,7 +305,7 @@ func TestParse_EmptyTags(t *testing.T) {
 
 	// Parse should succeed
 	p := &parser{}
-	file, err := p.Parse(f, stat.Size(), tmpFile.Name())
+	file, err := p.Parse(context.Background(), f, stat.Size(), tmpFile.Name())
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
 	}
@@ -343,7 +344,7 @@ func BenchmarkParseFLAC(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		f, err := os.Open(path)
 		if err != nil {
 			b.Fatal(err)
@@ -354,7 +355,7 @@ func BenchmarkParseFLAC(b *testing.B) {
 			b.Fatal(err)
 		}
 		p := &parser{}
-		_, err = p.Parse(f, stat.Size(), path)
+		_, err = p.Parse(context.Background(), f, stat.Size(), path)
 		if err != nil {
 			f.Close()
 			b.Fatal(err)
@@ -381,7 +382,7 @@ func BenchmarkParseStreamInfo(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		f, err := os.Open(path)
 		if err != nil {
 			b.Fatal(err)
@@ -392,7 +393,7 @@ func BenchmarkParseStreamInfo(b *testing.B) {
 			b.Fatal(err)
 		}
 		p := &parser{}
-		file, err := p.Parse(f, stat.Size(), path)
+		file, err := p.Parse(context.Background(), f, stat.Size(), path)
 		if err != nil {
 			f.Close()
 			b.Fatal(err)
@@ -424,7 +425,7 @@ func BenchmarkParseVorbisComment(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		f, err := os.Open(path)
 		if err != nil {
 			b.Fatal(err)
@@ -435,7 +436,7 @@ func BenchmarkParseVorbisComment(b *testing.B) {
 			b.Fatal(err)
 		}
 		p := &parser{}
-		file, err := p.Parse(f, stat.Size(), path)
+		file, err := p.Parse(context.Background(), f, stat.Size(), path)
 		if err != nil {
 			f.Close()
 			b.Fatal(err)
@@ -479,8 +480,8 @@ func BenchmarkExtractArtwork(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
-		_, err := p.ExtractArtwork(f, stat.Size(), path)
+	for range b.N {
+		_, err := p.ExtractArtwork(context.Background(), f, stat.Size(), path)
 		if err != nil {
 			b.Fatal(err)
 		}

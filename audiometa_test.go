@@ -3,6 +3,7 @@ package audiometa_test
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"os"
 	"testing"
 
@@ -84,7 +85,8 @@ func TestParse_UnsupportedFormat(t *testing.T) {
 		t.Error("expected error for unsupported format")
 	}
 
-	if _, ok := err.(*audiometa.UnsupportedFormatError); !ok {
+	var unsupportedFormatError *audiometa.UnsupportedFormatError
+	if !errors.As(err, &unsupportedFormatError) {
 		t.Errorf("expected UnsupportedFormatError, got %T", err)
 	}
 }

@@ -1,13 +1,14 @@
 package flac
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"time"
 
 	"github.com/simonhull/audiometa/internal/binary"
-	"github.com/simonhull/audiometa/internal/registry"
 	"github.com/simonhull/audiometa/internal/parsing"
+	"github.com/simonhull/audiometa/internal/registry"
 	"github.com/simonhull/audiometa/internal/types"
 	"github.com/simonhull/audiometa/internal/vorbis"
 )
@@ -30,7 +31,11 @@ const (
 type parser struct{}
 
 // Parse parses a FLAC file and extracts metadata.
-func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, error) { //nolint:gocyclo // Block processing requires multiple conditional branches
+func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path string) (*types.File, error) { //nolint:gocyclo // Block processing requires multiple conditional branches
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	// Create safe reader
 	sr := binary.NewSafeReader(r, size, path)
 
@@ -58,17 +63,14 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, err
 
 	// Parse metadata blocks
 	offset := int64(4) // After "fLaC"
-	for {
-		if offset >= size {
-			break
-		}
-
+	for offset < size {
 		// Read metadata block header (4 bytes)
 		header, err := binary.Read[uint32](sr, offset, "metadata block header")
 		if err != nil {
 			file.Warnings = append(file.Warnings, types.Warning{
 				Stage:   "metadata",
 				Message: fmt.Sprintf("failed to read metadata block header at offset %d: %v", offset, err),
+				Err:     err,
 				Offset:  offset,
 			})
 			break
@@ -88,6 +90,7 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, err
 				file.Warnings = append(file.Warnings, types.Warning{
 					Stage:   "metadata",
 					Message: fmt.Sprintf("failed to parse STREAMINFO: %v", err),
+					Err:     err,
 					Offset:  offset,
 				})
 			}
@@ -97,6 +100,7 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, err
 				file.Warnings = append(file.Warnings, types.Warning{
 					Stage:   "metadata",
 					Message: fmt.Sprintf("failed to parse Vorbis comments: %v", err),
+					Err:     err,
 					Offset:  offset,
 				})
 			}
@@ -119,6 +123,7 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, err
 				file.Warnings = append(file.Warnings, types.Warning{
 					Stage:   "chapters",
 					Message: fmt.Sprintf("failed to parse CUESHEET: %v", err),
+					Err:     err,
 					Offset:  offset,
 				})
 			}
@@ -161,7 +166,10 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, err
 }
 
 // ExtractArtwork extracts embedded artwork from FLAC files.
-func (p *parser) ExtractArtwork(r io.ReaderAt, size int64, path string) ([]types.Artwork, error) {
+func (p *parser) ExtractArtwork(ctx context.Context, r io.ReaderAt, size int64, path string) ([]types.Artwork, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	sr := binary.NewSafeReader(r, size, path)
 
 	var artwork []types.Artwork
@@ -277,7 +285,7 @@ func parseVorbisComment(sr *binary.SafeReader, offset, _ int64, file *types.File
 	currentOffset += 4
 
 	// Parse each comment
-	for i := uint32(0); i < numComments; i++ {
+	for i := range numComments {
 		// Read comment length (32-bit little-endian)
 		commentLength, err := binary.ReadLE[uint32](sr, currentOffset, "comment length")
 		if err != nil {
@@ -299,6 +307,7 @@ func parseVorbisComment(sr *binary.SafeReader, offset, _ int64, file *types.File
 			file.Warnings = append(file.Warnings, types.Warning{
 				Stage:   "metadata",
 				Message: fmt.Sprintf("invalid Vorbis comment: %s", err),
+				Err:     err,
 			})
 		}
 	}

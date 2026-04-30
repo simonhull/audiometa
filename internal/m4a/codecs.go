@@ -79,7 +79,7 @@ func parseAACProfile(sr *binary.SafeReader, sampleEntryOffset int64) (string, er
 	}
 
 	esdsOffset := int64(-1)
-	for i := 0; i < len(searchBuf)-4; i++ {
+	for i := range len(searchBuf) - 4 {
 		if string(searchBuf[i:i+4]) == "esds" {
 			esdsOffset = sampleEntryOffset + int64(i) - 4
 			break
@@ -127,7 +127,7 @@ func parseESDescriptors(data []byte) uint8 {
 			return -1
 		}
 		size := 0
-		for i := 0; i < 4; i++ {
+		for range 4 {
 			if pos >= len(data) {
 				return -1
 			}

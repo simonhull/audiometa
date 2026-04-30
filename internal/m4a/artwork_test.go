@@ -1,6 +1,7 @@
 package m4a
 
 import (
+	"context"
 	"bytes"
 	"encoding/binary"
 	"os"
@@ -46,7 +47,7 @@ func TestExtractArtwork_WithJPEGCover(t *testing.T) {
 
 	// Test ExtractArtwork
 	p := &parser{}
-	artwork, err := p.ExtractArtwork(f, stat.Size(), tmpFile.Name())
+	artwork, err := p.ExtractArtwork(context.Background(), f, stat.Size(), tmpFile.Name())
 	if err != nil {
 		t.Fatalf("ExtractArtwork failed: %v", err)
 	}
@@ -161,7 +162,7 @@ func TestExtractArtwork_WithPNGCover(t *testing.T) {
 	}
 
 	p := &parser{}
-	artwork, err := p.ExtractArtwork(f, stat.Size(), tmpFile.Name())
+	artwork, err := p.ExtractArtwork(context.Background(), f, stat.Size(), tmpFile.Name())
 	if err != nil {
 		t.Fatalf("ExtractArtwork failed: %v", err)
 	}
@@ -214,7 +215,7 @@ func TestExtractArtwork_MultipleImages(t *testing.T) {
 	}
 
 	p := &parser{}
-	artwork, err := p.ExtractArtwork(f, stat.Size(), tmpFile.Name())
+	artwork, err := p.ExtractArtwork(context.Background(), f, stat.Size(), tmpFile.Name())
 	if err != nil {
 		t.Fatalf("ExtractArtwork failed: %v", err)
 	}
@@ -297,7 +298,7 @@ func TestExtractArtwork_NoArtwork(t *testing.T) {
 	}
 
 	p := &parser{}
-	artwork, err := p.ExtractArtwork(f, stat.Size(), tmpFile.Name())
+	artwork, err := p.ExtractArtwork(context.Background(), f, stat.Size(), tmpFile.Name())
 	if err != nil {
 		t.Fatalf("ExtractArtwork should not error: %v", err)
 	}
@@ -332,7 +333,7 @@ func TestExtractArtwork_NoMoovAtom(t *testing.T) {
 	}
 
 	p := &parser{}
-	artwork, err := p.ExtractArtwork(f, stat.Size(), tmpFile.Name())
+	artwork, err := p.ExtractArtwork(context.Background(), f, stat.Size(), tmpFile.Name())
 
 	// Should not error - graceful degradation
 	if err != nil {
@@ -371,7 +372,7 @@ func TestExtractArtwork_CorruptedImageData(t *testing.T) {
 	}
 
 	p := &parser{}
-	artwork, err := p.ExtractArtwork(f, stat.Size(), tmpFile.Name())
+	artwork, err := p.ExtractArtwork(context.Background(), f, stat.Size(), tmpFile.Name())
 
 	// Should extract successfully (we don't validate image format)
 	if err != nil {

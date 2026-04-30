@@ -2,7 +2,7 @@ package mp3
 
 import (
 	"encoding/binary"
-	"fmt"
+	"errors"
 	"time"
 
 	binutil "github.com/simonhull/audiometa/internal/binary"
@@ -54,7 +54,7 @@ func parseTechnicalInfo(sr *binutil.SafeReader, tagSize int64, fileSize int64, f
 		frameOffset++
 	}
 
-	return fmt.Errorf("no valid MP3 frame found")
+	return errors.New("no valid MP3 frame found")
 }
 
 // findMP3FrameAt attempts to read an MP3 frame header at the given offset.
@@ -68,7 +68,7 @@ func findMP3FrameAt(sr *binutil.SafeReader, offset int64) (uint32, error) {
 
 	// Check frame sync (11 bits set: 0xFFE00000)
 	if header&0xFFE00000 != 0xFFE00000 {
-		return 0, fmt.Errorf("invalid frame sync")
+		return 0, errors.New("invalid frame sync")
 	}
 
 	// Validate MPEG version and layer
@@ -77,12 +77,12 @@ func findMP3FrameAt(sr *binutil.SafeReader, offset int64) (uint32, error) {
 
 	// MPEG1 (version 11) or MPEG2 (version 10)
 	if version != 3 && version != 2 {
-		return 0, fmt.Errorf("unsupported MPEG version")
+		return 0, errors.New("unsupported MPEG version")
 	}
 
 	// Layer III (01)
 	if layer != 1 {
-		return 0, fmt.Errorf("unsupported layer")
+		return 0, errors.New("unsupported layer")
 	}
 
 	return header, nil

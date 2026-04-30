@@ -2,7 +2,6 @@
 package parsing
 
 import (
-	"fmt"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -62,7 +61,7 @@ func normalizeSeriesPart(part string) string {
 	// Parse as integer to remove leading zeros
 	// This handles "01" -> "1", "001" -> "1", but keeps "0" as "0"
 	if num, err := strconv.Atoi(part); err == nil {
-		return fmt.Sprintf("%d", num)
+		return strconv.Itoa(num)
 	}
 
 	// Fallback: return as-is if parsing fails

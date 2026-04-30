@@ -2,6 +2,7 @@ package ogg
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 
 	"github.com/simonhull/audiometa/internal/types"
@@ -86,20 +87,20 @@ func parseVorbisComment(data []byte, file *types.File) error {
 
 	// Read vendor string length (32-bit little-endian)
 	if offset+4 > len(data) {
-		return fmt.Errorf("truncated vendor length")
+		return errors.New("truncated vendor length")
 	}
 	vendorLen := binary.LittleEndian.Uint32(data[offset : offset+4])
 	offset += 4
 
 	// Skip vendor string (we don't use it)
 	if offset+int(vendorLen) > len(data) {
-		return fmt.Errorf("truncated vendor string")
+		return errors.New("truncated vendor string")
 	}
 	offset += int(vendorLen)
 
 	// Read comment count (32-bit little-endian)
 	if offset+4 > len(data) {
-		return fmt.Errorf("truncated comment count")
+		return errors.New("truncated comment count")
 	}
 	commentCount := binary.LittleEndian.Uint32(data[offset : offset+4])
 	offset += 4
@@ -108,7 +109,7 @@ func parseVorbisComment(data []byte, file *types.File) error {
 	var allComments []string
 
 	// Read each comment
-	for i := uint32(0); i < commentCount; i++ {
+	for i := range commentCount {
 		if offset+4 > len(data) {
 			// Truncated, but don't fail - just stop reading
 			file.Warnings = append(file.Warnings, types.Warning{
@@ -142,6 +143,7 @@ func parseVorbisComment(data []byte, file *types.File) error {
 			file.Warnings = append(file.Warnings, types.Warning{
 				Stage:   "metadata",
 				Message: fmt.Sprintf("invalid Vorbis comment: %s", err),
+				Err:     err,
 			})
 		}
 	}

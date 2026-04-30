@@ -2,6 +2,7 @@
 package ogg
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/simonhull/audiometa/internal/binary"
@@ -165,7 +166,7 @@ func findLastGranulePosition(sr *binary.SafeReader, fileSize int64) (int64, erro
 	}
 
 	if lastOggPos < 0 {
-		return 0, fmt.Errorf("could not find last Ogg page")
+		return 0, errors.New("could not find last Ogg page")
 	}
 
 	// Read granule position from last page (at offset 6 from "OggS")

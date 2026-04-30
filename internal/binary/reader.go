@@ -3,6 +3,7 @@ package binary
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 )
@@ -71,7 +72,7 @@ func Read[T uint8 | uint16 | uint32 | uint64](sr *SafeReader, off int64, what st
 	case uint64:
 		size = 8
 	default:
-		return zero, fmt.Errorf("unsupported type for Read")
+		return zero, errors.New("unsupported type for Read")
 	}
 
 	buf := make([]byte, size)
@@ -138,7 +139,7 @@ func ReadValue[T uint8 | uint16 | uint32 | uint64](r *Reader, what string) (T, e
 // ReadString reads a string of the given length and advances the offset.
 func (r *Reader) ReadString(length int, what string) (string, error) {
 	buf := make([]byte, length)
-	if err := r.SafeReader.ReadAt(buf, r.offset, what); err != nil {
+	if err := r.ReadAt(buf, r.offset, what); err != nil {
 		return "", err
 	}
 
@@ -192,7 +193,7 @@ func (cr *ChainReader) String(length int, what string) string {
 		return ""
 	}
 
-	val, err := cr.Reader.ReadString(length, what)
+	val, err := cr.ReadString(length, what)
 	if err != nil {
 		cr.err = err
 		return ""

@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"context"
 	"io"
 	"testing"
 
@@ -12,7 +13,7 @@ type mockParser struct {
 	name string
 }
 
-func (m *mockParser) Parse(r io.ReaderAt, size int64, path string) (*types.File, error) {
+func (m *mockParser) Parse(ctx context.Context, r io.ReaderAt, size int64, path string) (*types.File, error) {
 	return &types.File{Path: m.name}, nil
 }
 
@@ -71,7 +72,7 @@ type mockArtworkExtractor struct {
 	mockParser
 }
 
-func (m *mockArtworkExtractor) ExtractArtwork(r io.ReaderAt, size int64, path string) ([]types.Artwork, error) {
+func (m *mockArtworkExtractor) ExtractArtwork(ctx context.Context, r io.ReaderAt, size int64, path string) ([]types.Artwork, error) {
 	return []types.Artwork{{Type: types.ArtworkFrontCover}}, nil
 }
 
@@ -92,7 +93,7 @@ func TestArtworkExtractorInterface(t *testing.T) {
 		t.Fatal("Parser should implement ArtworkExtractor")
 	}
 
-	artworks, err := ae.ExtractArtwork(nil, 0, "test.mp3")
+	artworks, err := ae.ExtractArtwork(context.Background(), nil, 0, "test.mp3")
 	if err != nil {
 		t.Errorf("ExtractArtwork() error = %v", err)
 	}

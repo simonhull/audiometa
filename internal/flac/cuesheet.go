@@ -2,6 +2,7 @@
 package flac
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -11,7 +12,7 @@ import (
 )
 
 // CueSheet represents a FLAC CUESHEET metadata block.
-type CueSheet struct { //nolint:govet // fieldalignment - readability over micro-optimization
+type CueSheet struct {
 	MediaCatalogNumber string
 	LeadIn             uint64
 	IsCD               bool
@@ -19,7 +20,7 @@ type CueSheet struct { //nolint:govet // fieldalignment - readability over micro
 }
 
 // CueTrack represents a track in a cue sheet.
-type CueTrack struct { //nolint:govet // fieldalignment - readability over micro-optimization
+type CueTrack struct {
 	Offset      uint64 // samples from start of audio
 	Number      byte   // track number (1-99, 170=lead-out)
 	ISRC        string
@@ -78,7 +79,7 @@ func parseCueSheet(sr *binary.SafeReader, offset int64, length uint32, file *typ
 	// Verify we have enough data for tracks
 	bytesRead := offset - startOffset
 	if int64(length) < bytesRead {
-		return fmt.Errorf("CUESHEET block truncated")
+		return errors.New("CUESHEET block truncated")
 	}
 
 	// Parse tracks
@@ -108,7 +109,7 @@ func parseCueSheet(sr *binary.SafeReader, offset int64, length uint32, file *typ
 // parseCueTrack parses a single track from CUESHEET.
 func parseCueTrack(sr *binary.SafeReader, offset, maxOffset int64) (*CueTrack, int64, error) {
 	if offset+36 > maxOffset {
-		return nil, 0, fmt.Errorf("track data exceeds block bounds")
+		return nil, 0, errors.New("track data exceeds block bounds")
 	}
 
 	// Read track offset (8 bytes, 64-bit big-endian, samples from start of audio)
@@ -156,7 +157,7 @@ func parseCueTrack(sr *binary.SafeReader, offset, maxOffset int64) (*CueTrack, i
 	indices := make([]CueIndex, 0, indexCount)
 	for j := byte(0); j < indexCount; j++ {
 		if offset+12 > maxOffset {
-			return nil, 0, fmt.Errorf("index data exceeds block bounds")
+			return nil, 0, errors.New("index data exceeds block bounds")
 		}
 
 		index, nextOffset, err := parseCueIndex(sr, offset)

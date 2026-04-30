@@ -52,7 +52,7 @@ func TestReadLE(t *testing.T) {
 			want:   578437695752307201,
 			readFunc: func() (uint64, error) {
 				val, err := ReadLE[uint64](sr, 6, "uint64")
-				return uint64(val), err
+				return val, err
 			},
 		},
 	}
@@ -116,7 +116,7 @@ func TestReadBE(t *testing.T) {
 			want:   72623859790382856,
 			readFunc: func() (uint64, error) {
 				val, err := ReadBE[uint64](sr, 6, "uint64")
-				return uint64(val), err
+				return val, err
 			},
 		},
 	}
@@ -227,7 +227,7 @@ func BenchmarkReadLE_Uint32(b *testing.B) {
 	sr := NewSafeReader(bytes.NewReader(data), int64(len(data)), "bench")
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		ReadLE[uint32](sr, 0, "uint32")
 	}
 }
@@ -237,7 +237,7 @@ func BenchmarkReadBE_Uint32(b *testing.B) {
 	sr := NewSafeReader(bytes.NewReader(data), int64(len(data)), "bench")
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		ReadBE[uint32](sr, 0, "uint32")
 	}
 }
@@ -247,7 +247,7 @@ func BenchmarkRead_Uint32_Legacy(b *testing.B) {
 	sr := NewSafeReader(bytes.NewReader(data), int64(len(data)), "bench")
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		Read[uint32](sr, 0, "uint32")
 	}
 }

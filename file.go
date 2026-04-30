@@ -2,6 +2,7 @@ package audiometa
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -20,9 +21,16 @@ import (
 )
 
 // File represents an opened audio file with parsed metadata.
-// Embeds types.File and adds methods.
+//
+// Embeds types.File for the data payload (Path, Tags, Audio, Chapters, ...)
+// and adds runtime state (the underlying file handle, parser reference, and
+// artwork cache) used by methods like Close and ExtractArtwork.
 type File struct {
 	types.File
+
+	reader  io.ReaderAt
+	parser  FormatParser
+	artwork []Artwork
 }
 
 // Open opens an audio file and reads its metadata.
@@ -51,6 +59,10 @@ type File struct {
 //	defer file.Close()
 //	fmt.Printf("%s - %s\n", file.Tags.Artist, file.Tags.Title)
 func Open(path string, opts ...Option) (*File, error) {
+	return openWithContext(context.Background(), path, opts...)
+}
+
+func openWithContext(ctx context.Context, path string, opts ...Option) (*File, error) {
 	// Apply options
 	options := defaultOptions()
 	for _, opt := range opts {
@@ -66,27 +78,28 @@ func Open(path string, opts ...Option) (*File, error) {
 	// Get file size
 	stat, err := f.Stat()
 	if err != nil {
-		_ = f.Close() //nolint:errcheck // Closing on error path, error already being returned
+		_ = f.Close()
 		return nil, fmt.Errorf("stat file: %w", err)
 	}
 	size := stat.Size()
 
 	// Parse with the reader
-	typesFile, err := openReader(f, size, path, options)
+	typesFile, err := openReader(ctx, f, size, path, options)
 	if err != nil {
-		_ = f.Close() //nolint:errcheck // Closing on error path, error already being returned
+		_ = f.Close()
 		return nil, err
 	}
 
 	// Wrap in File struct
-	file := &File{File: *typesFile}
-
-	// Keep the file handle for lazy operations (artwork, etc.)
-	file.Reader_ = f
+	file := &File{
+		File:   *typesFile.file,
+		reader: f,
+		parser: typesFile.parser,
+	}
 
 	// Check strict parsing mode
 	if options.strictParsing && len(file.Warnings) > 0 {
-		_ = f.Close() //nolint:errcheck // Closing on error path, error already being returned
+		_ = f.Close()
 		return nil, fmt.Errorf("strict parsing failed: %s", file.Warnings[0].Message)
 	}
 
@@ -97,6 +110,7 @@ func Open(path string, opts ...Option) (*File, error) {
 			file.Warnings = append(file.Warnings, Warning{
 				Stage:   "artwork",
 				Message: fmt.Sprintf("preload artwork failed: %v", err),
+				Err:     err,
 			})
 		}
 	}
@@ -104,8 +118,16 @@ func Open(path string, opts ...Option) (*File, error) {
 	return file, nil
 }
 
+// parsedFile bundles the parsed data payload with the parser that produced it,
+// so openReader can hand both back to its caller without exposing the parser
+// reference on the public types.File data type.
+type parsedFile struct {
+	file   *types.File
+	parser FormatParser
+}
+
 // openReader opens from an io.ReaderAt (internal, for testing).
-func openReader(r io.ReaderAt, size int64, path string, options *openOptions) (*types.File, error) {
+func openReader(ctx context.Context, r io.ReaderAt, size int64, path string, options *openOptions) (*parsedFile, error) {
 	// Detect format
 	format, err := types.DetectFormat(r, size, path)
 	if err != nil {
@@ -121,11 +143,8 @@ func openReader(r io.ReaderAt, size int64, path string, options *openOptions) (*
 		}
 	}
 
-	// Create SafeReader for bounds-checked access
-	// (SafeReader will be created by parser from internal/binary package)
-
-	// Parse metadata
-	file, err := parser.Parse(r, size, path)
+	// Parse metadata; parsers check ctx at major boundaries.
+	file, err := parser.Parse(ctx, r, size, path)
 	if err != nil {
 		return nil, fmt.Errorf("parse %s: %w", format, err)
 	}
@@ -134,21 +153,20 @@ func openReader(r io.ReaderAt, size int64, path string, options *openOptions) (*
 	file.Path = path
 	file.Format = format
 	file.Size = size
-	file.Parser_ = parser
 
 	// Apply option: ignore warnings
 	if options.ignoreWarnings {
 		file.Warnings = nil
 	}
 
-	return file, nil
+	return &parsedFile{file: file, parser: parser}, nil
 }
 
 // Close releases resources held by the file.
 //
 // After Close is called, the File should not be used.
 func (f *File) Close() error {
-	if closer, ok := f.Reader_.(io.Closer); ok {
+	if closer, ok := f.reader.(io.Closer); ok {
 		return closer.Close()
 	}
 	return nil
@@ -173,45 +191,44 @@ func (f *File) Close() error {
 //		os.WriteFile("cover.jpg", cover.Data, 0644)
 //	}
 func (f *File) ExtractArtwork() ([]Artwork, error) {
+	return f.ExtractArtworkContext(context.Background())
+}
+
+// ExtractArtworkContext is the cancellable form of ExtractArtwork.
+//
+// Use this when you want to bound how long artwork extraction can take,
+// for example when scanning many files in a worker pool.
+func (f *File) ExtractArtworkContext(ctx context.Context) ([]Artwork, error) {
 	// Return cached artwork if already loaded
-	if f.Artwork_ != nil {
-		return f.Artwork_, nil
+	if f.artwork != nil {
+		return f.artwork, nil
 	}
 
 	// Check if parser supports artwork extraction
-	extractor, ok := f.Parser_.(ArtworkExtractor)
+	extractor, ok := f.parser.(ArtworkExtractor)
 	if !ok {
 		// Format doesn't support artwork
 		return nil, nil
 	}
 
 	// Extract artwork
-	artwork, err := extractor.ExtractArtwork(f.Reader_, f.Size, f.Path)
+	artwork, err := extractor.ExtractArtwork(ctx, f.reader, f.Size, f.Path)
 	if err != nil {
 		return nil, fmt.Errorf("extract artwork: %w", err)
 	}
 
 	// Cache for future calls
-	f.Artwork_ = artwork
+	f.artwork = artwork
 
 	return artwork, nil
 }
 
-// RawTags returns format-specific raw tag data.
+// OpenContext opens a file with context-aware cancellation.
 //
-// This provides access to tags that may not be mapped to the standard
-// Tags fields. Useful for preserving unknown or custom tags.
-//
-// The returned map should not be modified.
-func (f *File) RawTags() map[string][]RawTag {
-	return f.RawTags_
-}
-
-// OpenContext opens a file with context support for cancellation.
-//
-// This is a thin wrapper around Open() that checks context before starting.
-// Future enhancements (streaming, network files) will use context throughout
-// the parsing process.
+// The context is checked before opening the file and is threaded into each
+// parser, which yields to cancellation at major parse boundaries (block
+// headers, atom boundaries, frame walks). Cancellation between files in a
+// batch is therefore observed promptly even on large inputs.
 //
 // Options can be provided just like with Open():
 //
@@ -226,22 +243,22 @@ func (f *File) RawTags() map[string][]RawTag {
 //	}
 //	defer file.Close()
 func OpenContext(ctx context.Context, path string, opts ...Option) (*File, error) {
-	// Check context before starting
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-
-	// TODO: In future, pass context through parsing for incremental cancellation
-	return Open(path, opts...)
+	return openWithContext(ctx, path, opts...)
 }
 
 // OpenMany opens multiple audio files concurrently.
 //
 // Files are parsed in parallel using up to runtime.NumCPU() goroutines.
-// Results are returned in the same order as the input paths.
+// The returned slice is parallel to the input paths: results[i] is either
+// the parsed file for paths[i] or nil if that file failed to parse.
 //
-// If any file fails to open, all successfully opened files are closed
-// and an error is returned.
+// One bad file does not abort the others. The returned error is non-nil if
+// any file failed; it is the errors.Join of every individual failure, so
+// callers can use errors.Is/As against it. The caller owns Close()ing any
+// non-nil entries.
 //
 // Example:
 //
@@ -250,60 +267,57 @@ func OpenContext(ctx context.Context, path string, opts ...Option) (*File, error
 //
 //	files, err := audiometa.OpenMany(ctx, paths...)
 //	if err != nil {
-//		log.Fatal(err)
+//		// One or more files failed; successful files are still returned.
+//		// Use errors.Is/As against the joined error to inspect individual failures.
+//		log.Printf("partial failure: %v", err)
 //	}
 //	defer func() {
 //		for _, f := range files {
-//			f.Close()
+//			if f != nil {
+//				f.Close()
+//			}
 //		}
 //	}()
 //
-//	for _, f := range files {
+//	for i, f := range files {
+//		if f == nil {
+//			continue // failed; see joined error
+//		}
 //		fmt.Printf("%s: %s - %s\n", f.Format, f.Tags.Artist, f.Tags.Title)
 //	}
+//
+// The returned slice is parallel to the input paths: results[i] is either
+// the parsed file for paths[i] or nil if that file failed to parse. The
+// returned error is non-nil if any file failed; use errors.Is/As against
+// the joined error to inspect individual failures.
+//
+// If the context is canceled, any in-flight parses observe the cancellation
+// at their next checkpoint; already-parsed files are still returned.
 func OpenMany(ctx context.Context, paths ...string) ([]*File, error) {
 	if len(paths) == 0 {
 		return nil, nil
 	}
 
-	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(runtime.NumCPU()) // Limit concurrent operations
-
 	results := make([]*File, len(paths))
+	errs := make([]error, len(paths))
+
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(runtime.NumCPU())
 
 	for i, path := range paths {
-		i, path := i, path // Capture loop variables
 		g.Go(func() error {
-			// Check for cancellation
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			default:
-			}
-
-			// Open file
-			file, err := Open(path)
+			file, err := openWithContext(ctx, path)
 			if err != nil {
-				return fmt.Errorf("%s: %w", path, err)
+				errs[i] = fmt.Errorf("%s: %w", path, err)
+				return nil // Don't cancel siblings on individual file failure.
 			}
-
 			results[i] = file
 			return nil
 		})
 	}
+	_ = g.Wait() // Per-file errors are collected in errs; g never errors.
 
-	// Wait for all to complete
-	if err := g.Wait(); err != nil {
-		// Close any successfully opened files
-		for _, file := range results {
-			if file != nil {
-				_ = file.Close() //nolint:errcheck // Best effort cleanup on error path
-			}
-		}
-		return nil, err
-	}
-
-	return results, nil
+	return results, errors.Join(errs...)
 }
 
 // FormatParser is an alias to registry.FormatParser for backwards compatibility.

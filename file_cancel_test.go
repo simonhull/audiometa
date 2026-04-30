@@ -47,7 +47,8 @@ func createTestM4BFile(t *testing.T) string {
 	return tmpFile.Name()
 }
 
-// TestOpenMany_Cancellation verifies that canceled operations clean up resources.
+// TestOpenMany_Cancellation verifies that canceled operations report errors
+// for each file slot via the joined error.
 func TestOpenMany_Cancellation(t *testing.T) {
 	// Create test files
 	paths := make([]string, 5)
@@ -58,27 +59,27 @@ func TestOpenMany_Cancellation(t *testing.T) {
 
 	// Create a context that's already canceled
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // Cancel immediately
+	cancel()
 
-	// Try to open files with canceled context
 	files, err := audiometa.OpenMany(ctx, paths...)
 
-	// Should return error
 	if err == nil {
 		t.Fatal("expected error from canceled context")
 	}
-
-	// Should not return any files
-	if files != nil {
-		t.Error("expected nil files on error")
+	// Result slice is parallel to inputs; on cancellation every slot is nil.
+	if len(files) != len(paths) {
+		t.Fatalf("expected %d slots, got %d", len(paths), len(files))
 	}
-
-	// If we got here without leaking file descriptors, the test passes
+	for i, f := range files {
+		if f != nil {
+			t.Errorf("expected nil at slot %d on cancellation, got %v", i, f)
+		}
+	}
 }
 
-// TestOpenMany_PartialFailure verifies cleanup on partial failure.
+// TestOpenMany_PartialFailure verifies that successful files are returned
+// alongside errors for the failed ones.
 func TestOpenMany_PartialFailure(t *testing.T) {
-	// Create mix of valid and invalid paths
 	validPath := createTestM4BFile(t)
 	defer os.Remove(validPath)
 
@@ -91,16 +92,27 @@ func TestOpenMany_PartialFailure(t *testing.T) {
 	ctx := context.Background()
 
 	files, err := audiometa.OpenMany(ctx, paths...)
+	t.Cleanup(func() {
+		for _, f := range files {
+			if f != nil {
+				_ = f.Close()
+			}
+		}
+	})
 
-	// Should return error
 	if err == nil {
 		t.Fatal("expected error from nonexistent file")
 	}
-
-	// Should not return any files (all or nothing)
-	if files != nil {
-		t.Error("expected nil files on partial failure")
+	if len(files) != len(paths) {
+		t.Fatalf("expected %d slots, got %d", len(paths), len(files))
 	}
-
-	// Successfully opened files should have been closed
+	if files[0] == nil {
+		t.Error("slot 0 (valid path) should not be nil")
+	}
+	if files[1] != nil {
+		t.Error("slot 1 (nonexistent path) should be nil")
+	}
+	if files[2] == nil {
+		t.Error("slot 2 (valid path) should not be nil")
+	}
 }

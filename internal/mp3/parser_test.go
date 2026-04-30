@@ -1,6 +1,7 @@
 package mp3
 
 import (
+	"context"
 	"os"
 	"testing"
 	"time"
@@ -35,7 +36,7 @@ func TestParse_ValidMP3(t *testing.T) {
 
 	// Parse the file
 	p := &parser{}
-	file, err := p.Parse(f, stat.Size(), tmpFile.Name())
+	file, err := p.Parse(context.Background(), f, stat.Size(), tmpFile.Name())
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
 	}
@@ -82,7 +83,7 @@ func TestParse_EmptyFile(t *testing.T) {
 
 	// Parse the file
 	p := &parser{}
-	file, err := p.Parse(f, stat.Size(), tmpFile.Name())
+	file, err := p.Parse(context.Background(), f, stat.Size(), tmpFile.Name())
 	// Empty file doesn't necessarily error - it just returns minimal metadata with warnings
 	if err != nil {
 		// Error is acceptable

@@ -1,6 +1,7 @@
 package m4a
 
 import (
+	"context"
 	"io"
 
 	"github.com/simonhull/audiometa/internal/binary"
@@ -53,7 +54,11 @@ func detectM4Format(sr *binary.SafeReader, size int64) types.Format {
 }
 
 // Parse parses an M4A/M4B file and extracts metadata.
-func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, error) {
+func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path string) (*types.File, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	// Create safe reader
 	sr := binary.NewSafeReader(r, size, path)
 
@@ -106,6 +111,7 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, err
 		file.Warnings = append(file.Warnings, types.Warning{
 			Stage:   "metadata",
 			Message: err.Error(),
+			Err:     err,
 		})
 	}
 
@@ -114,6 +120,7 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, err
 		file.Warnings = append(file.Warnings, types.Warning{
 			Stage:   "technical",
 			Message: err.Error(),
+			Err:     err,
 		})
 	}
 
@@ -123,6 +130,7 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, err
 		file.Warnings = append(file.Warnings, types.Warning{
 			Stage:   "chapters",
 			Message: err.Error(),
+			Err:     err,
 		})
 	} else if len(chapters) > 0 {
 		file.Chapters = chapters
@@ -134,6 +142,7 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, err
 			file.Warnings = append(file.Warnings, types.Warning{
 				Stage:   "metadata",
 				Message: err.Error(),
+				Err:     err,
 			})
 		}
 	}
@@ -142,7 +151,10 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, err
 }
 
 // ExtractArtwork extracts embedded artwork from M4A/M4B files.
-func (p *parser) ExtractArtwork(r io.ReaderAt, size int64, path string) ([]types.Artwork, error) {
+func (p *parser) ExtractArtwork(ctx context.Context, r io.ReaderAt, size int64, path string) ([]types.Artwork, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	sr := binary.NewSafeReader(r, size, path)
 	return extractArtwork(sr, size)
 }

@@ -4,7 +4,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/simonhull/audiometa)](https://goreportcard.com/report/github.com/simonhull/audiometa)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-audiometa is a high-performance, format-agnostic audio metadata library showcasing modern Go 1.25 patterns. When you need to read audio tags, this is the library you reach for.
+audiometa is a high-performance, format-agnostic audio metadata library showcasing modern Go 1.26 patterns. When you need to read audio tags, this is the library you reach for.
 
 ## Why audiometa?
 There are several really great tagging libraries for Go. With special thanks to David Howden and his excellent [Tag](https://github.com/dhowden/tag) Library.
@@ -215,11 +215,12 @@ Full API documentation is available at [pkg.go.dev/github.com/simonhull/audiomet
 
 ## Go Version
 
-Requires **Go 1.25+** for modern language features:
+Requires **Go 1.26+** for modern language features:
 - Iterators (`iter.Seq2`)
 - Enhanced generics
 - New `slices`, `maps`, `cmp` packages
 - Built-in `min`, `max`, `clear`
+- `for i := range N` integer range loops
 
 ## Project Structure
 
@@ -316,4 +317,4 @@ go build -v ./cmd/...
 
 ---
 
-**Made with ❤️ using Go 1.25**
+**Made with ❤️ using Go 1.26**

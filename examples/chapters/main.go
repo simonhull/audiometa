@@ -88,7 +88,7 @@ func main() {
 	}
 }
 
-// formatDuration formats a duration in a human-readable format
+// formatDuration formats a duration in a human-readable format.
 func formatDuration(d fmt.Stringer) string {
 	return d.String()
 }

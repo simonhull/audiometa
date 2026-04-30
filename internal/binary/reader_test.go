@@ -241,7 +241,7 @@ func BenchmarkRead_Uint32(b *testing.B) {
 	sr := NewSafeReader(mock, int64(len(data)), "bench.m4b")
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := range b.N {
 		offset := int64((i % (len(data) / 4)) * 4)
 		_, _ = Read[uint32](sr, offset, "benchmark")
 	}
@@ -253,9 +253,9 @@ func BenchmarkReader_Sequential(b *testing.B) {
 	sr := NewSafeReader(mock, int64(len(data)), "bench.m4b")
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		r := NewReader(sr, 0)
-		for j := 0; j < 1000; j++ {
+		for range 1000 {
 			_, _ = ReadValue[uint32](r, "test")
 		}
 	}

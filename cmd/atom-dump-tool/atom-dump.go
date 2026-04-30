@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 )
 
 // Useful test file to confirm what we're able to actually read from the different atoms.
@@ -33,10 +34,7 @@ func dumpAtoms(r io.ReaderAt, offset int64, end int64, depth int) {
 		}
 	}
 
-	indent := ""
-	for i := 0; i < depth; i++ {
-		indent += "  "
-	}
+	indent := strings.Repeat("  ", depth)
 
 	for offset < end {
 		// Read atom header

@@ -128,10 +128,11 @@ func skipExtendedHeader(sr *binutil.SafeReader, header ID3v2Header) int64 {
 	}
 
 	var extHeaderSize uint32
-	if header.Version == 4 {
+	switch header.Version {
+	case 4:
 		extHeaderSize = decodeSynchsafe(extBuf)
 		frameDataOffset += int64(extHeaderSize)
-	} else if header.Version == 3 {
+	case 3:
 		extHeaderSize = binary.BigEndian.Uint32(extBuf)
 		frameDataOffset += int64(extHeaderSize) + 4
 	}
@@ -184,6 +185,7 @@ func readSingleFrame(sr *binutil.SafeReader, file *types.File, header ID3v2Heade
 		file.Warnings = append(file.Warnings, types.Warning{
 			Stage:   "metadata",
 			Message: fmt.Sprintf("failed to read frame %s: %v", frameID, err),
+			Err:     err,
 		})
 		return nil, 10 + int64(frameSize), false
 	}
@@ -288,6 +290,42 @@ func parseTextFrame(frame ID3v2Frame, file *types.File) { //nolint:gocyclo // Co
 	}
 }
 
+// txxxFieldHandlers maps TXXX description (lowercased) → handler that writes
+// the value into the corresponding tag, optionally with a "first wins" rule.
+var txxxFieldHandlers = map[string]func(*types.File, string){
+	"narrator":          func(f *types.File, v string) { f.Tags.Narrator = v },
+	"series":            func(f *types.File, v string) { f.Tags.Series = v },
+	"series part":       func(f *types.File, v string) { f.Tags.SeriesPart = v },
+	"seriespart":        func(f *types.File, v string) { f.Tags.SeriesPart = v },
+	"part":              func(f *types.File, v string) { f.Tags.SeriesPart = v },
+	"series-part":       func(f *types.File, v string) { f.Tags.SeriesPart = v },
+	"series position":   func(f *types.File, v string) { f.Tags.SeriesPart = v },
+	"publisher":         func(f *types.File, v string) { f.Tags.Publisher = v },
+	"isbn":              func(f *types.File, v string) { f.Tags.ISBN = v },
+	"asin":              func(f *types.File, v string) { f.Tags.ASIN = v },
+	"audible_asin":      func(f *types.File, v string) { f.Tags.ASIN = v },
+	"language":          func(f *types.File, v string) { f.Tags.Language = v },
+	"lang":              func(f *types.File, v string) { f.Tags.Language = v },
+	"description":       setIfEmpty(func(t *types.Tags) *string { return &t.Description }),
+	"mvnm":              setIfEmpty(func(t *types.Tags) *string { return &t.Series }),
+	"movement name":     setIfEmpty(func(t *types.Tags) *string { return &t.Series }),
+	"movement":          setIfEmpty(func(t *types.Tags) *string { return &t.Series }),
+	"show":              setIfEmpty(func(t *types.Tags) *string { return &t.Series }),
+	"mvin":              setIfEmpty(func(t *types.Tags) *string { return &t.SeriesPart }),
+	"movement number":   setIfEmpty(func(t *types.Tags) *string { return &t.SeriesPart }),
+	"movement index":    setIfEmpty(func(t *types.Tags) *string { return &t.SeriesPart }),
+	"episode_id":        setIfEmpty(func(t *types.Tags) *string { return &t.SeriesPart }),
+	"grouping":          setIfEmpty(func(t *types.Tags) *string { return &t.Grouping }),
+}
+
+func setIfEmpty(field func(*types.Tags) *string) func(*types.File, string) {
+	return func(f *types.File, v string) {
+		if p := field(&f.Tags); *p == "" {
+			*p = v
+		}
+	}
+}
+
 // Format: [encoding][description\0][value].
 func parseTXXXFrame(frame ID3v2Frame, file *types.File) {
 	if len(frame.Data) < 2 {
@@ -297,7 +335,6 @@ func parseTXXXFrame(frame ID3v2Frame, file *types.File) {
 	encoding := frame.Data[0]
 	data := frame.Data[1:]
 
-	// Find null terminator separating description from value
 	nullIdx := findNullTerminator(data, encoding)
 	if nullIdx < 0 {
 		return
@@ -306,41 +343,8 @@ func parseTXXXFrame(frame ID3v2Frame, file *types.File) {
 	description := decodeText(data[:nullIdx], encoding)
 	value := decodeText(data[nullIdx+terminatorSize(encoding):], encoding)
 
-	// Map common extended metadata fields (TXXX custom tags)
-	descLower := strings.ToLower(description)
-	switch descLower {
-	case "narrator":
-		file.Tags.Narrator = value
-	case "series":
-		file.Tags.Series = value
-	case "series part", "seriespart", "part", "series-part":
-		file.Tags.SeriesPart = value
-	case "series position":
-		file.Tags.SeriesPart = value
-	case "publisher":
-		file.Tags.Publisher = value
-	case "isbn":
-		file.Tags.ISBN = value
-	case "asin", "audible_asin":
-		file.Tags.ASIN = value
-	case "language", "lang":
-		file.Tags.Language = value
-	case "description":
-		if file.Tags.Description == "" {
-			file.Tags.Description = value
-		}
-	case "mvnm", "movement name", "movement", "show":
-		if file.Tags.Series == "" {
-			file.Tags.Series = value
-		}
-	case "mvin", "movement number", "movement index", "episode_id":
-		if file.Tags.SeriesPart == "" {
-			file.Tags.SeriesPart = value
-		}
-	case "grouping":
-		if file.Tags.Grouping == "" {
-			file.Tags.Grouping = value
-		}
+	if handler, ok := txxxFieldHandlers[strings.ToLower(description)]; ok {
+		handler(file, value)
 	}
 }
 
@@ -596,10 +600,10 @@ func parseYear(text string) int {
 func parseTrackNumber(text string) (number, total int) {
 	parts := strings.Split(text, "/")
 	if len(parts) >= 1 {
-		_, _ = fmt.Sscanf(parts[0], "%d", &number) //nolint:errcheck // Best effort parsing, zero value is fine
+		_, _ = fmt.Sscanf(parts[0], "%d", &number)
 	}
 	if len(parts) >= 2 {
-		_, _ = fmt.Sscanf(parts[1], "%d", &total) //nolint:errcheck // Best effort parsing, zero value is fine
+		_, _ = fmt.Sscanf(parts[1], "%d", &total)
 	}
 	return
 }

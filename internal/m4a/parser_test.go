@@ -1,6 +1,7 @@
 package m4a
 
 import (
+	"context"
 	"bytes"
 	"encoding/binary"
 	"os"
@@ -83,7 +84,7 @@ func TestParse_Success(t *testing.T) {
 
 	// Parse the file
 	p := &parser{}
-	file, err := p.Parse(f, stat.Size(), tmpFile.Name())
+	file, err := p.Parse(context.Background(), f, stat.Size(), tmpFile.Name())
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
 	}
@@ -149,7 +150,7 @@ func TestParse_UnknownBrand(t *testing.T) {
 	// Parse should succeed and default to M4A format
 	// The parser is permissive and will attempt to parse any M4-like file
 	p := &parser{}
-	file, err := p.Parse(f, stat.Size(), tmpFile.Name())
+	file, err := p.Parse(context.Background(), f, stat.Size(), tmpFile.Name())
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
 	}
@@ -187,7 +188,7 @@ func TestParse_NoMetadata(t *testing.T) {
 
 	// Parse the file
 	p := &parser{}
-	file, err := p.Parse(f, stat.Size(), tmpFile.Name())
+	file, err := p.Parse(context.Background(), f, stat.Size(), tmpFile.Name())
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
 	}
@@ -232,7 +233,7 @@ func TestParse_WithArtwork_Integration(t *testing.T) {
 
 	// Parse with parser
 	p := &parser{}
-	parsedFile, err := p.Parse(file, stat.Size(), tmpFile.Name())
+	parsedFile, err := p.Parse(context.Background(), file, stat.Size(), tmpFile.Name())
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
 	}
@@ -243,7 +244,7 @@ func TestParse_WithArtwork_Integration(t *testing.T) {
 	}
 
 	// Now extract artwork separately (lazy loading)
-	artwork, err := p.ExtractArtwork(file, stat.Size(), tmpFile.Name())
+	artwork, err := p.ExtractArtwork(context.Background(), file, stat.Size(), tmpFile.Name())
 	if err != nil {
 		t.Fatalf("ExtractArtwork failed: %v", err)
 	}

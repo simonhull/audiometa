@@ -10,10 +10,15 @@ import (
 )
 
 var (
-	errAPICTooShort     = errors.New("APIC frame too short")
-	errAPICNoMIMETerm   = errors.New("APIC MIME type not null-terminated")
-	errAPICTruncated    = errors.New("APIC frame truncated after MIME type")
-	errAPICNoImageData  = errors.New("APIC frame has no image data")
+	errAPICTooShort    = errors.New("APIC frame too short")
+	errAPICNoMIMETerm  = errors.New("APIC MIME type not null-terminated")
+	errAPICTruncated   = errors.New("APIC frame truncated after MIME type")
+	errAPICNoImageData = errors.New("APIC frame has no image data")
+)
+
+const (
+	mimeJPEG = "image/jpeg"
+	mimePNG  = "image/png"
 )
 
 // extractArtwork extracts embedded artwork from MP3 files.
@@ -121,13 +126,14 @@ func parseAPICFrame(data []byte) (types.Artwork, error) {
 	pos += mimeEnd + 1
 
 	// Handle legacy MIME type markers
-	if mimeType == "JPG" || mimeType == "jpg" {
-		mimeType = "image/jpeg"
-	} else if mimeType == "PNG" || mimeType == "png" {
-		mimeType = "image/png"
-	} else if mimeType == "" || mimeType == "-->" {
+	switch mimeType {
+	case "JPG", "jpg":
+		mimeType = mimeJPEG
+	case "PNG", "png":
+		mimeType = mimePNG
+	case "", "-->":
 		// Empty or URL reference - try to detect from data
-		mimeType = "image/jpeg" // Default, will be overridden if PNG detected
+		mimeType = mimeJPEG // Default, will be overridden if PNG detected
 	}
 
 	if pos >= len(data) {
@@ -144,10 +150,9 @@ func parseAPICFrame(data []byte) (types.Artwork, error) {
 	if descEnd >= 0 {
 		description = decodeText(data[pos:pos+descEnd], encoding)
 		pos += descEnd + terminatorSize(encoding)
-	} else {
-		// No null terminator found - treat rest as image data
-		// Some encoders don't properly null-terminate the description
 	}
+	// If no null terminator was found, treat remaining bytes as image data
+	// (some encoders don't properly null-terminate the description).
 
 	if pos >= len(data) {
 		return types.Artwork{}, errAPICNoImageData
@@ -175,45 +180,33 @@ func parseAPICFrame(data []byte) (types.Artwork, error) {
 }
 
 // detectMIMEType detects image MIME type from magic bytes.
+//
+//nolint:gocyclo // Flat dispatch on image magic bytes; complexity = number of supported formats.
 func detectMIMEType(data []byte) string {
-	if len(data) < 4 {
+	switch {
+	case len(data) < 4:
+		return ""
+	case data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF:
+		return mimeJPEG
+	case data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4E && data[3] == 0x47:
+		return mimePNG
+	case data[0] == 0x47 && data[1] == 0x49 && data[2] == 0x46:
+		return "image/gif"
+	case data[0] == 0x42 && data[1] == 0x4D:
+		return "image/bmp"
+	case len(data) >= 12 && string(data[0:4]) == "RIFF" && string(data[8:12]) == "WEBP":
+		return "image/webp"
+	default:
 		return ""
 	}
-
-	// JPEG: FF D8 FF
-	if data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF {
-		return "image/jpeg"
-	}
-
-	// PNG: 89 50 4E 47
-	if data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4E && data[3] == 0x47 {
-		return "image/png"
-	}
-
-	// GIF: 47 49 46
-	if data[0] == 0x47 && data[1] == 0x49 && data[2] == 0x46 {
-		return "image/gif"
-	}
-
-	// BMP: 42 4D
-	if data[0] == 0x42 && data[1] == 0x4D {
-		return "image/bmp"
-	}
-
-	// WebP: RIFF....WEBP
-	if len(data) >= 12 && string(data[0:4]) == "RIFF" && string(data[8:12]) == "WEBP" {
-		return "image/webp"
-	}
-
-	return ""
 }
 
 // detectImageDimensions extracts width/height from image data.
 func detectImageDimensions(data []byte, mimeType string) (int, int) {
 	switch mimeType {
-	case "image/jpeg":
+	case mimeJPEG:
 		return detectJPEGDimensions(data)
-	case "image/png":
+	case mimePNG:
 		return detectPNGDimensions(data)
 	default:
 		return 0, 0
@@ -224,7 +217,7 @@ func detectImageDimensions(data []byte, mimeType string) (int, int) {
 func detectJPEGDimensions(data []byte) (int, int) {
 	// JPEG structure: markers are 0xFF followed by marker type
 	// SOF markers contain dimensions: SOF0 (0xC0), SOF1 (0xC1), SOF2 (0xC2)
-	for i := 0; i < len(data)-9; i++ {
+	for i := range len(data) - 9 {
 		if data[i] != 0xFF {
 			continue
 		}

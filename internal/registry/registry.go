@@ -2,7 +2,9 @@
 package registry
 
 import (
+	"context"
 	"io"
+	"sync"
 
 	"github.com/simonhull/audiometa/internal/types"
 )
@@ -11,26 +13,35 @@ import (
 type FormatParser interface {
 	// Parse extracts metadata from an audio file.
 	// Returns a partially initialized File (Path, Format, Size set by caller).
-	Parse(r io.ReaderAt, size int64, path string) (*types.File, error)
+	// The context is checked at major parse boundaries so callers can cancel
+	// long-running parses (large M4B chapter scans, dense MP3 frame walks).
+	Parse(ctx context.Context, r io.ReaderAt, size int64, path string) (*types.File, error)
 }
 
 // ArtworkExtractor is an optional interface for parsers that support artwork extraction.
 type ArtworkExtractor interface {
 	// ExtractArtwork extracts embedded artwork from the file.
-	ExtractArtwork(r io.ReaderAt, size int64, path string) ([]types.Artwork, error)
+	// The context is checked at entry; long extractions will yield to cancellation.
+	ExtractArtwork(ctx context.Context, r io.ReaderAt, size int64, path string) ([]types.Artwork, error)
 }
 
-// parsers maps formats to their parsers.
-var parsers = make(map[types.Format]FormatParser)
+var (
+	mu      sync.RWMutex
+	parsers = make(map[types.Format]FormatParser)
+)
 
-// Register registers a parser for a format.
-// This is called by format packages during initialization (init functions).
+// Register registers a parser for a format. Safe for concurrent use, though
+// in practice it is only called from init() in format packages.
 func Register(format types.Format, parser FormatParser) {
+	mu.Lock()
+	defer mu.Unlock()
 	parsers[format] = parser
 }
 
 // Get returns the parser for a given format.
 // Returns nil if no parser is registered for the format.
 func Get(format types.Format) FormatParser {
+	mu.RLock()
+	defer mu.RUnlock()
 	return parsers[format]
 }

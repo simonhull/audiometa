@@ -1,13 +1,15 @@
 package ogg
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"time"
 
 	"github.com/simonhull/audiometa/internal/binary"
-	"github.com/simonhull/audiometa/internal/registry"
 	"github.com/simonhull/audiometa/internal/parsing"
+	"github.com/simonhull/audiometa/internal/registry"
 	"github.com/simonhull/audiometa/internal/types"
 )
 
@@ -20,7 +22,11 @@ const (
 type parser struct{}
 
 // Parse parses an Ogg Vorbis file and extracts metadata.
-func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, error) { //nolint:gocyclo // Multiple codec types and error handling require branching
+func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path string) (*types.File, error) { //nolint:gocyclo // Multiple codec types and error handling require branching
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	// Create safe reader
 	sr := binary.NewSafeReader(r, size, path)
 
@@ -62,6 +68,7 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, err
 			file.Warnings = append(file.Warnings, types.Warning{
 				Stage:   "metadata",
 				Message: fmt.Sprintf("failed to read Ogg page %d: %v", i, err),
+				Err:     err,
 				Offset:  offset,
 			})
 			break
@@ -71,7 +78,7 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, err
 	}
 
 	if len(pages) == 0 {
-		return nil, fmt.Errorf("no Ogg pages found")
+		return nil, errors.New("no Ogg pages found")
 	}
 
 	// Extract packets from pages
@@ -98,6 +105,7 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, err
 			file.Warnings = append(file.Warnings, types.Warning{
 				Stage:   "metadata",
 				Message: fmt.Sprintf("failed to parse Vorbis comment header: %v", err),
+				Err:     err,
 			})
 		}
 
@@ -109,6 +117,7 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, err
 				file.Warnings = append(file.Warnings, types.Warning{
 					Stage:   "technical",
 					Message: fmt.Sprintf("failed to calculate duration: %v", err),
+					Err:     err,
 				})
 			} else {
 				file.Audio.Duration = duration
@@ -128,6 +137,7 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, err
 			file.Warnings = append(file.Warnings, types.Warning{
 				Stage:   "metadata",
 				Message: fmt.Sprintf("failed to parse OpusTags header: %v", err),
+				Err:     err,
 			})
 		}
 
@@ -138,6 +148,7 @@ func (p *parser) Parse(r io.ReaderAt, size int64, path string) (*types.File, err
 			file.Warnings = append(file.Warnings, types.Warning{
 				Stage:   "technical",
 				Message: fmt.Sprintf("failed to calculate duration: %v", err),
+				Err:     err,
 			})
 		} else {
 			file.Audio.Duration = duration
@@ -222,7 +233,7 @@ func estimateOpusBitrate(fileSize int64, duration time.Duration) int {
 // Duration = granule_position / sample_rate.
 func calculateDuration(sr *binary.SafeReader, fileSize int64, sampleRate int) (time.Duration, error) {
 	if sampleRate == 0 {
-		return 0, fmt.Errorf("sample rate is zero")
+		return 0, errors.New("sample rate is zero")
 	}
 
 	// Find last page's granule position
@@ -233,7 +244,7 @@ func calculateDuration(sr *binary.SafeReader, fileSize int64, sampleRate int) (t
 
 	// Granule position -1 means "not set"
 	if granule < 0 {
-		return 0, fmt.Errorf("granule position not set")
+		return 0, errors.New("granule position not set")
 	}
 
 	// Calculate duration (granule is in samples)

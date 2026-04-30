@@ -112,7 +112,7 @@ func ParseChapters(comments []string, fileDuration time.Duration) []types.Chapte
 		var endTime time.Duration
 		if i < len(chapterList)-1 {
 			// End at start of next chapter (ignore error, endTime stays 0 if invalid)
-			endTime, _ = parseChapterTimestamp(chapterList[i+1].timestamp) //nolint:errcheck // Invalid next timestamp is non-fatal, endTime stays 0
+			endTime, _ = parseChapterTimestamp(chapterList[i+1].timestamp)
 		} else if fileDuration > 0 {
 			// Last chapter: use file duration
 			endTime = fileDuration

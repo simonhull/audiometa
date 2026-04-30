@@ -23,7 +23,7 @@ func ParseComment(comment string, file *types.File) error { //nolint:gocyclo // 
 	tags := &file.Tags
 	// Find the '=' separator
 	eq := -1
-	for i := 0; i < len(comment); i++ {
+	for i := range len(comment) {
 		if comment[i] == '=' {
 			eq = i
 			break
@@ -62,13 +62,13 @@ func ParseComment(comment string, file *types.File) error { //nolint:gocyclo // 
 	case "ORIGINALDATE":
 		tags.OriginalDate = value
 	case "TRACKNUMBER":
-		_, _ = fmt.Sscanf(value, "%d", &tags.TrackNumber) //nolint:errcheck // Best effort parsing, zero value is fine
+		_, _ = fmt.Sscanf(value, "%d", &tags.TrackNumber)
 	case "TRACKTOTAL", "TOTALTRACKS":
-		_, _ = fmt.Sscanf(value, "%d", &tags.TrackTotal) //nolint:errcheck // Best effort parsing, zero value is fine
+		_, _ = fmt.Sscanf(value, "%d", &tags.TrackTotal)
 	case "DISCNUMBER":
-		_, _ = fmt.Sscanf(value, "%d", &tags.DiscNumber) //nolint:errcheck // Best effort parsing, zero value is fine
+		_, _ = fmt.Sscanf(value, "%d", &tags.DiscNumber)
 	case "DISCTOTAL", "TOTALDISCS":
-		_, _ = fmt.Sscanf(value, "%d", &tags.DiscTotal) //nolint:errcheck // Best effort parsing, zero value is fine
+		_, _ = fmt.Sscanf(value, "%d", &tags.DiscTotal)
 	case "GENRE":
 		tags.Genres = append(tags.Genres, value)
 	case "COMPOSER":
@@ -161,12 +161,12 @@ func parseReplayGainValue(s string) float64 {
 	s = strings.TrimSuffix(s, " dB")
 	s = strings.TrimSuffix(s, "dB")
 	s = strings.TrimSpace(s)
-	val, _ := strconv.ParseFloat(s, 64) //nolint:errcheck // Best effort parsing, zero value is fine
+	val, _ := strconv.ParseFloat(s, 64)
 	return val
 }
 
 // parseReplayGainPeak parses a ReplayGain peak value like "0.988127".
 func parseReplayGainPeak(s string) float64 {
-	val, _ := strconv.ParseFloat(strings.TrimSpace(s), 64) //nolint:errcheck // Best effort parsing, zero value is fine
+	val, _ := strconv.ParseFloat(strings.TrimSpace(s), 64)
 	return val
 }

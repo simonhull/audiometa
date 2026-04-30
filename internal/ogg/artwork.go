@@ -1,8 +1,10 @@
 package ogg
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -15,11 +17,15 @@ import (
 //
 // Ogg files can embed artwork via the METADATA_BLOCK_PICTURE Vorbis comment,
 // which contains a base64-encoded FLAC picture block.
-func (p *parser) ExtractArtwork(r io.ReaderAt, size int64, path string) ([]types.Artwork, error) {
+func (p *parser) ExtractArtwork(ctx context.Context, r io.ReaderAt, size int64, path string) ([]types.Artwork, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	sr := binutil.NewSafeReader(r, size, path)
 
 	// Parse file to get Vorbis comments
-	file, err := p.Parse(r, size, path)
+	file, err := p.Parse(ctx, r, size, path)
 	if err != nil {
 		return nil, fmt.Errorf("parse file: %w", err)
 	}
@@ -86,7 +92,7 @@ func parseMetadataBlockPicture(base64Value string) (types.Artwork, error) {
 	offset += 4
 
 	if offset+int(mimeLength) > len(data) {
-		return types.Artwork{}, fmt.Errorf("MIME type length exceeds data")
+		return types.Artwork{}, errors.New("MIME type length exceeds data")
 	}
 
 	// Read MIME type
@@ -95,13 +101,13 @@ func parseMetadataBlockPicture(base64Value string) (types.Artwork, error) {
 
 	// Read description length
 	if offset+4 > len(data) {
-		return types.Artwork{}, fmt.Errorf("unexpected end of data")
+		return types.Artwork{}, errors.New("unexpected end of data")
 	}
 	descLength := binary.BigEndian.Uint32(data[offset:])
 	offset += 4
 
 	if offset+int(descLength) > len(data) {
-		return types.Artwork{}, fmt.Errorf("description length exceeds data")
+		return types.Artwork{}, errors.New("description length exceeds data")
 	}
 
 	// Read description
@@ -110,7 +116,7 @@ func parseMetadataBlockPicture(base64Value string) (types.Artwork, error) {
 
 	// Read width, height (skip color depth and indexed colors)
 	if offset+16 > len(data) {
-		return types.Artwork{}, fmt.Errorf("unexpected end of data")
+		return types.Artwork{}, errors.New("unexpected end of data")
 	}
 	width := binary.BigEndian.Uint32(data[offset:])
 	offset += 4
@@ -122,13 +128,13 @@ func parseMetadataBlockPicture(base64Value string) (types.Artwork, error) {
 
 	// Read picture data length
 	if offset+4 > len(data) {
-		return types.Artwork{}, fmt.Errorf("unexpected end of data")
+		return types.Artwork{}, errors.New("unexpected end of data")
 	}
 	dataLength := binary.BigEndian.Uint32(data[offset:])
 	offset += 4
 
 	if offset+int(dataLength) > len(data) {
-		return types.Artwork{}, fmt.Errorf("picture data length exceeds data")
+		return types.Artwork{}, errors.New("picture data length exceeds data")
 	}
 
 	// Read picture data

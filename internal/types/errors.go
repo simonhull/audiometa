@@ -58,6 +58,11 @@ type Warning struct {
 	// Warning message
 	Message string
 
+	// Err is the underlying error, if any. Callers can use errors.Is/As
+	// against this via Warning.Unwrap(). May be nil for warnings that
+	// don't originate from a Go error value.
+	Err error
+
 	// File offset where the issue occurred (0 if not applicable)
 	Offset int64
 }
@@ -69,3 +74,6 @@ func (w Warning) String() string {
 	}
 	return fmt.Sprintf("%s: %s", w.Stage, w.Message)
 }
+
+// Unwrap returns the underlying error so callers can use errors.Is/As.
+func (w Warning) Unwrap() error { return w.Err }

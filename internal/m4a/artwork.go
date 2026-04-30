@@ -166,7 +166,7 @@ func detectImageDimensions(data []byte, mimeType string) (int, int) {
 func detectJPEGDimensions(data []byte) (int, int) {
 	// JPEG structure: markers are 0xFF followed by marker type
 	// SOF markers contain dimensions: SOF0 (0xC0), SOF1 (0xC1), SOF2 (0xC2)
-	for i := 0; i < len(data)-9; i++ {
+	for i := range len(data) - 9 {
 		if data[i] != 0xFF {
 			continue
 		}
