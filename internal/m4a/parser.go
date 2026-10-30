@@ -109,7 +109,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	// Extract metadata from ilst
 	if err := extractIlstMetadata(sr, ilstAtom, file); err != nil {
 		file.Warnings = append(file.Warnings, types.Warning{
-			Stage:   "metadata",
+			Stage:   types.StageMetadata,
 			Message: err.Error(),
 			Err:     err,
 		})
@@ -118,7 +118,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	// Parse technical info (duration, bitrate, codec, sample rate, channels)
 	if err := parseTechnicalInfo(sr, moovAtom, file); err != nil {
 		file.Warnings = append(file.Warnings, types.Warning{
-			Stage:   "technical",
+			Stage:   types.StageTechnical,
 			Message: err.Error(),
 			Err:     err,
 		})
@@ -128,7 +128,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	chapters, err := parseChapters(sr, moovAtom, file.Audio.Duration)
 	if err != nil {
 		file.Warnings = append(file.Warnings, types.Warning{
-			Stage:   "chapters",
+			Stage:   types.StageChapters,
 			Message: err.Error(),
 			Err:     err,
 		})
@@ -140,7 +140,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	if ilstAtom != nil {
 		if err := parseAudiobookTags(sr, ilstAtom, file); err != nil {
 			file.Warnings = append(file.Warnings, types.Warning{
-				Stage:   "metadata",
+				Stage:   types.StageMetadata,
 				Message: err.Error(),
 				Err:     err,
 			})

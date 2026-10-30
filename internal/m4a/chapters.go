@@ -170,7 +170,7 @@ func findChapterTrackReference(sr *binary.SafeReader, moovAtom *Atom) uint32 {
 			break
 		}
 
-		if trakAtom.Type == "trak" {
+		if trakAtom.Type == atomTrak {
 			trackID := extractChapterTrackID(sr, trakAtom)
 			if trackID != 0 {
 				return trackID
@@ -214,7 +214,7 @@ func findTrackByID(sr *binary.SafeReader, moovAtom *Atom, targetID uint32) *Atom
 			break
 		}
 
-		if trakAtom.Type == "trak" {
+		if trakAtom.Type == atomTrak {
 			trackID := readTrackID(sr, trakAtom)
 			if trackID == targetID {
 				return trakAtom

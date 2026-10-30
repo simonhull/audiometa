@@ -19,3 +19,11 @@ type CorruptedFileError = types.CorruptedFileError
 // Warning is an alias to types.Warning for backwards compatibility.
 // Re-exporting from internal/types to maintain public API.
 type Warning = types.Warning
+
+// Parsing stages reported in Warning.Stage.
+const (
+	StageMetadata  = types.StageMetadata
+	StageTechnical = types.StageTechnical
+	StageChapters  = types.StageChapters
+	StageArtwork   = types.StageArtwork
+)

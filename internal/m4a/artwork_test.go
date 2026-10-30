@@ -1,8 +1,8 @@
 package m4a
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"encoding/binary"
 	"os"
 	"testing"

@@ -23,7 +23,7 @@ func parseTechnicalInfo(sr *binary.SafeReader, moovAtom *Atom, file *types.File)
 
 	// Find trak atom for audio format info
 	// Path: moov -> trak
-	trakAtom, err := findAtom(sr, moovAtom.DataOffset(), moovAtom.DataOffset()+int64(moovAtom.DataSize()), "trak")
+	trakAtom, err := findAtom(sr, moovAtom.DataOffset(), moovAtom.DataOffset()+int64(moovAtom.DataSize()), atomTrak)
 	if err != nil {
 		return nil
 	}

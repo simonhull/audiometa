@@ -66,7 +66,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 			}
 			// Subsequent pages - add warning and stop
 			file.Warnings = append(file.Warnings, types.Warning{
-				Stage:   "metadata",
+				Stage:   types.StageMetadata,
 				Message: fmt.Sprintf("failed to read Ogg page %d: %v", i, err),
 				Err:     err,
 				Offset:  offset,
@@ -103,7 +103,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		if err := parseVorbisComment(packets[1], file); err != nil {
 			// Non-fatal - add warning
 			file.Warnings = append(file.Warnings, types.Warning{
-				Stage:   "metadata",
+				Stage:   types.StageMetadata,
 				Message: fmt.Sprintf("failed to parse Vorbis comment header: %v", err),
 				Err:     err,
 			})
@@ -115,7 +115,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 			if err != nil {
 				// Non-fatal - add warning
 				file.Warnings = append(file.Warnings, types.Warning{
-					Stage:   "technical",
+					Stage:   types.StageTechnical,
 					Message: fmt.Sprintf("failed to calculate duration: %v", err),
 					Err:     err,
 				})
@@ -135,7 +135,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		if err := parseOpusTags(packets[1], file); err != nil {
 			// Non-fatal - add warning
 			file.Warnings = append(file.Warnings, types.Warning{
-				Stage:   "metadata",
+				Stage:   types.StageMetadata,
 				Message: fmt.Sprintf("failed to parse OpusTags header: %v", err),
 				Err:     err,
 			})
@@ -146,7 +146,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		if err != nil {
 			// Non-fatal - add warning
 			file.Warnings = append(file.Warnings, types.Warning{
-				Stage:   "technical",
+				Stage:   types.StageTechnical,
 				Message: fmt.Sprintf("failed to calculate duration: %v", err),
 				Err:     err,
 			})

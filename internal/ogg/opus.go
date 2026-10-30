@@ -56,7 +56,7 @@ func parseOpusHead(data []byte, file *types.File) error {
 	// Add informational warnings for non-default values
 	if inputSampleRate != 48000 && inputSampleRate > 0 {
 		file.Warnings = append(file.Warnings, types.Warning{
-			Stage:   "technical",
+			Stage:   types.StageTechnical,
 			Message: fmt.Sprintf("original sample rate was %d Hz (Opus outputs at 48 kHz)", inputSampleRate),
 		})
 	}
@@ -64,7 +64,7 @@ func parseOpusHead(data []byte, file *types.File) error {
 	if outputGain != 0 {
 		gainDB := float64(outputGain) / 256.0
 		file.Warnings = append(file.Warnings, types.Warning{
-			Stage:   "technical",
+			Stage:   types.StageTechnical,
 			Message: fmt.Sprintf("output gain: %.2f dB", gainDB),
 		})
 	}
@@ -126,7 +126,7 @@ func parseOpusTags(data []byte, file *types.File) error {
 		if offset+4 > len(data) {
 			// Truncated, but don't fail - just stop reading
 			file.Warnings = append(file.Warnings, types.Warning{
-				Stage:   "metadata",
+				Stage:   types.StageMetadata,
 				Message: fmt.Sprintf("truncated comment %d (missing length field)", i),
 			})
 			break
@@ -138,7 +138,7 @@ func parseOpusTags(data []byte, file *types.File) error {
 		if offset+int(commentLen) > len(data) {
 			// Truncated comment data
 			file.Warnings = append(file.Warnings, types.Warning{
-				Stage:   "metadata",
+				Stage:   types.StageMetadata,
 				Message: fmt.Sprintf("truncated comment %d data (expected %d bytes)", i, commentLen),
 			})
 			break
@@ -155,7 +155,7 @@ func parseOpusTags(data []byte, file *types.File) error {
 		if err := vorbis.ParseComment(comment, file); err != nil {
 			// Non-fatal - add warning and continue
 			file.Warnings = append(file.Warnings, types.Warning{
-				Stage:   "metadata",
+				Stage:   types.StageMetadata,
 				Message: fmt.Sprintf("invalid Opus tag: %s", err),
 				Err:     err,
 			})

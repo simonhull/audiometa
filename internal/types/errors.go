@@ -41,6 +41,14 @@ func (e *CorruptedFileError) Error() string {
 	return fmt.Sprintf("%s: corrupted file at offset %d: %s", e.Path, e.Offset, e.Reason)
 }
 
+// Parsing stages reported in Warning.Stage.
+const (
+	StageMetadata  = "metadata"
+	StageTechnical = "technical"
+	StageChapters  = "chapters"
+	StageArtwork   = "artwork"
+)
+
 // Warning represents a non-fatal issue encountered during parsing.
 //
 // Warnings indicate problems that don't prevent metadata extraction but
@@ -53,7 +61,7 @@ func (e *CorruptedFileError) Error() string {
 // Warnings are collected in File.Warnings during parsing.
 type Warning struct {
 	// Stage where the warning occurred
-	Stage string // "metadata", "technical", "chapters", "artwork"
+	Stage string // one of StageMetadata, StageTechnical, StageChapters, StageArtwork
 
 	// Warning message
 	Message string

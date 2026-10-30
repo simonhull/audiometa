@@ -68,7 +68,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		header, err := binary.Read[uint32](sr, offset, "metadata block header")
 		if err != nil {
 			file.Warnings = append(file.Warnings, types.Warning{
-				Stage:   "metadata",
+				Stage:   types.StageMetadata,
 				Message: fmt.Sprintf("failed to read metadata block header at offset %d: %v", offset, err),
 				Err:     err,
 				Offset:  offset,
@@ -88,7 +88,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		case blockTypeStreamInfo:
 			if err := parseStreamInfo(sr, offset, blockLength, file); err != nil {
 				file.Warnings = append(file.Warnings, types.Warning{
-					Stage:   "metadata",
+					Stage:   types.StageMetadata,
 					Message: fmt.Sprintf("failed to parse STREAMINFO: %v", err),
 					Err:     err,
 					Offset:  offset,
@@ -98,7 +98,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		case blockTypeVorbisComment:
 			if err := parseVorbisComment(sr, offset, blockLength, file); err != nil {
 				file.Warnings = append(file.Warnings, types.Warning{
-					Stage:   "metadata",
+					Stage:   types.StageMetadata,
 					Message: fmt.Sprintf("failed to parse Vorbis comments: %v", err),
 					Err:     err,
 					Offset:  offset,
@@ -121,7 +121,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		case blockTypeCueSheet:
 			if err := parseCueSheet(sr, offset, uint32(blockLength), file); err != nil {
 				file.Warnings = append(file.Warnings, types.Warning{
-					Stage:   "chapters",
+					Stage:   types.StageChapters,
 					Message: fmt.Sprintf("failed to parse CUESHEET: %v", err),
 					Err:     err,
 					Offset:  offset,
@@ -305,7 +305,7 @@ func parseVorbisComment(sr *binary.SafeReader, offset, _ int64, file *types.File
 		if err := vorbis.ParseComment(comment, file); err != nil {
 			// Non-fatal - add warning and continue
 			file.Warnings = append(file.Warnings, types.Warning{
-				Stage:   "metadata",
+				Stage:   types.StageMetadata,
 				Message: fmt.Sprintf("invalid Vorbis comment: %s", err),
 				Err:     err,
 			})

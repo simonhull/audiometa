@@ -37,17 +37,20 @@ func (a *Atom) DataOffset() int64 {
 	return a.Offset + headerSize
 }
 
+// atomTrak is the track container atom type.
+const atomTrak = "trak"
+
 // IsContainer returns true if this atom type can contain other atoms.
 func (a *Atom) IsContainer() bool {
 	containerTypes := map[string]bool{
-		"moov": true, // Movie container
-		"udta": true, // User data
-		"meta": true, // Metadata container
-		"ilst": true, // iTunes metadata list
-		"trak": true, // Track container
-		"mdia": true, // Media container
-		"minf": true, // Media information
-		"stbl": true, // Sample table
+		"moov":   true, // Movie container
+		"udta":   true, // User data
+		"meta":   true, // Metadata container
+		"ilst":   true, // iTunes metadata list
+		atomTrak: true, // Track container
+		"mdia":   true, // Media container
+		"minf":   true, // Media information
+		"stbl":   true, // Sample table
 	}
 	return containerTypes[a.Type]
 }

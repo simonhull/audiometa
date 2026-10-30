@@ -1,8 +1,8 @@
 package flac
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"os"

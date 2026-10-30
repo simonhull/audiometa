@@ -78,10 +78,7 @@ func DetectFormat(r io.ReaderAt, size int64, path string) (Format, error) { //no
 	// Read first 4 bytes for magic number detection
 	magic := make([]byte, 4)
 	if err := sr.ReadAt(magic, 0, "file magic bytes"); err != nil {
-		return FormatUnknown, &UnsupportedFormatError{
-			Path:   path,
-			Reason: "failed to read file header",
-		}
+		return FormatUnknown, errHeaderUnreadable(path)
 	}
 
 	// Check for FLAC (fLaC = 0x664C6143)
@@ -148,19 +145,13 @@ func DetectFormat(r io.ReaderAt, size int64, path string) (Format, error) { //no
 	// Read ftyp atom size (first 4 bytes)
 	atomSize, err := binary.Read[uint32](sr, 0, "ftyp atom size")
 	if err != nil {
-		return FormatUnknown, &UnsupportedFormatError{
-			Path:   path,
-			Reason: "failed to read file header",
-		}
+		return FormatUnknown, errHeaderUnreadable(path)
 	}
 
 	// Read ftyp atom type (next 4 bytes)
 	atomType, err := binary.Read[uint32](sr, 4, "ftyp atom type")
 	if err != nil {
-		return FormatUnknown, &UnsupportedFormatError{
-			Path:   path,
-			Reason: "failed to read file header",
-		}
+		return FormatUnknown, errHeaderUnreadable(path)
 	}
 
 	// Check if it's an ftyp atom (0x66747970 = "ftyp")
@@ -212,4 +203,9 @@ func DetectFormat(r io.ReaderAt, size int64, path string) (Format, error) { //no
 		Path:   path,
 		Reason: "unsupported file brand",
 	}
+}
+
+// errHeaderUnreadable reports that the bytes needed for format detection could not be read.
+func errHeaderUnreadable(path string) *UnsupportedFormatError {
+	return &UnsupportedFormatError{Path: path, Reason: "failed to read file header"}
 }

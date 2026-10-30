@@ -1,8 +1,8 @@
 package ogg
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"os"
