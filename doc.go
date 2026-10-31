@@ -4,7 +4,7 @@
 // It parses tags, technical audio properties, chapters and embedded artwork
 // from FLAC, MP3, M4A/M4B, Ogg Vorbis and Opus files. The format is detected
 // from the file's contents, so callers never pick a parser. [File.WriteTo] and
-// [Write] save edited tags and artwork; MP3 and FLAC are currently the
+// [Write] save edited tags and artwork; MP3, FLAC and M4A/M4B are currently the
 // writable formats.
 //
 // # Quick Start
@@ -53,7 +53,13 @@
 //     back to ID3v1 can show the stale ID3v1 title (audiometa itself does so
 //     when both TIT2 and TPE1 are gone).
 //   - M4A/M4B: iTunes ilst atoms including freeform (----) atoms, covr
-//     artwork, and QuickTime or Nero chapters.
+//     artwork, and QuickTime or Nero chapters. Writing rebuilds only the
+//     edited ilst items and covr, re-emits every other atom byte for byte,
+//     and never edits chapters. covr has no picture types: only front-cover
+//     or "other" JPEG, PNG or BMP images can be added. When the new moov
+//     outgrows its free space before the audio, the audio moves and every
+//     chunk offset is shifted; fragmented and DRM-protected files are
+//     refused.
 //   - Ogg Vorbis and Opus: Vorbis comments, METADATA_BLOCK_PICTURE artwork
 //     and CHAPTER comments.
 //
