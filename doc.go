@@ -66,6 +66,24 @@
 // WAV and AIFF are recognized by [DetectFormat] but have no parser, so [Open]
 // returns an [*UnsupportedFormatError] for them.
 //
+// # Writing Metadata
+//
+// [Write] opens a file, passes it to a callback that edits its tags and
+// artwork, and atomically replaces it:
+//
+//	err := audiometa.Write("song.flac", func(f *audiometa.File) error {
+//		f.Tags.Title = "New Title"
+//		f.Tags.Delete("COMMENT")
+//		return nil
+//	})
+//
+// Only the keys and fields you set or delete change; nothing is inferred from
+// another field. The replacement goes through a temporary file that must pass
+// verification (bit-identical audio, unchanged chapters) before it is renamed
+// over the original, so an error leaves the original untouched. [File.WriteTo]
+// streams the edited file to an [io.Writer] instead. Ogg Vorbis and Opus files
+// cannot be written yet: both return [ErrUnsupportedWrite].
+//
 // # Artwork
 //
 // Artwork is not read during [Open]. [File.ExtractArtwork] reads it on first

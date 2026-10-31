@@ -14,6 +14,8 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- Write API: `File.WriteTo`, `File.WriteToContext`, `Write`, `WriteContext`, `WithInPlace` and `WithPreserveModTime`; artwork editing with `File.AddArtwork`, `ReplaceArtwork`, `RemoveArtwork` and `RemoveAllArtwork`; sentinel errors `ErrUnsupportedWrite`, `ErrDRMProtected`, `ErrTagTooLarge`, `ErrConflictingEdits`, `ErrInvalidArtwork`, `ErrConcurrentModification` and `ErrVerifyFailed`. Writing is supported for MP3, FLAC and M4A/M4B; Ogg Vorbis and Opus return `ErrUnsupportedWrite`. The write API follows the same compatibility promise as the read API.
+- CI `write-gate` job: corpus round-trip, `ffprobe`/`ffmpeg`/`flac -t` oracle checks of edited files, and the `FuzzWriteRoundTrip` fuzz target.
 - MP3 writing through `File.WriteTo` and `Write`: edited keys, typed fields and APIC artwork are rewritten; every other ID3v2 frame (including CHAP/CTOC chapters, which are not editable) is preserved byte for byte, the ID3v2 version is kept (ID3v2.2 and untagged files get ID3v2.4), and `WithInPlace` works when the new tag fits in the old one. The ID3v1 trailer is copied verbatim and never updated, so after deleting `TIT2` a stale ID3v1 title can show through in readers that fall back to ID3v1 (audiometa does when both title and artist are gone).
 - FLAC writing through `File.WriteTo` and `Write`: edited Vorbis comments and PICTURE artwork are rewritten; every other metadata block (STREAMINFO, SEEKTABLE, APPLICATION, CUESHEET, unknown types) and the vendor string are preserved byte for byte, the PADDING block absorbs growth (when it runs out, 8192 bytes of fresh padding are added), and `WithInPlace` works when the edit fits in the existing padding. `CHAPTERnnn` comments and the CUESHEET are not editable.
 - M4A/M4B writing through `File.WriteTo` and `Write`: only the edited `ilst` items (one `data` atom per value; freeform `----` items under `com.apple.iTunes`) and `covr` change, and every other atom, including the `chpl` and QuickTime chapter track (not editable), is re-emitted byte for byte. The new `moov` reuses adjacent `free` space when it fits (then `WithInPlace` works); otherwise the audio moves and every `stco`/`co64` chunk offset is shifted. An `stco` offset that would pass 4 GiB, fragmented MP4 and DRM-protected tracks (FairPlay, CENC, AAX) are refused. Freeform keys must be upper-case, as the reader reports them.
@@ -54,6 +56,7 @@ All notable changes to this project are documented here.
 
 ### Changed
 
+- `Tags.Set` on tags returned by `Open` now also updates the corresponding typed field (for example `Set("TIT2", ...)` updates `Title`). Tags built by the caller are unaffected.
 - Faster parsing with far fewer syscalls: `SafeReader` buffers small reads, MP3 skips artwork payloads during `Open`, and the MP3 frame-sync scan is bounded.
 - Parse loops check the context, so `OpenContext` and `OpenMany` stop promptly on large files.
 - Series-parsing regexes are precompiled.

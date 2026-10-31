@@ -199,18 +199,19 @@ Raw keys are format-specific:
 
 ## Supported Formats
 
-| Format      | Read | Write   | Artwork | Chapters | Technical Info |
-|-------------|------|---------|---------|----------|----------------|
-| FLAC        | ✓    | planned | ✓       | ✓        | ✓              |
-| MP3         | ✓    | planned | ✓       | ✓        | ✓              |
-| M4A         | ✓    | planned | ✓       | ✓        | ✓              |
-| M4B         | ✓    | planned | ✓       | ✓        | ✓              |
-| Ogg Vorbis  | ✓    | planned | ✓       | ✓        | ✓              |
-| Opus        | ✓    | planned | ✓       | ✓        | ✓              |
+| Format      | Read | Write | Artwork | Chapters | Technical Info |
+|-------------|------|-------|---------|----------|----------------|
+| FLAC        | ✓    | ✓     | ✓       | ✓        | ✓              |
+| MP3         | ✓    | ✓     | ✓       | ✓        | ✓              |
+| M4A         | ✓    | ✓     | ✓       | ✓        | ✓              |
+| M4B         | ✓    | ✓     | ✓       | ✓        | ✓              |
+| Ogg Vorbis  | ✓    | -     | ✓       | ✓        | ✓              |
+| Opus        | ✓    | -     | ✓       | ✓        | ✓              |
 
-audiometa is read-only today. Write support is planned and designed
-([docs/design/020-write-support-design.md](docs/design/020-write-support-design.md)) but not
-implemented. WAV and AIFF are detected but not parsed.
+Ogg Vorbis and Opus writing is not supported yet (see
+[docs/design/020-write-support-design.md](docs/design/020-write-support-design.md)). WAV and AIFF
+are detected but not parsed. See [Writing metadata](#writing-metadata) for what writing does
+and does not touch.
 
 Tag formats:
 
@@ -244,6 +245,65 @@ for _, chapter := range file.Chapters {
         chapter.Source) // e.g. audiometa.ChapterSourceQuickTime
 }
 ```
+
+## Writing metadata
+
+MP3, FLAC and M4A/M4B files can be edited. `Write` opens the file, hands it to your
+callback, and atomically replaces it:
+
+```go
+err := audiometa.Write("book.m4b", func(f *audiometa.File) error {
+	f.Tags.Title = "The Way of Kings"
+	f.Tags.Narrator = "Michael Kramer"
+	f.Tags.Delete("\xa9cmt") // remove a tag by its native key
+	return f.ReplaceArtwork(audiometa.Artwork{Data: cover, Type: audiometa.ArtworkFrontCover})
+})
+```
+
+To stream the edited file somewhere else (the original is never touched), edit a `File` from
+`Open` and call `WriteTo`:
+
+```go
+f, _ := audiometa.Open("book.mp3")
+defer f.Close()
+f.Tags.Series = "The Stormlight Archive"
+_, err := f.WriteTo(w) // any io.Writer; WriteToContext takes a context
+```
+
+- **Only what you change is written.** audiometa never infers one field from another, on
+  read or on write: only the keys and fields you set or delete change. Writing `Narrator`
+  leaves the composer alone, and setting `Series` does not rewrite the grouping.
+- **Safety.** The new file is written to a temporary file in the same directory, synced,
+  verified (it must parse, with bit-identical audio and unchanged chapters) and renamed over
+  the original. On any error the original is untouched.
+- **Preservation.** Unknown frames, atoms and blocks, and every tag you did not edit, are kept
+  byte for byte.
+- **Chapters** are preserved but not editable: they stay as they are, and an edit that
+  targets chapter data returns `ErrUnsupportedWrite`.
+- **ID3.** v2.3 stays v2.3, v2.4 stays v2.4, and v2.2 or untagged files get v2.4. An existing
+  ID3v1 trailer is copied verbatim: it is never updated, added or removed. After deleting
+  `TIT2`, a reader that falls back to ID3v1 can show the stale ID3v1 title.
+- **Editing.** Change `f.Tags` fields directly, or use `Tags.Set` and `Tags.Delete` with
+  format-native keys. Editing a field and its native key to different values returns
+  `ErrConflictingEdits`.
+- **Artwork.** `AddArtwork`, `ReplaceArtwork`, `RemoveArtwork` and `RemoveAllArtwork`.
+  M4A cover art has no picture type (only front cover or other).
+- **DRM.** Encrypted files (FairPlay, CENC, AAX, ID3 encrypted frames) return
+  `ErrDRMProtected`.
+- **Not writable yet:** Ogg Vorbis and Opus return `ErrUnsupportedWrite`, as do fragmented
+  MP4 and faststart M4A files whose chunk offsets would pass 4 GiB.
+
+Typed fields a format has no native place for return `ErrUnsupportedWrite`:
+
+| Format | Typed fields that cannot be written |
+|--------|-------------------------------------|
+| MP3 | `Date`, `OriginalDate`, `Lyrics`, `Performers`, `Copyright`, `Label`, `CatalogNumber`, `Barcode`, `ISRC`, `MusicBrainz*` |
+| M4A/M4B | `OriginalDate`, `Performers`, `Label`, `CatalogNumber`, `Barcode`, `ISRC`, `MusicBrainz*` |
+| FLAC | none |
+
+Every writable format is gated in CI: a round-trip over the test corpus (audio bit-identical,
+untouched tags unchanged), an external check of edited files with `ffprobe`, `ffmpeg` and
+`flac -t`, and a fuzz target that applies random edits.
 
 ## Robustness
 
