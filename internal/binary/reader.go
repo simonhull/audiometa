@@ -7,6 +7,24 @@ import (
 	"io"
 )
 
+// OutOfBoundsError is returned when attempting to read beyond file bounds.
+type OutOfBoundsError struct {
+	Path   string
+	What   string
+	Offset int64
+	Length int
+	Size   int64
+}
+
+func (e *OutOfBoundsError) Error() string {
+	if e.Offset < 0 || e.Offset >= e.Size {
+		return fmt.Sprintf("%s: offset %d out of bounds (file size: %d) while reading %s",
+			e.Path, e.Offset, e.Size, e.What)
+	}
+	return fmt.Sprintf("%s: read of %d bytes at offset %d would exceed file size %d while reading %s",
+		e.Path, e.Length, e.Offset, e.Size, e.What)
+}
+
 // windowSize is the read-through cache size. Small reads are served from one
 // cached window of the file; reads larger than windowSize/4 go straight to the
 // underlying reader and leave the window untouched.
@@ -43,14 +61,8 @@ func (sr *SafeReader) Path() string {
 // ReadAt reads bytes at the given offset with context for error messages.
 func (sr *SafeReader) ReadAt(b []byte, off int64, what string) error {
 	// Check bounds
-	if off < 0 || off >= sr.size {
-		return fmt.Errorf("%s: offset %d out of bounds (file size: %d) while reading %s",
-			sr.path, off, sr.size, what)
-	}
-
-	if off+int64(len(b)) > sr.size {
-		return fmt.Errorf("%s: read of %d bytes at offset %d would exceed file size %d while reading %s",
-			sr.path, len(b), off, sr.size, what)
+	if off < 0 || off >= sr.size || off+int64(len(b)) > sr.size {
+		return &OutOfBoundsError{Path: sr.path, What: what, Offset: off, Length: len(b), Size: sr.size}
 	}
 
 	if len(b) <= windowSize/4 {

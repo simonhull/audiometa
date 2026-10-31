@@ -1,24 +1,14 @@
 package types
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/simonhull/audiometa/internal/binary"
+)
 
 // OutOfBoundsError is returned when attempting to read beyond file bounds.
-type OutOfBoundsError struct {
-	Path   string
-	What   string
-	Offset int64
-	Length int
-	Size   int64
-}
-
-func (e *OutOfBoundsError) Error() string {
-	if e.Offset >= e.Size {
-		return fmt.Sprintf("%s: offset %d out of bounds (file size: %d) while reading %s",
-			e.Path, e.Offset, e.Size, e.What)
-	}
-	return fmt.Sprintf("%s: read of %d bytes at offset %d would exceed file size %d while reading %s",
-		e.Path, e.Length, e.Offset, e.Size, e.What)
-}
+// It is defined in internal/binary, which cannot import this package.
+type OutOfBoundsError = binary.OutOfBoundsError
 
 // UnsupportedFormatError is returned when the file format is not M4B/M4A.
 type UnsupportedFormatError struct {

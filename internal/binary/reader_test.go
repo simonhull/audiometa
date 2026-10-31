@@ -333,3 +333,35 @@ func TestRead_ZeroAllocsAfterWarmup(t *testing.T) {
 		t.Errorf("allocs = %v, want 0", n)
 	}
 }
+
+func TestSafeReader_ReadAt_ReturnsOutOfBoundsError(t *testing.T) {
+	sr := NewSafeReader(&mockReader{data: seqData(10)}, 10, "p.bin")
+	tests := []struct {
+		name    string
+		off     int64
+		n       int
+		wantMsg string
+	}{
+		{"offset past end", 10, 1, "out of bounds"},
+		{"negative offset", -1, 1, "out of bounds"},
+		{"overrun", 8, 4, "would exceed file size"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := sr.ReadAt(make([]byte, tt.n), tt.off, "thing")
+			var oob *OutOfBoundsError
+			if !errors.As(err, &oob) {
+				t.Fatalf("errors.As failed for %v", err)
+			}
+			if oob.Offset != tt.off || oob.Length != tt.n || oob.Size != 10 || oob.Path != "p.bin" || oob.What != "thing" {
+				t.Errorf("fields = %+v", oob)
+			}
+			if !strings.Contains(err.Error(), tt.wantMsg) {
+				t.Errorf("message %q lacks %q", err.Error(), tt.wantMsg)
+			}
+			if tt.off < 0 && strings.Contains(err.Error(), "would exceed") {
+				t.Errorf("negative offset got overrun wording: %q", err.Error())
+			}
+		})
+	}
+}

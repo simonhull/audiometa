@@ -413,6 +413,9 @@ func findParser(format types.Format) FormatParser {
 //
 // This function is public to allow internal format packages to register themselves,
 // but it's not intended for external use. Do not call this function.
+//
+// Deprecated: parsers register themselves via internal/registry; external
+// callers cannot supply a usable FormatParser.
 func RegisterParser(format types.Format, parser FormatParser) {
 	registry.Register(format, parser)
 }
