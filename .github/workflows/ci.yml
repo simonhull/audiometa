@@ -98,3 +98,38 @@ jobs:
         go install golang.org/x/tools/cmd/stringer@${{ env.STRINGER_VERSION }}
         go generate ./...
         git diff --exit-code
+
+  write-gate:
+    name: Write gate
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+    - name: Set up Go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version: ${{ env.GO_VERSION }}
+        cache: true
+
+    - name: Install oracles
+      run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg flac
+
+    - name: Corpus round-trip
+      run: go test -race -count=1 -run 'WriteRoundTrip|AudioDigest|Example' -v .
+
+    - name: External oracle
+      env:
+        AUDIOMETA_REQUIRE_ORACLES: '1'
+      run: go test -race -count=1 -run 'WriteOracle' -v .
+
+    - name: Write fuzzing
+      run: go test -run '^$' -fuzz '^FuzzWriteRoundTrip$' -fuzztime 120s .
+
+    - name: Upload fuzz crashers
+      if: failure()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: fuzz-crashers
+        path: testdata/fuzz
