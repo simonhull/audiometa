@@ -90,3 +90,34 @@ func TestParse_UnsupportedFormat(t *testing.T) {
 		t.Errorf("expected UnsupportedFormatError, got %T", err)
 	}
 }
+
+func TestOpen_MPEG2MP3Fixture(t *testing.T) {
+	f, err := audiometa.Open("testdata/sample_mpeg2.mp3")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer f.Close()
+	if f.Audio.SampleRate != 22050 {
+		t.Errorf("SampleRate = %d, want 22050", f.Audio.SampleRate)
+	}
+	if f.Audio.Channels != 1 {
+		t.Errorf("Channels = %d, want 1", f.Audio.Channels)
+	}
+	if d := f.Audio.Duration.Seconds(); d < 1.8 || d > 2.2 {
+		t.Errorf("Duration = %v, want ~2s", f.Audio.Duration)
+	}
+}
+
+func TestOpen_MonoVBRFixture(t *testing.T) {
+	f, err := audiometa.Open("testdata/sample_mono_vbr.mp3")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer f.Close()
+	if !f.Audio.VBR {
+		t.Error("VBR = false, want true (Xing header at the mono offset)")
+	}
+	if d := f.Audio.Duration.Seconds(); d < 3.6 || d > 4.4 {
+		t.Errorf("Duration = %v, want ~4s", f.Audio.Duration)
+	}
+}

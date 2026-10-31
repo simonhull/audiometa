@@ -139,11 +139,27 @@ func parseMP3FrameHeader(header uint32) (bitrate, sampleRate, channels int) {
 	return
 }
 
+// sideInfoSize returns the Layer III side-information size in bytes for the
+// given frame header: MPEG-1: 32 (stereo modes) / 17 (mono); MPEG-2: 17 / 9.
+func sideInfoSize(header uint32) int64 {
+	mono := (header>>6)&0x3 == 3
+	if mpegVersion(header) == versionMPEG1 {
+		if mono {
+			return 17
+		}
+		return 32
+	}
+	if mono {
+		return 9
+	}
+	return 17
+}
+
 // parseVBRHeader checks for Xing/VBRI VBR headers and calculates accurate duration.
 func parseVBRHeader(sr *binutil.SafeReader, frameOffset int64, header uint32, sampleRate int) (time.Duration, bool) {
-	// Xing/Info header is 36 bytes after frame header for MPEG1
-	// Check for "Xing" or "Info" marker
-	xingOffset := frameOffset + 36
+	// Xing/Info follows the frame header and the side information, whose size
+	// depends on MPEG version and channel mode.
+	xingOffset := frameOffset + 4 + sideInfoSize(header)
 	buf := make([]byte, 120) // Read enough for Xing header
 	if err := sr.ReadAt(buf, xingOffset, "VBR header"); err != nil {
 		return 0, false
@@ -152,7 +168,7 @@ func parseVBRHeader(sr *binutil.SafeReader, frameOffset int64, header uint32, sa
 	// Check for Xing or Info marker
 	isXing := string(buf[0:4]) == "Xing" || string(buf[0:4]) == "Info"
 	if !isXing {
-		// Try VBRI header (different location)
+		// VBRI is always 32 bytes after the 4-byte header, regardless of channel mode.
 		vbriOffset := frameOffset + 36
 		vbriBuf := make([]byte, 32)
 		if err := sr.ReadAt(vbriBuf, vbriOffset, "VBRI header"); err == nil {
