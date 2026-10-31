@@ -143,7 +143,7 @@ for key, values := range file.Tags.All() {
 | Ogg Vorbis  | ✓    | 🚧    | -       | ✓        | ✓              |
 | Opus        | ✓    | 🚧    | -       | ✓        | ✓              |
 
-🚧 = Under design (see plans/design/020-write-support-design.md); not available yet.
+🚧 = Under design (see docs/design/020-write-support-design.md); not available yet.
 
 ### Chapter Support
 
