@@ -46,21 +46,6 @@ func (a *Atom) DataOffset() int64 {
 // atomTrak is the track container atom type.
 const atomTrak = "trak"
 
-// IsContainer returns true if this atom type can contain other atoms.
-func (a *Atom) IsContainer() bool {
-	containerTypes := map[string]bool{
-		"moov":   true, // Movie container
-		"udta":   true, // User data
-		"meta":   true, // Metadata container
-		"ilst":   true, // iTunes metadata list
-		atomTrak: true, // Track container
-		"mdia":   true, // Media container
-		"minf":   true, // Media information
-		"stbl":   true, // Sample table
-	}
-	return containerTypes[a.Type]
-}
-
 // readAtomHeader reads the atom header at offset. parentEnd is the exclusive end
 // of the enclosing container (the file size for top-level atoms). An atom that
 // does not fit inside its parent is rejected, so a caller that advances by

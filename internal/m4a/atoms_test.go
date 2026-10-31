@@ -182,33 +182,6 @@ func TestFindAtom_Nested(t *testing.T) {
 	}
 }
 
-func TestAtom_IsContainer(t *testing.T) {
-	tests := []struct {
-		atomType    string
-		isContainer bool
-	}{
-		{"moov", true},
-		{"udta", true},
-		{"meta", true},
-		{"ilst", true},
-		{"trak", true},
-		{"mdia", true},
-		{"minf", true},
-		{"stbl", true},
-		{"mdat", false},
-		{"free", false},
-		{"ftyp", false},
-		{"data", false},
-	}
-
-	for _, tt := range tests {
-		atom := &Atom{Type: tt.atomType}
-		if got := atom.IsContainer(); got != tt.isContainer {
-			t.Errorf("Atom(%s).IsContainer() = %v, want %v", tt.atomType, got, tt.isContainer)
-		}
-	}
-}
-
 func TestReadAtomHeader_ExceedsParent(t *testing.T) {
 	ext := func(size uint64) []byte {
 		buf := &bytes.Buffer{}
