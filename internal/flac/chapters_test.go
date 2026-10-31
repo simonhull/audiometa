@@ -162,3 +162,13 @@ func TestParse_ChapterCommentsWinOverCueSheet(t *testing.T) {
 		t.Errorf("chapters = %+v", file.Chapters)
 	}
 }
+
+func TestSamplesToDuration_HostileOffsetClampsInsteadOfWrapping(t *testing.T) {
+	got := samplesToDuration(^uint64(0), 1)
+	if got != time.Duration(1<<63-1) {
+		t.Errorf("got %v, want clamp to MaxInt64", got)
+	}
+	if got := samplesToDuration(44100*3, 44100); got != 3*time.Second {
+		t.Errorf("got %v, want 3s", got)
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/simonhull/audiometa/internal/binary"
 	"github.com/simonhull/audiometa/internal/types"
@@ -17,14 +18,14 @@ var errAtomNotFound = errors.New("atom not found")
 // Atom represents an MP4/M4A/M4B atom (box).
 type Atom struct {
 	Type     string
-	Size     uint64
+	Size     int64
 	Offset   int64
 	Extended bool
 }
 
 // DataSize returns the size of the atom's data (excluding header).
-func (a *Atom) DataSize() uint64 {
-	headerSize := uint64(8)
+func (a *Atom) DataSize() int64 {
+	headerSize := int64(8)
 	if a.Extended {
 		headerSize = 16
 	}
@@ -75,15 +76,21 @@ func readAtomHeader(sr *binary.SafeReader, offset, parentEnd int64) (*Atom, erro
 		if err != nil {
 			return nil, err
 		}
-		atom.Size = size64
+		if size64 > math.MaxInt64 {
+			return nil, &types.CorruptedFileError{
+				Offset: offset,
+				Reason: fmt.Sprintf("extended atom size %d exceeds the addressable range", size64),
+			}
+		}
+		atom.Size = int64(size64)
 		atom.Extended = true
 	} else {
-		atom.Size = uint64(size32)
+		atom.Size = int64(size32)
 		atom.Extended = false
 	}
 
 	// Validate atom size: at least its own header, at most what the parent has left.
-	minSize := uint64(8)
+	minSize := int64(8)
 	if atom.Extended {
 		minSize = 16
 	}
@@ -93,7 +100,7 @@ func readAtomHeader(sr *binary.SafeReader, offset, parentEnd int64) (*Atom, erro
 			Reason: fmt.Sprintf("invalid atom size %d (minimum is %d)", atom.Size, minSize),
 		}
 	}
-	if offset >= parentEnd || atom.Size > uint64(parentEnd-offset) {
+	if offset >= parentEnd || atom.Size > parentEnd-offset {
 		return nil, &types.CorruptedFileError{
 			Offset: offset,
 			Reason: fmt.Sprintf("atom %q size %d exceeds its container (%d bytes remain)", atom.Type, atom.Size, parentEnd-offset),
@@ -128,7 +135,7 @@ func findAtomContext(ctx context.Context, sr *binary.SafeReader, start, end int6
 		}
 
 		// readAtomHeader guarantees 8 <= atom.Size <= end-offset.
-		offset += int64(atom.Size)
+		offset += atom.Size
 	}
 
 	return nil, fmt.Errorf("atom '%s': %w", atomType, errAtomNotFound)

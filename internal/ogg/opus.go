@@ -42,7 +42,7 @@ func parseOpusHead(data []byte, file *types.File) error {
 	channels := data[9]
 	preSkip := binary.LittleEndian.Uint16(data[10:12])
 	inputSampleRate := binary.LittleEndian.Uint32(data[12:16])
-	outputGain := int16(binary.LittleEndian.Uint16(data[16:18]))
+	outputGain := int16(binary.LittleEndian.Uint16(data[16:18])) //nolint:gosec // G115: output gain is a signed Q7.8 field (RFC 7845); reinterpreting the bits is the decoding
 	mappingFamily := data[18]
 
 	// Populate file.Audio

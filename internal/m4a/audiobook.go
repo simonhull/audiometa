@@ -12,7 +12,7 @@ import (
 // parseAudiobookTags extracts narrator, series, publisher, etc. from custom atoms.
 func parseAudiobookTags(ctx context.Context, sr *binary.SafeReader, ilstAtom *Atom, file *types.File) error {
 	offset := ilstAtom.DataOffset()
-	end := offset + int64(ilstAtom.DataSize())
+	end := offset + ilstAtom.DataSize()
 
 	// Collect all custom tags for series part resolution
 	customTags := make(map[string]string)
@@ -38,7 +38,7 @@ func parseAudiobookTags(ctx context.Context, sr *binary.SafeReader, ilstAtom *At
 			}
 		}
 
-		offset += int64(atom.Size)
+		offset += atom.Size
 	}
 
 	// Apply fallbacks
@@ -62,7 +62,7 @@ func recordFreeformRaw(file *types.File, name, value string) {
 // parseCustomAtomWithTags parses a ---- custom atom and returns the field name and value.
 func parseCustomAtomWithTags(sr *binary.SafeReader, customAtom *Atom, file *types.File) (string, string, error) {
 	offset := customAtom.DataOffset()
-	end := offset + int64(customAtom.DataSize())
+	end := offset + customAtom.DataSize()
 
 	var namespace, fieldName, value string
 
@@ -78,7 +78,7 @@ func parseCustomAtomWithTags(sr *binary.SafeReader, customAtom *Atom, file *type
 			// Namespace (usually "com.apple.iTunes")
 			// Skip version+flags (4 bytes)
 			dataOffset := atom.DataOffset() + 4
-			dataSize := int64(atom.DataSize()) - 4
+			dataSize := atom.DataSize() - 4
 			if dataSize > 0 && sr.CheckLen(dataOffset, int(dataSize), 1, "mean namespace") == nil {
 				buf := make([]byte, dataSize)
 				if err := sr.ReadAt(buf, dataOffset, "mean namespace"); err == nil {
@@ -90,7 +90,7 @@ func parseCustomAtomWithTags(sr *binary.SafeReader, customAtom *Atom, file *type
 			// Field name (e.g., "Narrator", "Series")
 			// Skip version+flags (4 bytes)
 			dataOffset := atom.DataOffset() + 4
-			dataSize := int64(atom.DataSize()) - 4
+			dataSize := atom.DataSize() - 4
 			if dataSize > 0 && sr.CheckLen(dataOffset, int(dataSize), 1, "name field") == nil {
 				buf := make([]byte, dataSize)
 				if err := sr.ReadAt(buf, dataOffset, "name field"); err == nil {
@@ -102,7 +102,7 @@ func parseCustomAtomWithTags(sr *binary.SafeReader, customAtom *Atom, file *type
 			// Value - parse the data atom directly
 			// Skip version (1 byte) + flags (3 bytes) + reserved (4 bytes) = 8 bytes
 			valueOffset := atom.DataOffset() + 8
-			valueSize := int64(atom.DataSize()) - 8
+			valueSize := atom.DataSize() - 8
 			if valueSize > 0 && sr.CheckLen(valueOffset, int(valueSize), 1, "data value") == nil {
 				buf := make([]byte, valueSize)
 				if err := sr.ReadAt(buf, valueOffset, "data value"); err == nil {
@@ -112,7 +112,7 @@ func parseCustomAtomWithTags(sr *binary.SafeReader, customAtom *Atom, file *type
 			}
 		}
 
-		offset += int64(atom.Size)
+		offset += atom.Size
 	}
 
 	// Map field name to metadata field

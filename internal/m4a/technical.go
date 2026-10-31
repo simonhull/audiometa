@@ -12,7 +12,7 @@ import (
 // Returns nil (no error) even if atoms are missing - technical info is best-effort.
 func parseTechnicalInfo(sr *binary.SafeReader, moovAtom *Atom, file *types.File) error {
 	// Find mvhd (movie header) atom for duration
-	mvhdAtom, err := findAtom(sr, moovAtom.DataOffset(), moovAtom.DataOffset()+int64(moovAtom.DataSize()), "mvhd")
+	mvhdAtom, err := findAtom(sr, moovAtom.DataOffset(), moovAtom.DataOffset()+moovAtom.DataSize(), "mvhd")
 	if err != nil {
 		return nil
 	}
@@ -31,28 +31,28 @@ func parseTechnicalInfo(sr *binary.SafeReader, moovAtom *Atom, file *types.File)
 
 	// Find mdia atom
 	// Path: trak -> mdia
-	mdiaAtom, err := findAtom(sr, trakAtom.DataOffset(), trakAtom.DataOffset()+int64(trakAtom.DataSize()), "mdia")
+	mdiaAtom, err := findAtom(sr, trakAtom.DataOffset(), trakAtom.DataOffset()+trakAtom.DataSize(), "mdia")
 	if err != nil {
 		return nil
 	}
 
 	// Find minf atom
 	// Path: mdia -> minf
-	minfAtom, err := findAtom(sr, mdiaAtom.DataOffset(), mdiaAtom.DataOffset()+int64(mdiaAtom.DataSize()), "minf")
+	minfAtom, err := findAtom(sr, mdiaAtom.DataOffset(), mdiaAtom.DataOffset()+mdiaAtom.DataSize(), "minf")
 	if err != nil {
 		return nil
 	}
 
 	// Find stbl atom
 	// Path: minf -> stbl
-	stblAtom, err := findAtom(sr, minfAtom.DataOffset(), minfAtom.DataOffset()+int64(minfAtom.DataSize()), "stbl")
+	stblAtom, err := findAtom(sr, minfAtom.DataOffset(), minfAtom.DataOffset()+minfAtom.DataSize(), "stbl")
 	if err != nil {
 		return nil
 	}
 
 	// Find stsd (sample description) atom
 	// Path: stbl -> stsd
-	stsdAtom, err := findAtom(sr, stblAtom.DataOffset(), stblAtom.DataOffset()+int64(stblAtom.DataSize()), "stsd")
+	stsdAtom, err := findAtom(sr, stblAtom.DataOffset(), stblAtom.DataOffset()+stblAtom.DataSize(), "stsd")
 	if err != nil {
 		return nil
 	}
@@ -82,7 +82,7 @@ const handlerSound = "soun"
 // track declares a sound handler, it falls back to the first trak.
 func selectAudioTrak(sr *binary.SafeReader, moovAtom *Atom) *Atom {
 	offset := moovAtom.DataOffset()
-	end := offset + int64(moovAtom.DataSize())
+	end := offset + moovAtom.DataSize()
 
 	var first *Atom
 	for offset < end {
@@ -90,7 +90,7 @@ func selectAudioTrak(sr *binary.SafeReader, moovAtom *Atom) *Atom {
 		if err != nil {
 			break
 		}
-		offset += int64(atom.Size)
+		offset += atom.Size
 		if atom.Type != atomTrak {
 			continue
 		}
@@ -106,11 +106,11 @@ func selectAudioTrak(sr *binary.SafeReader, moovAtom *Atom) *Atom {
 
 // trakHandlerType returns the trak's mdia/hdlr handler type, or "" if absent.
 func trakHandlerType(sr *binary.SafeReader, trak *Atom) string {
-	mdia, err := findAtom(sr, trak.DataOffset(), trak.DataOffset()+int64(trak.DataSize()), "mdia")
+	mdia, err := findAtom(sr, trak.DataOffset(), trak.DataOffset()+trak.DataSize(), "mdia")
 	if err != nil {
 		return ""
 	}
-	hdlr, err := findAtom(sr, mdia.DataOffset(), mdia.DataOffset()+int64(mdia.DataSize()), "hdlr")
+	hdlr, err := findAtom(sr, mdia.DataOffset(), mdia.DataOffset()+mdia.DataSize(), "hdlr")
 	if err != nil || hdlr.DataSize() < 12 {
 		return ""
 	}
@@ -308,5 +308,5 @@ func mvhdDuration(duration uint64, timescale uint32) time.Duration {
 	if secs > math.MaxInt64/uint64(time.Second) {
 		return time.Duration(math.MaxInt64)
 	}
-	return time.Duration(secs)*time.Second + time.Duration(rem*uint64(time.Second)/ts)
+	return time.Duration(secs)*time.Second + time.Duration(rem*uint64(time.Second)/ts) //nolint:gosec // G115: rem < ts, so the quotient is < 1e9
 }

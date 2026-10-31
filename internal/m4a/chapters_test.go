@@ -430,3 +430,39 @@ func TestParseChunkOffsets_CountPastFile(t *testing.T) {
 		}
 	}
 }
+
+func TestParseChapters_ChplHostileStartTime(t *testing.T) {
+	chpl := createChplAtom([]struct {
+		time  int64
+		title string
+	}{{0, "One"}, {-1, "Overflows"}}) // 0xFFFF... as uint64 * 100 would wrap
+	moov := createMockAtom("moov", createMockAtom("udta", chpl))
+	got := parseQTChapters(t, moov, 0, 5*time.Minute)
+	for _, ch := range got {
+		if ch.StartTime < 0 {
+			t.Errorf("chapter %q has negative start %v", ch.Title, ch.StartTime)
+		}
+	}
+	if len(got) != 1 || got[0].Title != "One" {
+		t.Errorf("got %d chapters, want only the valid first one", len(got))
+	}
+}
+
+func TestParseChapterTimings_HugeAccumulationDoesNotWrap(t *testing.T) {
+	stts := sttsAtom([2]uint32{3, 0xFFFFFFFF})
+	stbl := createMockAtom("stbl", stts)
+	sr := audiobinary.NewSafeReader(bytes.NewReader(stbl), int64(len(stbl)), "t.m4b")
+	atom, err := readAtomHeader(sr, 0, int64(len(stbl)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	times, err := parseChapterTimings(context.Background(), sr, atom, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, d := range times {
+		if d < 0 {
+			t.Errorf("times[%d] = %v, want non-negative", i, d)
+		}
+	}
+}

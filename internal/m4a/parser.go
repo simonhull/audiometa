@@ -119,19 +119,19 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 // findIlst navigates moov → udta → meta → ilst and returns the ilst atom.
 // The returned error wraps errAtomNotFound when any level is simply absent.
 func findIlst(ctx context.Context, sr *binary.SafeReader, moovAtom *Atom) (*Atom, error) {
-	udtaAtom, err := findAtomContext(ctx, sr, moovAtom.DataOffset(), moovAtom.DataOffset()+int64(moovAtom.DataSize()), "udta")
+	udtaAtom, err := findAtomContext(ctx, sr, moovAtom.DataOffset(), moovAtom.DataOffset()+moovAtom.DataSize(), "udta")
 	if err != nil {
 		return nil, err
 	}
 
-	metaAtom, err := findAtomContext(ctx, sr, udtaAtom.DataOffset(), udtaAtom.DataOffset()+int64(udtaAtom.DataSize()), "meta")
+	metaAtom, err := findAtomContext(ctx, sr, udtaAtom.DataOffset(), udtaAtom.DataOffset()+udtaAtom.DataSize(), "meta")
 	if err != nil {
 		return nil, err
 	}
 
 	// meta is a full atom: 4 bytes of version+flags precede its children.
 	metaDataOffset := metaAtom.DataOffset() + 4
-	metaDataEnd := metaAtom.DataOffset() + int64(metaAtom.DataSize())
+	metaDataEnd := metaAtom.DataOffset() + metaAtom.DataSize()
 
 	return findAtomContext(ctx, sr, metaDataOffset, metaDataEnd, "ilst")
 }

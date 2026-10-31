@@ -172,7 +172,7 @@ func TestFindAtom_Nested(t *testing.T) {
 	}
 
 	// Now find meta inside udta
-	foundMeta, err := findAtom(sr, udtaAtom.DataOffset(), udtaAtom.DataOffset()+int64(udtaAtom.DataSize()), "meta")
+	foundMeta, err := findAtom(sr, udtaAtom.DataOffset(), udtaAtom.DataOffset()+udtaAtom.DataSize(), "meta")
 	if err != nil {
 		t.Fatalf("failed to find nested meta: %v", err)
 	}
@@ -209,5 +209,21 @@ func TestReadAtomHeader_ExceedsParent(t *testing.T) {
 				t.Error("expected error, got nil")
 			}
 		})
+	}
+}
+
+func TestReadAtomHeader_ExtendedSizeBeyondInt64(t *testing.T) {
+	for _, size := range []uint64{1 << 63, ^uint64(0)} {
+		buf := &bytes.Buffer{}
+		binary.Write(buf, binary.BigEndian, uint32(1))
+		buf.WriteString("mdat")
+		binary.Write(buf, binary.BigEndian, size)
+		data := buf.Bytes()
+		sr := audiobinary.NewSafeReader(bytes.NewReader(data), int64(len(data)), "test.m4b")
+
+		atom, err := readAtomHeader(sr, 0, int64(len(data)))
+		if err == nil {
+			t.Fatalf("size %#x: got atom %+v, want error", size, atom)
+		}
 	}
 }

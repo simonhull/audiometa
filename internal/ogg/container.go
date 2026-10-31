@@ -93,7 +93,7 @@ func readPage(sr *binary.SafeReader, offset int64) (*Page, int64, error) {
 
 	page := &Page{
 		HeaderType:      headerType,
-		GranulePosition: int64(granule),
+		GranulePosition: int64(granule), //nolint:gosec // G115: RFC 3533 granule position is a signed field; all-ones (-1) means no packet ends on the page
 		SerialNumber:    serial,
 		SequenceNumber:  sequence,
 		Data:            data,
@@ -117,7 +117,7 @@ func (p *Page) laceValues() []byte {
 	for ; n >= 255; n -= 255 {
 		lacing = append(lacing, 255)
 	}
-	return append(lacing, byte(n))
+	return append(lacing, byte(n)) //nolint:gosec // G115: the loop above leaves 0 <= n < 255
 }
 
 // splitPackets assembles packets from a series of pages using each page's
@@ -213,5 +213,5 @@ func findLastGranulePosition(sr *binary.SafeReader, fileSize int64) (int64, erro
 		return 0, err
 	}
 
-	return int64(granule), nil
+	return int64(granule), nil //nolint:gosec // G115: RFC 3533 granule position is a signed field; all-ones (-1) means no packet ends on the page
 }

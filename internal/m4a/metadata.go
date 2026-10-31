@@ -34,7 +34,7 @@ func decodeBEInteger(b []byte, signed bool) string {
 		return strconv.FormatUint(u, 10)
 	}
 	shift := uint(64 - 8*len(b))
-	return strconv.FormatInt(int64(u<<shift)>>shift, 10)
+	return strconv.FormatInt(int64(u<<shift)>>shift, 10) //nolint:gosec // G115: deliberate two's-complement reinterpretation; the arithmetic shift sign-extends the len(b)-byte value
 }
 
 // parseMetadataTag extracts the string value from an iTunes metadata tag atom.
@@ -47,7 +47,7 @@ func parseMetadataTag(sr *binary.SafeReader, tagAtom *Atom) (string, error) {
 	}
 
 	// Find data atom inside tag
-	dataAtom, err := findAtom(sr, tagAtom.DataOffset(), tagAtom.DataOffset()+int64(tagAtom.DataSize()), "data")
+	dataAtom, err := findAtom(sr, tagAtom.DataOffset(), tagAtom.DataOffset()+tagAtom.DataSize(), "data")
 	if err != nil {
 		// No data atom found - return empty
 		return "", nil
@@ -61,7 +61,7 @@ func parseMetadataTag(sr *binary.SafeReader, tagAtom *Atom) (string, error) {
 	typeIndicator := vf & 0x00FFFFFF
 
 	valueOffset := dataAtom.DataOffset() + 8
-	valueSize := int64(dataAtom.DataSize()) - 8
+	valueSize := dataAtom.DataSize() - 8
 
 	if valueSize <= 0 {
 		return "", nil
@@ -104,7 +104,7 @@ func parseMetadataTag(sr *binary.SafeReader, tagAtom *Atom) (string, error) {
 // extractIlstMetadata parses all metadata items from the ilst atom.
 func extractIlstMetadata(ctx context.Context, sr *binary.SafeReader, ilstAtom *Atom, file *types.File) error {
 	offset := ilstAtom.DataOffset()
-	end := offset + int64(ilstAtom.DataSize())
+	end := offset + ilstAtom.DataSize()
 
 	for i := 0; offset < end; i++ {
 		if err := binary.Canceled(ctx, i); err != nil {
@@ -149,7 +149,7 @@ func extractIlstMetadata(ctx context.Context, sr *binary.SafeReader, ilstAtom *A
 		}
 
 		// Move to next tag
-		offset += int64(tagAtom.Size)
+		offset += tagAtom.Size
 	}
 
 	return nil
@@ -225,7 +225,7 @@ func parseTrackNumber(sr *binary.SafeReader, atom *Atom) (TrackData, error) {
 	result := TrackData{}
 
 	// Find data atom
-	dataAtom, err := findAtom(sr, atom.DataOffset(), atom.DataOffset()+int64(atom.DataSize()), "data")
+	dataAtom, err := findAtom(sr, atom.DataOffset(), atom.DataOffset()+atom.DataSize(), "data")
 	if err != nil {
 		return result, err
 	}

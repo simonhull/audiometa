@@ -148,7 +148,7 @@ func deunsyncTag(sr *binutil.SafeReader, header ID3v2Header) (*binutil.SafeReade
 	body = deunsync(body)
 	buf := make([]byte, 10, 10+len(body))
 	buf = append(buf, body...)
-	header.Size = uint32(len(body))
+	header.Size = uint32(len(body)) //nolint:gosec // G115: deunsync only removes bytes, so len(body) <= the original uint32 header.Size
 	return binutil.NewSafeReader(bytes.NewReader(buf), int64(len(buf)), sr.Path()), header, nil
 }
 
@@ -695,7 +695,7 @@ func extractChapterTitleFromSubframes(subframeData []byte, version byte, fallbac
 		}
 		id := string(subframeData[0:4])
 		size := uint64(decodeFrameSize(version, subframeData[4:8]))
-		if size > uint64(len(subframeData)-10) { // truncated/corrupt: stop, don't guess
+		if size > uint64(len(subframeData)-10) { //nolint:gosec // G115: the loop condition guarantees len(subframeData) >= 10 // truncated/corrupt: stop, don't guess
 			break
 		}
 		body := subframeData[10 : 10+size]

@@ -131,13 +131,13 @@ func parseMP3FrameHeader(header uint32) (bitrate, sampleRate, channels int) {
 
 	// Bitrate index (4 bits)
 	bitrateIdx := (header >> 12) & 0xF
-	if bitrateIdx < uint32(len(bitrates)) {
+	if bitrateIdx < uint32(len(bitrates)) { //nolint:gosec // G115: len of a small constant table
 		bitrate = bitrates[bitrateIdx] * 1000 // Convert to bps
 	}
 
 	// Sample rate index (2 bits)
 	sampleRateIdx := (header >> 10) & 0x3
-	if sampleRateIdx < uint32(len(sampleRates)) {
+	if sampleRateIdx < uint32(len(sampleRates)) { //nolint:gosec // G115: len of a small constant table
 		sampleRate = sampleRates[sampleRateIdx]
 	}
 
@@ -211,8 +211,8 @@ func parseVBRHeader(sr *binutil.SafeReader, frameOffset int64, header uint32, sa
 
 // calculateDurationFromFrames calculates duration from number of frames.
 func calculateDurationFromFrames(numFrames uint32, sampleRate, samplesPerFrame int) time.Duration {
-	totalSamples := uint64(numFrames) * uint64(samplesPerFrame)
-	durationSeconds := float64(totalSamples) / float64(sampleRate)
+	totalSamples := float64(numFrames) * float64(samplesPerFrame)
+	durationSeconds := totalSamples / float64(sampleRate)
 	return time.Duration(durationSeconds * float64(time.Second))
 }
 

@@ -33,7 +33,7 @@ func extractArtwork(ctx context.Context, sr *binary.SafeReader, size int64) ([]t
 	}
 
 	// Find covr atom inside ilst
-	covrAtom, err := findAtom(sr, ilstAtom.DataOffset(), ilstAtom.DataOffset()+int64(ilstAtom.DataSize()), "covr")
+	covrAtom, err := findAtom(sr, ilstAtom.DataOffset(), ilstAtom.DataOffset()+ilstAtom.DataSize(), "covr")
 	if err != nil {
 		// No covr atom = no artwork (not an error)
 		return nil, nil
@@ -41,7 +41,7 @@ func extractArtwork(ctx context.Context, sr *binary.SafeReader, size int64) ([]t
 
 	// Parse all data atoms inside covr
 	offset := covrAtom.DataOffset()
-	end := offset + int64(covrAtom.DataSize())
+	end := offset + covrAtom.DataSize()
 
 	for i := 0; offset < end; i++ {
 		if err := binary.Canceled(ctx, i); err != nil {
@@ -59,13 +59,13 @@ func extractArtwork(ctx context.Context, sr *binary.SafeReader, size int64) ([]t
 			if err != nil {
 				// Log but continue to next data atom
 				// Graceful degradation: some artwork is better than none
-				offset += int64(dataAtom.Size)
+				offset += dataAtom.Size
 				continue
 			}
 			artwork = append(artwork, art)
 		}
 
-		offset += int64(dataAtom.Size)
+		offset += dataAtom.Size
 	}
 
 	return artwork, nil
@@ -95,7 +95,7 @@ func parseCovrData(sr *binary.SafeReader, dataAtom *Atom) (types.Artwork, error)
 	offset += 4 + 4
 
 	// Read image data (rest of atom)
-	imageSize := int64(dataAtom.DataSize()) - 8
+	imageSize := dataAtom.DataSize() - 8
 	if imageSize <= 0 {
 		return types.Artwork{}, fmt.Errorf("invalid image size: %d", imageSize)
 	}

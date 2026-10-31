@@ -4,6 +4,7 @@ package flac
 import (
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -228,8 +229,12 @@ func trackStartSample(t CueTrack) uint64 {
 // samplesToDuration converts a sample count to a Duration without float rounding.
 // sampleRate is at most 2^20-1 (20-bit STREAMINFO field), so rem*1e9 cannot overflow uint64.
 func samplesToDuration(samples uint64, sampleRate int) time.Duration {
-	rate := uint64(sampleRate)
-	return time.Duration(samples/rate)*time.Second + time.Duration(samples%rate*uint64(time.Second)/rate)
+	rate := uint64(sampleRate) //nolint:gosec // G115: cuesheetToChapters returns early unless sampleRate > 0
+	secs := samples / rate
+	if secs > math.MaxInt64/uint64(time.Second) {
+		return time.Duration(math.MaxInt64) // Hostile cue offset: clamp instead of wrapping negative.
+	}
+	return time.Duration(secs)*time.Second + time.Duration(samples%rate*uint64(time.Second)/rate) //nolint:gosec // G115: remainder < rate, so the quotient is < 1e9
 }
 
 // cuesheetToChapters converts a CUESHEET to types.Chapter slice.
