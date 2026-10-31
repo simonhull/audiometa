@@ -268,15 +268,11 @@ func cuesheetToChapters(cuesheet *CueSheet, sampleRate int, fileDuration time.Du
 		return nil
 	}
 
-	for i := range chapters[:len(chapters)-1] {
-		chapters[i].EndTime = chapters[i+1].StartTime
-	}
-	last := &chapters[len(chapters)-1]
+	end := fileDuration
 	if leadOut != nil {
-		last.EndTime = samplesToDuration(leadOut.Offset, sampleRate)
-	} else {
-		last.EndTime = fileDuration
+		end = samplesToDuration(leadOut.Offset, sampleRate)
 	}
+	types.FillChapterEndTimes(chapters, end)
 
 	return chapters
 }

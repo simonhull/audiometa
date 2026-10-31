@@ -122,12 +122,7 @@ func ParseChapters(comments []string, fileDuration time.Duration) []types.Chapte
 	}
 
 	// End each chapter at the next one's start; the last at the file duration (0 if unknown).
-	for i := range chapters[:len(chapters)-1] {
-		chapters[i].EndTime = chapters[i+1].StartTime
-	}
-	if fileDuration > 0 {
-		chapters[len(chapters)-1].EndTime = fileDuration
-	}
+	types.FillChapterEndTimes(chapters, fileDuration)
 	return chapters
 }
 

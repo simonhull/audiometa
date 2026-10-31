@@ -49,3 +49,18 @@ const (
 	// ChapterSourceVorbisComment marks chapters read from CHAPTERxxx Vorbis comments (FLAC, Ogg Vorbis, Opus).
 	ChapterSourceVorbisComment ChapterSource = "vorbis_comment"
 )
+
+// FillChapterEndTimes sets each chapter's EndTime to the next chapter's
+// StartTime. The last chapter ends at fileDuration when it is positive;
+// otherwise its EndTime is left unchanged (zero for freshly built chapters).
+func FillChapterEndTimes(chapters []Chapter, fileDuration time.Duration) {
+	if len(chapters) == 0 {
+		return
+	}
+	for i := range chapters[:len(chapters)-1] {
+		chapters[i].EndTime = chapters[i+1].StartTime
+	}
+	if fileDuration > 0 {
+		chapters[len(chapters)-1].EndTime = fileDuration
+	}
+}

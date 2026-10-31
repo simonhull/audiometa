@@ -137,19 +137,8 @@ func parseChplChapters(sr *binary.SafeReader, moovAtom *Atom, fileDuration time.
 		chapters = append(chapters, chapter)
 	}
 
-	// Calculate end times
-	// Each chapter ends where the next one starts
-	// Last chapter ends at file duration
-	for i := range chapters {
-		if i < len(chapters)-1 {
-			// End time is the start of the next chapter
-			chapters[i].EndTime = chapters[i+1].StartTime
-		} else {
-			// Last chapter ends at file duration
-
-			chapters[i].EndTime = fileDuration
-		}
-	}
+	// Each chapter ends where the next starts; the last at the file duration.
+	types.FillChapterEndTimes(chapters, fileDuration)
 
 	return chapters, nil
 }
@@ -334,7 +323,7 @@ func parseTextTrackChapters(ctx context.Context, sr *binary.SafeReader, trakAtom
 	}
 
 	// Calculate end times
-	calculateChapterEndTimes(chapters, fileDuration)
+	types.FillChapterEndTimes(chapters, fileDuration)
 
 	return chapters, nil
 }
@@ -649,15 +638,4 @@ func extractChapterTitle(sr *binary.SafeReader, chunkOffset int64, sampleSize ui
 	}
 
 	return string(textBuf[2 : 2+textLen])
-}
-
-// calculateChapterEndTimes sets the EndTime for each chapter.
-func calculateChapterEndTimes(chapters []types.Chapter, fileDuration time.Duration) {
-	for i := range chapters {
-		if i < len(chapters)-1 {
-			chapters[i].EndTime = chapters[i+1].StartTime
-		} else {
-			chapters[i].EndTime = fileDuration
-		}
-	}
 }

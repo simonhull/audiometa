@@ -60,10 +60,8 @@ func parseMediaMarkers(doc string) ([]types.Chapter, error) {
 			StartTime: start,
 			Source:    types.ChapterSourceOverDrive,
 		}
-		if i > 0 {
-			chapters[i-1].EndTime = start
-		}
 	}
+	types.FillChapterEndTimes(chapters, 0)
 	return chapters, nil
 }
 
