@@ -42,6 +42,16 @@ func parseID3v2(ctx context.Context, sr *binutil.SafeReader, file *types.File) (
 		return 0, err
 	}
 
+	tagSize := int64(10 + header.Size)
+	if header.Version == 3 && header.Flags&flagUnsync != 0 {
+		// ID3v2.3 unsynchronises the whole tag body, so undo it before walking frames.
+		var warn *types.Warning
+		sr, header, warn = deunsyncTag(sr, header)
+		if warn != nil {
+			file.Warnings = types.AppendWarning(file.Warnings, *warn)
+		}
+	}
+
 	frameDataOffset := skipExtendedHeader(sr, header)
 	st, err := parseID3v2Frames(ctx, sr, file, header, frameDataOffset)
 	if err != nil {
@@ -59,8 +69,106 @@ func parseID3v2(ctx context.Context, sr *binutil.SafeReader, file *types.File) (
 	// Post-parse fallbacks for audiobook series metadata.
 	resolveSeriesFallbacks(sr, file)
 
-	// Total tag size including header
-	return int64(10 + header.Size), nil
+	// Total tag size including header (as stored on disk, before any de-unsynchronisation)
+	return tagSize, nil
+}
+
+// Header and frame flag bits.
+const (
+	flagUnsync = 0x80 // tag header: unsynchronisation (whole tag in v2.3, all frames in v2.4)
+
+	// ID3v2.4 frame format flags (low byte).
+	v24FrameGrouping    = 0x0040
+	v24FrameCompression = 0x0008
+	v24FrameEncryption  = 0x0004
+	v24FrameUnsync      = 0x0002
+	v24FrameDataLength  = 0x0001
+
+	// ID3v2.3 frame format flags (low byte).
+	v23FrameCompression = 0x0080
+	v23FrameEncryption  = 0x0040
+	v23FrameGrouping    = 0x0020
+)
+
+// deunsync reverses ID3 unsynchronisation, collapsing every FF 00 pair to FF.
+func deunsync(b []byte) []byte {
+	out := make([]byte, 0, len(b))
+	for i := 0; i < len(b); i++ {
+		out = append(out, b[i])
+		if b[i] == 0xFF && i+1 < len(b) && b[i+1] == 0x00 {
+			i++
+		}
+	}
+	return out
+}
+
+// deunsyncTag returns a reader over the tag with its body de-unsynchronised
+// (the 10-byte header is kept, with Size updated). On failure it returns the
+// original reader and header together with a warning.
+func deunsyncTag(sr *binutil.SafeReader, header ID3v2Header) (*binutil.SafeReader, ID3v2Header, *types.Warning) {
+	fail := func(err error) (*binutil.SafeReader, ID3v2Header, *types.Warning) {
+		return sr, header, &types.Warning{
+			Stage:   types.StageMetadata,
+			Message: fmt.Sprintf("could not read unsynchronised ID3 tag body (%v); frames parsed as stored", err),
+			Err:     err,
+		}
+	}
+	if err := sr.CheckLen(10, int(header.Size), 1, "unsynchronised ID3 tag"); err != nil {
+		return fail(err)
+	}
+	body := make([]byte, header.Size)
+	if err := sr.ReadAt(body, 10, "unsynchronised ID3 tag"); err != nil {
+		return fail(err)
+	}
+	body = deunsync(body)
+	buf := make([]byte, 10, 10+len(body))
+	buf = append(buf, body...)
+	header.Size = uint32(len(body))
+	return binutil.NewSafeReader(bytes.NewReader(buf), int64(len(buf)), sr.Path()), header, nil
+}
+
+// frameBody applies the per-frame flags to a frame's raw payload: it undoes
+// unsynchronisation and strips the group-identity and data-length prefixes. It
+// returns a non-empty reason when the frame is compressed or encrypted and must
+// be skipped.
+func frameBody(version, tagFlags byte, flags uint16, data []byte) (body []byte, skipReason string) {
+	var unsync, dli, group bool
+	switch version {
+	case 4:
+		switch {
+		case flags&v24FrameCompression != 0:
+			return nil, "compressed"
+		case flags&v24FrameEncryption != 0:
+			return nil, "encrypted"
+		}
+		unsync = flags&v24FrameUnsync != 0 || tagFlags&flagUnsync != 0
+		dli = flags&v24FrameDataLength != 0
+		group = flags&v24FrameGrouping != 0
+	case 3:
+		switch {
+		case flags&v23FrameCompression != 0:
+			return nil, "compressed"
+		case flags&v23FrameEncryption != 0:
+			return nil, "encrypted"
+		}
+		group = flags&v23FrameGrouping != 0
+	}
+	if unsync {
+		data = deunsync(data)
+	}
+	if group {
+		if len(data) < 1 {
+			return nil, "truncated"
+		}
+		data = data[1:]
+	}
+	if dli {
+		if len(data) < 4 {
+			return nil, "truncated"
+		}
+		data = data[4:]
+	}
+	return data, ""
 }
 
 // resolveSeriesFallbacks applies fallback logic for series metadata after all frames are parsed.
@@ -209,6 +317,16 @@ func readSingleFrame(sr *binutil.SafeReader, file *types.File, header ID3v2Heade
 			Stage:   types.StageMetadata,
 			Message: fmt.Sprintf("failed to read frame %s: %v", frameID, err),
 			Err:     err,
+		})
+		return nil, 10 + int64(frameSize), false
+	}
+
+	frameData, skip := frameBody(header.Version, header.Flags, frameFlags, frameData)
+	if skip != "" {
+		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
+			Stage:   types.StageMetadata,
+			Message: fmt.Sprintf("skipped %s frame %s", skip, frameID),
+			Offset:  offset,
 		})
 		return nil, 10 + int64(frameSize), false
 	}
