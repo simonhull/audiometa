@@ -217,3 +217,23 @@ func TestNormalizeSeriesPart(t *testing.T) {
 		})
 	}
 }
+
+func BenchmarkExtractSeriesPartFromText(b *testing.B) {
+	inputs := []string{"Book 2", "2 - North or Be Eaten", "Some Title (3)", "no number here"}
+	b.ReportAllocs()
+	for b.Loop() {
+		for _, in := range inputs {
+			_ = ExtractSeriesPartFromText(in)
+		}
+	}
+}
+
+func BenchmarkParseGrouping(b *testing.B) {
+	inputs := []string{"Series Name #5", "Series Name, Book 5", "Series - Volume 2", "Just A Series"}
+	b.ReportAllocs()
+	for b.Loop() {
+		for _, in := range inputs {
+			_, _ = ParseGrouping(in)
+		}
+	}
+}

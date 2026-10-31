@@ -8,6 +8,21 @@ import (
 	"strings"
 )
 
+// seriesPartPatterns lists the series-part patterns in priority order.
+// Note: written numbers (one, two, three...) are deliberately unsupported -
+// too brittle; digit parsing is reliable.
+var seriesPartPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)book\s+(\d+(?:\.\d+)?)`),           // "Book 2", "Book 0.5", "Book 100"
+	regexp.MustCompile(`(?i)part\s+(\d+(?:\.\d+)?)`),           // "Part 2", "Part 1.5"
+	regexp.MustCompile(`(?i)vol(?:ume)?\.?\s+(\d+(?:\.\d+)?)`), // "Vol 2", "Volume 2.5"
+	regexp.MustCompile(`#(\d+(?:\.\d+)?)`),                     // "#2", "#0.5", "#100"
+	regexp.MustCompile(`^(\d+(?:\.\d+)?)\s*[-–—:]`),            // "2 -", "0.5 -", "100:", "2 –", "2 —"
+	regexp.MustCompile(`[-–—:]\s*book\s+(\d+(?:\.\d+)?)`),      // "- Book 2"
+	regexp.MustCompile(`\((\d+(?:\.\d+)?)\)`),                  // "(2)", "(1.5)", "(0)"
+	regexp.MustCompile(`\[(\d+(?:\.\d+)?)\]`),                  // "[2]", "[01]", "[1.5]" (bracket notation)
+	regexp.MustCompile(`^(\d+(?:\.\d+)?)$`),                    // "3", "0.5", "0", "150" (standalone number)
+}
+
 // ExtractSeriesPartFromText extracts series part numbers from text strings.
 // Supports fractional positions (0.5), zero-based (Book 0), and large numbers (100+).
 func ExtractSeriesPartFromText(text string) string {
@@ -15,23 +30,7 @@ func ExtractSeriesPartFromText(text string) string {
 		return ""
 	}
 
-	// Pattern list in priority order
-	// Note: Removed written number support (one, two, three...) - too brittle
-	// Focus on reliable digit parsing instead
-	patterns := []string{
-		`(?i)book\s+(\d+(?:\.\d+)?)`,           // "Book 2", "Book 0.5", "Book 100"
-		`(?i)part\s+(\d+(?:\.\d+)?)`,           // "Part 2", "Part 1.5"
-		`(?i)vol(?:ume)?\.?\s+(\d+(?:\.\d+)?)`, // "Vol 2", "Volume 2.5"
-		`#(\d+(?:\.\d+)?)`,                     // "#2", "#0.5", "#100"
-		`^(\d+(?:\.\d+)?)\s*[-–—:]`,            // "2 -", "0.5 -", "100:", "2 –", "2 —"
-		`[-–—:]\s*book\s+(\d+(?:\.\d+)?)`,      // "- Book 2"
-		`\((\d+(?:\.\d+)?)\)`,                  // "(2)", "(1.5)", "(0)"
-		`\[(\d+(?:\.\d+)?)\]`,                  // "[2]", "[01]", "[1.5]" (bracket notation)
-		`^(\d+(?:\.\d+)?)$`,                    // "3", "0.5", "0", "150" (standalone number)
-	}
-
-	for _, pattern := range patterns {
-		re := regexp.MustCompile(pattern)
+	for _, re := range seriesPartPatterns {
 		if matches := re.FindStringSubmatch(text); len(matches) > 1 {
 			part := matches[1]
 			return normalizeSeriesPart(part)
@@ -68,6 +67,23 @@ func normalizeSeriesPart(part string) string {
 	return part
 }
 
+// groupingPatterns capture series name and part number. Order matters: more
+// specific patterns first.
+var groupingPatterns = []struct {
+	re          *regexp.Regexp
+	seriesGroup int
+	partGroup   int
+}{
+	// "Series Name #5" or "Series Name #5.5"
+	{regexp.MustCompile(`^(.+?)\s*#(\d+(?:\.\d+)?)\s*$`), 1, 2},
+	// "Series Name, Book 5" or "Series Name - Book 5"
+	{regexp.MustCompile(`(?i)^(.+?)\s*[,\-–—]\s*book\s+(\d+(?:\.\d+)?)\s*$`), 1, 2},
+	// "Series Name, Part 5" or "Series Name - Part 5"
+	{regexp.MustCompile(`(?i)^(.+?)\s*[,\-–—]\s*part\s+(\d+(?:\.\d+)?)\s*$`), 1, 2},
+	// "Series Name, Vol 5" or "Series Name - Volume 5"
+	{regexp.MustCompile(`(?i)^(.+?)\s*[,\-–—]\s*vol(?:ume)?\.?\s+(\d+(?:\.\d+)?)\s*$`), 1, 2},
+}
+
 // ParseGrouping extracts series name and part from a grouping tag.
 //
 // Handles common audiobook grouping formats:
@@ -84,24 +100,7 @@ func ParseGrouping(grouping string) (series, part string) {
 		return "", ""
 	}
 
-	// Patterns that capture series name and part number
-	// Order matters: more specific patterns first
-	patterns := []struct {
-		re          *regexp.Regexp
-		seriesGroup int
-		partGroup   int
-	}{
-		// "Series Name #5" or "Series Name #5.5"
-		{regexp.MustCompile(`^(.+?)\s*#(\d+(?:\.\d+)?)\s*$`), 1, 2},
-		// "Series Name, Book 5" or "Series Name - Book 5"
-		{regexp.MustCompile(`(?i)^(.+?)\s*[,\-–—]\s*book\s+(\d+(?:\.\d+)?)\s*$`), 1, 2},
-		// "Series Name, Part 5" or "Series Name - Part 5"
-		{regexp.MustCompile(`(?i)^(.+?)\s*[,\-–—]\s*part\s+(\d+(?:\.\d+)?)\s*$`), 1, 2},
-		// "Series Name, Vol 5" or "Series Name - Volume 5"
-		{regexp.MustCompile(`(?i)^(.+?)\s*[,\-–—]\s*vol(?:ume)?\.?\s+(\d+(?:\.\d+)?)\s*$`), 1, 2},
-	}
-
-	for _, p := range patterns {
+	for _, p := range groupingPatterns {
 		if matches := p.re.FindStringSubmatch(grouping); matches != nil {
 			series = strings.TrimSpace(matches[p.seriesGroup])
 			part = normalizeSeriesPart(matches[p.partGroup])
