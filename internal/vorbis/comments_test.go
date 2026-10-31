@@ -2,6 +2,7 @@ package vorbis
 
 import (
 	"math"
+	"slices"
 	"testing"
 
 	"github.com/simonhull/audiometa/internal/types"
@@ -202,13 +203,31 @@ func TestParseComment_MultipleArtists(t *testing.T) {
 	_ = ParseComment("ARTIST=Artist One", file)
 	_ = ParseComment("ARTIST=Artist Two", file)
 
-	// Last artist should be set
-	if file.Tags.Artist != "Artist Two" {
-		t.Errorf("Artist = %q, want %q (last value)", file.Tags.Artist, "Artist Two")
+	// The first artist is the primary one, as in MP3.
+	if file.Tags.Artist != "Artist One" {
+		t.Errorf("Artist = %q, want %q (first value)", file.Tags.Artist, "Artist One")
 	}
-	// Both should be in Artists slice
-	if len(file.Tags.Artists) != 2 {
-		t.Errorf("Artists = %v, want 2 artists", file.Tags.Artists)
+	if want := []string{"Artist One", "Artist Two"}; !slices.Equal(file.Tags.Artists, want) {
+		t.Errorf("Artists = %v, want %v", file.Tags.Artists, want)
+	}
+}
+
+func TestParseComment_RepeatedSingleValuedFirstWins(t *testing.T) {
+	file := &types.File{}
+	for _, c := range []string{
+		"TITLE=First", "TITLE=Second", "ALBUM=A1", "ALBUM=A2", "DATE=2001-01-01", "DATE=2002",
+		"TRACKNUMBER=3", "TRACKNUMBER=9", "COMMENT=c1", "COMMENT=c2",
+	} {
+		if err := ParseComment(c, file); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tg := file.Tags
+	if tg.Title != "First" || tg.Album != "A1" || tg.Date != "2001-01-01" || tg.Year != 2001 || tg.TrackNumber != 3 || tg.Comment != "c1" {
+		t.Errorf("first value did not win: %+v", tg)
+	}
+	if got := tg.Get("TITLE"); !slices.Equal(got, []string{"First", "Second"}) {
+		t.Errorf("raw TITLE = %v, want both values", got)
 	}
 }
 

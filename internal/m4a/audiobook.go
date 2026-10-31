@@ -119,28 +119,34 @@ func parseCustomAtomWithTags(sr *binary.SafeReader, customAtom *Atom, file *type
 	return fieldName, value, nil
 }
 
+// freeformTextFields maps lowercased freeform atom names whose value is assigned verbatim.
+var freeformTextFields = map[string]func(*types.Tags) *string{
+	"subtitle":     func(t *types.Tags) *string { return &t.Subtitle },
+	"narrator":     func(t *types.Tags) *string { return &t.Narrator },
+	"series":       func(t *types.Tags) *string { return &t.Series },
+	"publisher":    func(t *types.Tags) *string { return &t.Publisher },
+	"isbn":         func(t *types.Tags) *string { return &t.ISBN },
+	"asin":         func(t *types.Tags) *string { return &t.ASIN },
+	"audible_asin": func(t *types.Tags) *string { return &t.ASIN },
+	"language":     func(t *types.Tags) *string { return &t.Language },
+	"lang":         func(t *types.Tags) *string { return &t.Language },
+}
+
 // to allow multi-source validation and fallback.
 func mapAudiobookField(fieldName, value string, file *types.File) {
-	// Normalize field name (case-insensitive)
+	// An explicit freeform atom overrides values taken from standard atoms,
+	// but among repeated freeform atoms of the same name the first wins.
+	// Callers record the atom in the raw tags only after this returns.
+	seen := len(file.Tags.Get(strings.ToUpper(fieldName))) > 0
 	fieldName = strings.ToLower(fieldName)
+	if field, ok := freeformTextFields[fieldName]; ok {
+		if !seen && value != "" {
+			*field(&file.Tags) = value
+		}
+		return
+	}
 
 	switch fieldName {
-	case "subtitle":
-		file.Tags.Subtitle = value
-	case "narrator":
-		file.Tags.Narrator = value
-	case "series":
-		file.Tags.Series = value
-	// "series part" and "series position" are collected in
-	// customTags and applied by applyExplicitSeriesPart.
-	case "publisher":
-		file.Tags.Publisher = value
-	case "isbn":
-		file.Tags.ISBN = value
-	case "asin", "audible_asin":
-		file.Tags.ASIN = value
-	case "language", "lang":
-		file.Tags.Language = value
 	case "description":
 		if file.Tags.Description == "" {
 			file.Tags.Description = value

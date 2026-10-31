@@ -42,17 +42,20 @@ func ParseComment(comment string, file *types.File) error { //nolint:gocyclo // 
 	// Map Vorbis comments to standard Tags fields
 	switch key {
 	case "TITLE":
-		tags.Title = value
+		setFirst(&tags.Title, value)
 	case "SUBTITLE":
-		tags.Subtitle = value
+		setFirst(&tags.Subtitle, value)
 	case "ARTIST":
-		tags.Artist = value
+		setFirst(&tags.Artist, value)
 		tags.Artists = append(tags.Artists, value)
 	case "ALBUM":
-		tags.Album = value
+		setFirst(&tags.Album, value)
 	case "ALBUMARTIST":
-		tags.AlbumArtist = value
+		setFirst(&tags.AlbumArtist, value)
 	case "DATE":
+		if tags.Date != "" {
+			break
+		}
 		tags.Date = value
 		// Try to extract year from date
 		if len(value) >= 4 {
@@ -62,15 +65,23 @@ func ParseComment(comment string, file *types.File) error { //nolint:gocyclo // 
 			}
 		}
 	case "ORIGINALDATE":
-		tags.OriginalDate = value
+		setFirst(&tags.OriginalDate, value)
 	case "TRACKNUMBER":
-		_, _ = fmt.Sscanf(value, "%d", &tags.TrackNumber)
+		if tags.TrackNumber == 0 {
+			_, _ = fmt.Sscanf(value, "%d", &tags.TrackNumber)
+		}
 	case "TRACKTOTAL", "TOTALTRACKS":
-		_, _ = fmt.Sscanf(value, "%d", &tags.TrackTotal)
+		if tags.TrackTotal == 0 {
+			_, _ = fmt.Sscanf(value, "%d", &tags.TrackTotal)
+		}
 	case "DISCNUMBER":
-		_, _ = fmt.Sscanf(value, "%d", &tags.DiscNumber)
+		if tags.DiscNumber == 0 {
+			_, _ = fmt.Sscanf(value, "%d", &tags.DiscNumber)
+		}
 	case "DISCTOTAL", "TOTALDISCS":
-		_, _ = fmt.Sscanf(value, "%d", &tags.DiscTotal)
+		if tags.DiscTotal == 0 {
+			_, _ = fmt.Sscanf(value, "%d", &tags.DiscTotal)
+		}
 	case "GENRE":
 		tags.Genres = append(tags.Genres, value)
 	case "COMPOSER":
@@ -78,21 +89,21 @@ func ParseComment(comment string, file *types.File) error { //nolint:gocyclo // 
 	case "PERFORMER":
 		tags.Performers = append(tags.Performers, value)
 	case "COMMENT":
-		tags.Comment = value
+		setFirst(&tags.Comment, value)
 	case "LYRICS":
-		tags.Lyrics = value
+		setFirst(&tags.Lyrics, value)
 	case "NARRATOR":
-		tags.Narrator = value
+		setFirst(&tags.Narrator, value)
 	case "PUBLISHER":
-		tags.Publisher = value
+		setFirst(&tags.Publisher, value)
 	case "SERIES":
-		tags.Series = value
+		setFirst(&tags.Series, value)
 	case "SERIESPART", "SERIES-PART", "SERIES_PART", "SERIES PART":
 		if tags.SeriesPart == "" {
 			tags.SeriesPart = value
 		}
 	case "GROUPING":
-		tags.Grouping = value
+		setFirst(&tags.Grouping, value)
 	case "MVNM":
 		if tags.Series == "" {
 			tags.Series = value
@@ -102,49 +113,61 @@ func ParseComment(comment string, file *types.File) error { //nolint:gocyclo // 
 			tags.SeriesPart = value
 		}
 	case "ISBN":
-		tags.ISBN = value
+		setFirst(&tags.ISBN, value)
 	case "ASIN", "AUDIBLE_ASIN":
-		tags.ASIN = value
+		setFirst(&tags.ASIN, value)
 	case "LANGUAGE", "LANG":
-		tags.Language = value
+		setFirst(&tags.Language, value)
 	case "DESCRIPTION":
 		if tags.Description == "" {
 			tags.Description = value
 		}
 	case "MUSICBRAINZ_TRACKID":
-		tags.MusicBrainzTrackID = value
+		setFirst(&tags.MusicBrainzTrackID, value)
 	case "MUSICBRAINZ_ALBUMID":
-		tags.MusicBrainzAlbumID = value
+		setFirst(&tags.MusicBrainzAlbumID, value)
 	case "MUSICBRAINZ_ARTISTID":
-		tags.MusicBrainzArtistID = value
+		setFirst(&tags.MusicBrainzArtistID, value)
 	case "ISRC":
-		tags.ISRC = value
+		setFirst(&tags.ISRC, value)
 	case "BARCODE":
-		tags.Barcode = value
+		setFirst(&tags.Barcode, value)
 	case "CATALOGNUMBER":
-		tags.CatalogNumber = value
+		setFirst(&tags.CatalogNumber, value)
 	case "LABEL":
-		tags.Label = value
+		setFirst(&tags.Label, value)
 	case "COPYRIGHT":
-		tags.Copyright = value
+		setFirst(&tags.Copyright, value)
 
 	// ReplayGain tags
 	case "REPLAYGAIN_TRACK_GAIN":
+		if len(tags.Get(key)) > 0 {
+			break
+		}
 		if file.Audio.ReplayGain == nil {
 			file.Audio.ReplayGain = &types.ReplayGainInfo{}
 		}
 		file.Audio.ReplayGain.TrackGain = parseReplayGainValue(value)
 	case "REPLAYGAIN_TRACK_PEAK":
+		if len(tags.Get(key)) > 0 {
+			break
+		}
 		if file.Audio.ReplayGain == nil {
 			file.Audio.ReplayGain = &types.ReplayGainInfo{}
 		}
 		file.Audio.ReplayGain.TrackPeak = parseReplayGainPeak(value)
 	case "REPLAYGAIN_ALBUM_GAIN":
+		if len(tags.Get(key)) > 0 {
+			break
+		}
 		if file.Audio.ReplayGain == nil {
 			file.Audio.ReplayGain = &types.ReplayGainInfo{}
 		}
 		file.Audio.ReplayGain.AlbumGain = parseReplayGainValue(value)
 	case "REPLAYGAIN_ALBUM_PEAK":
+		if len(tags.Get(key)) > 0 {
+			break
+		}
 		if file.Audio.ReplayGain == nil {
 			file.Audio.ReplayGain = &types.ReplayGainInfo{}
 		}
@@ -155,6 +178,14 @@ func ParseComment(comment string, file *types.File) error { //nolint:gocyclo // 
 	tags.AddRaw(key, value)
 
 	return nil
+}
+
+// setFirst stores value in dst unless dst already holds one, so the first
+// occurrence of a repeated single-valued key wins.
+func setFirst(dst *string, value string) {
+	if *dst == "" {
+		*dst = value
+	}
 }
 
 // parseReplayGainValue parses a ReplayGain gain value like "-6.50 dB" or "-6.50".

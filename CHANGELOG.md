@@ -28,6 +28,7 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- Vorbis, M4A and MP3: single-valued fields (`Artist`, `Title`, `Album`, ...) take the first occurrence of a repeated tag instead of the last, so `Artist` is the first value and `Artists` lists all values in file order in every format.
 - MP3: decode ID3 text correctly and prefer the real COMM frame; route GRP1/MVNM/MVIN frames; read CHAP titles with version-aware sizes.
 - MP3: decode MPEG-2 frames with version-correct tables; probe the Xing header at the correct offset.
 - M4A: parse duration and chapters when iTunes tags are absent; decode typed ilst atoms and map missing fields; read AAC profile from AudioSpecificConfig; honor compatible ftyp brands; read QuickTime chapter-track tables per spec and honor chpl version; avoid int64 overflow in mvhd duration.

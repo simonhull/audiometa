@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"io"
+	"slices"
 	"testing"
 
 	audiobinary "github.com/simonhull/audiometa/internal/binary"
@@ -420,5 +421,32 @@ func TestIlstSkipsCoverData(t *testing.T) {
 	}
 	if rr.max >= 1024 {
 		t.Errorf("largest read was %d bytes; covr payload should not be read", rr.max)
+	}
+}
+
+func TestExtractIlstMetadata_RepeatedAtomsFirstWins(t *testing.T) {
+	var ilstData []byte
+	for _, it := range []struct{ tag, val string }{
+		{"\xA9ART", "Artist A"}, {"\xA9ART", "Artist B"},
+		{"\xA9nam", "Title 1"}, {"\xA9nam", "Title 2"},
+		{"\xA9alb", "Album 1"}, {"\xA9alb", "Album 2"},
+		{"desc", "short"}, {"ldes", "long 1"}, {"ldes", "long 2"},
+	} {
+		ilstData = append(ilstData, createMetadataItem([]byte(it.tag), it.val)...)
+	}
+	ilst := createMockAtom("ilst", ilstData)
+	sr := audiobinary.NewSafeReader(bytes.NewReader(ilst), int64(len(ilst)), "test.m4b")
+	ilstAtom, _ := readAtomHeader(sr, 0, int64(len(ilst)))
+
+	file := &types.File{}
+	if err := extractIlstMetadata(context.Background(), sr, ilstAtom, file); err != nil {
+		t.Fatal(err)
+	}
+	tg := file.Tags
+	if tg.Artist != "Artist A" || !slices.Equal(tg.Artists, []string{"Artist A", "Artist B"}) {
+		t.Errorf("Artist = %q, Artists = %v", tg.Artist, tg.Artists)
+	}
+	if tg.Title != "Title 1" || tg.Album != "Album 1" || tg.Description != "long 1" {
+		t.Errorf("first value did not win: title=%q album=%q desc=%q", tg.Title, tg.Album, tg.Description)
 	}
 }

@@ -463,14 +463,22 @@ func parseTextFrame(frame ID3v2Frame, file *types.File) { //nolint:gocyclo // Co
 
 	switch frame.ID {
 	case frameIDTIT2: // Title
-		file.Tags.Title = text
+		if file.Tags.Title == "" {
+			file.Tags.Title = text
+		}
 	case "TIT3": // Subtitle/Description refinement
-		file.Tags.Subtitle = text
+		if file.Tags.Subtitle == "" {
+			file.Tags.Subtitle = text
+		}
 	case "TPE1": // Artist
-		file.Tags.Artist = text
+		if file.Tags.Artist == "" {
+			file.Tags.Artist = text
+		}
 		file.Tags.Artists = append(file.Tags.Artists, values...)
 	case "TALB": // Album
-		file.Tags.Album = text
+		if file.Tags.Album == "" {
+			file.Tags.Album = text
+		}
 	case "TCON": // Genre
 		file.Tags.Genres = append(file.Tags.Genres, values...)
 	case "TYER": // Year (ID3v2.3)
@@ -484,11 +492,17 @@ func parseTextFrame(frame ID3v2Frame, file *types.File) { //nolint:gocyclo // Co
 	case "TCOM": // Composer (often used for Narrator)
 		file.Tags.Composers = append(file.Tags.Composers, values...)
 	case "TRCK": // Track number/total
-		file.Tags.TrackNumber, file.Tags.TrackTotal = parseTrackNumber(text)
+		if file.Tags.TrackNumber == 0 && file.Tags.TrackTotal == 0 {
+			file.Tags.TrackNumber, file.Tags.TrackTotal = parseTrackNumber(text)
+		}
 	case "TPOS": // Disc number/total
-		file.Tags.DiscNumber, file.Tags.DiscTotal = parseTrackNumber(text)
+		if file.Tags.DiscNumber == 0 && file.Tags.DiscTotal == 0 {
+			file.Tags.DiscNumber, file.Tags.DiscTotal = parseTrackNumber(text)
+		}
 	case "TPE2": // Album artist
-		file.Tags.AlbumArtist = text
+		if file.Tags.AlbumArtist == "" {
+			file.Tags.AlbumArtist = text
+		}
 	case "GRP1": // Grouping (often contains series info for audiobooks)
 		file.Tags.Grouping = text
 	case "TIT1": // Content group description (alternative grouping)

@@ -106,6 +106,7 @@ func extractIlstMetadata(ctx context.Context, sr *binary.SafeReader, ilstAtom *A
 	offset := ilstAtom.DataOffset()
 	end := offset + ilstAtom.DataSize()
 
+	var haveTrack, haveDisc bool
 	for i := 0; offset < end; i++ {
 		if err := binary.Canceled(ctx, i); err != nil {
 			return err
@@ -121,12 +122,14 @@ func extractIlstMetadata(ctx context.Context, sr *binary.SafeReader, ilstAtom *A
 		case "trkn":
 			// Track number requires special binary parsing
 			trackData, err := parseTrackNumber(sr, tagAtom)
-			if err == nil {
+			if err == nil && !haveTrack {
+				haveTrack = true
 				file.Tags.TrackNumber = trackData.Number
 				file.Tags.TrackTotal = trackData.Total
 			}
 		case "disk":
-			if d, err := parseTrackNumber(sr, tagAtom); err == nil {
+			if d, err := parseTrackNumber(sr, tagAtom); err == nil && !haveDisc {
+				haveDisc = true
 				file.Tags.DiscNumber = d.Number
 				file.Tags.DiscTotal = d.Total
 			}
@@ -165,11 +168,14 @@ var ilstTextFields = map[string]func(*types.Tags) *string{
 	"\xA9lyr": func(t *types.Tags) *string { return &t.Lyrics },      // ©lyr
 	"aART":    func(t *types.Tags) *string { return &t.AlbumArtist }, // album artist
 	"cprt":    func(t *types.Tags) *string { return &t.Copyright },   // copyright
-	"ldes":    func(t *types.Tags) *string { return &t.Description }, // long description always wins
+	"ldes":    func(t *types.Tags) *string { return &t.Description }, // long description wins over desc
 }
 
 // applyIlstDate stores a ©day value: Date verbatim, Year from its leading four digits.
 func applyIlstDate(file *types.File, value string) {
+	if file.Tags.Date != "" {
+		return
+	}
 	file.Tags.Date = value
 	if len(value) >= 4 {
 		if year, err := strconv.Atoi(value[:4]); err == nil && year > 0 {
@@ -178,17 +184,27 @@ func applyIlstDate(file *types.File, value string) {
 	}
 }
 
+// assignIlstText stores a verbatim text atom: the first occurrence wins, except
+// that the first ldes also overrides a desc/©des value that came before it.
+func assignIlstText(dst *string, tag, value string, seen bool) {
+	if *dst == "" || tag == "ldes" && !seen {
+		*dst = value
+	}
+}
+
 // Note: In MP4, © is represented as byte 0xA9, so "©nam" is "\xA9nam" in Go strings.
 func mapTagToField(tag string, value string, file *types.File) {
 	if value == "" {
 		return
 	}
+	// The first occurrence of a repeated single-valued atom wins.
+	seen := len(file.Tags.Get(tag)) > 0
 	file.Tags.AddRaw(tag, value)
 	if tag == "\xA9ART" {
 		file.Tags.Artists = append(file.Tags.Artists, value)
 	}
 	if field, ok := ilstTextFields[tag]; ok {
-		*field(&file.Tags) = value
+		assignIlstText(field(&file.Tags), tag, value, seen)
 		return
 	}
 
