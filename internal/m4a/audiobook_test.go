@@ -60,7 +60,7 @@ func TestParseAudiobookTags_Narrator(t *testing.T) {
 	ilst := createMockAtom("ilst", narratorAtom)
 
 	sr := audiobinary.NewSafeReader(bytes.NewReader(ilst), int64(len(ilst)), "test.m4b")
-	ilstAtom, _ := readAtomHeader(sr, 0)
+	ilstAtom, _ := readAtomHeader(sr, 0, int64(len(ilst)))
 
 	file := &types.File{}
 	err := parseAudiobookTags(sr, ilstAtom, file)
@@ -78,7 +78,7 @@ func TestParseAudiobookTags_Series(t *testing.T) {
 	ilst := createMockAtom("ilst", seriesAtom)
 
 	sr := audiobinary.NewSafeReader(bytes.NewReader(ilst), int64(len(ilst)), "test.m4b")
-	ilstAtom, _ := readAtomHeader(sr, 0)
+	ilstAtom, _ := readAtomHeader(sr, 0, int64(len(ilst)))
 
 	file := &types.File{}
 	err := parseAudiobookTags(sr, ilstAtom, file)
@@ -102,7 +102,7 @@ func TestParseAudiobookTags_MultipleFields(t *testing.T) {
 	ilst := createMockAtom("ilst", ilstData)
 
 	sr := audiobinary.NewSafeReader(bytes.NewReader(ilst), int64(len(ilst)), "test.m4b")
-	ilstAtom, _ := readAtomHeader(sr, 0)
+	ilstAtom, _ := readAtomHeader(sr, 0, int64(len(ilst)))
 
 	file := &types.File{}
 	err := parseAudiobookTags(sr, ilstAtom, file)
@@ -130,7 +130,7 @@ func TestParseAudiobookTags_NarratorFallback(t *testing.T) {
 	ilst := createMockAtom("ilst", composerItem)
 
 	sr := audiobinary.NewSafeReader(bytes.NewReader(ilst), int64(len(ilst)), "test.m4b")
-	ilstAtom, _ := readAtomHeader(sr, 0)
+	ilstAtom, _ := readAtomHeader(sr, 0, int64(len(ilst)))
 
 	file := &types.File{
 		Tags: types.Tags{
@@ -157,7 +157,7 @@ func TestParseAudiobookTags_NoCustomAtoms(t *testing.T) {
 	ilst := createMockAtom("ilst", titleItem)
 
 	sr := audiobinary.NewSafeReader(bytes.NewReader(ilst), int64(len(ilst)), "test.m4b")
-	ilstAtom, _ := readAtomHeader(sr, 0)
+	ilstAtom, _ := readAtomHeader(sr, 0, int64(len(ilst)))
 
 	file := &types.File{}
 	err := parseAudiobookTags(sr, ilstAtom, file)

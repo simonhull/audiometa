@@ -18,7 +18,7 @@ func parseAudiobookTags(sr *binary.SafeReader, ilstAtom *Atom, file *types.File)
 
 	// Scan through ilst for custom atoms (----)
 	for offset < end {
-		atom, err := readAtomHeader(sr, offset)
+		atom, err := readAtomHeader(sr, offset, end)
 		if err != nil {
 			// Skip corrupted atoms
 			break
@@ -72,7 +72,7 @@ func parseCustomAtomWithTags(sr *binary.SafeReader, customAtom *Atom, file *type
 
 	// Parse child atoms (mean, name, data)
 	for offset < end {
-		atom, err := readAtomHeader(sr, offset)
+		atom, err := readAtomHeader(sr, offset, end)
 		if err != nil {
 			break
 		}

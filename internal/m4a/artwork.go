@@ -59,7 +59,7 @@ func extractArtwork(sr *binary.SafeReader, size int64) ([]types.Artwork, error) 
 	end := offset + int64(covrAtom.DataSize())
 
 	for offset < end {
-		dataAtom, err := readAtomHeader(sr, offset)
+		dataAtom, err := readAtomHeader(sr, offset, end)
 		if err != nil {
 			break
 		}
@@ -77,11 +77,6 @@ func extractArtwork(sr *binary.SafeReader, size int64) ([]types.Artwork, error) 
 		}
 
 		offset += int64(dataAtom.Size)
-
-		// Prevent infinite loop
-		if dataAtom.Size == 0 {
-			break
-		}
 	}
 
 	return artwork, nil

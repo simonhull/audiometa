@@ -56,7 +56,7 @@ func TestParseChapters_Success(t *testing.T) {
 	moov := createMockAtom("moov", udta)
 
 	sr := audiobinary.NewSafeReader(bytes.NewReader(moov), int64(len(moov)), "test.m4b")
-	moovAtom, _ := readAtomHeader(sr, 0)
+	moovAtom, _ := readAtomHeader(sr, 0, int64(len(moov)))
 
 	// File duration: 180 seconds
 	fileDuration := 180 * time.Second
@@ -115,7 +115,7 @@ func TestParseChapters_EmptyTitles(t *testing.T) {
 	moov := createMockAtom("moov", udta)
 
 	sr := audiobinary.NewSafeReader(bytes.NewReader(moov), int64(len(moov)), "test.m4b")
-	moovAtom, _ := readAtomHeader(sr, 0)
+	moovAtom, _ := readAtomHeader(sr, 0, int64(len(moov)))
 
 	chapters, err := parseChapters(sr, moovAtom, 100*time.Second)
 	if err != nil {
@@ -145,7 +145,7 @@ func TestParseChapters_SingleChapter(t *testing.T) {
 	moov := createMockAtom("moov", udta)
 
 	sr := audiobinary.NewSafeReader(bytes.NewReader(moov), int64(len(moov)), "test.m4b")
-	moovAtom, _ := readAtomHeader(sr, 0)
+	moovAtom, _ := readAtomHeader(sr, 0, int64(len(moov)))
 
 	chapters, err := parseChapters(sr, moovAtom, 3600*time.Second)
 	if err != nil {
@@ -171,7 +171,7 @@ func TestParseChapters_NoChpl(t *testing.T) {
 	moov := createMockAtom("moov", udta)
 
 	sr := audiobinary.NewSafeReader(bytes.NewReader(moov), int64(len(moov)), "test.m4b")
-	moovAtom, _ := readAtomHeader(sr, 0)
+	moovAtom, _ := readAtomHeader(sr, 0, int64(len(moov)))
 
 	chapters, err := parseChapters(sr, moovAtom, 100*time.Second)
 	if err != nil {
@@ -189,7 +189,7 @@ func TestParseChapters_NoUdta(t *testing.T) {
 	moov := createMockAtom("moov", []byte{})
 
 	sr := audiobinary.NewSafeReader(bytes.NewReader(moov), int64(len(moov)), "test.m4b")
-	moovAtom, _ := readAtomHeader(sr, 0)
+	moovAtom, _ := readAtomHeader(sr, 0, int64(len(moov)))
 
 	chapters, err := parseChapters(sr, moovAtom, 100*time.Second)
 	if err != nil {

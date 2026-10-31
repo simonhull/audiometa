@@ -54,7 +54,7 @@ func extractIlstMetadata(sr *binary.SafeReader, ilstAtom *Atom, file *types.File
 
 	for offset < end {
 		// Read tag atom
-		tagAtom, err := readAtomHeader(sr, offset)
+		tagAtom, err := readAtomHeader(sr, offset, end)
 		if err != nil {
 			return err
 		}

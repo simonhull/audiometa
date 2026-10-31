@@ -30,7 +30,7 @@ func TestReadAtomHeader_Success(t *testing.T) {
 
 	sr := audiobinary.NewSafeReader(bytes.NewReader(data), int64(len(data)), "test.m4b")
 
-	atom, err := readAtomHeader(sr, 0)
+	atom, err := readAtomHeader(sr, 0, int64(len(data)))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestReadAtomHeader_Extended(t *testing.T) {
 	data := buf.Bytes()
 	sr := audiobinary.NewSafeReader(bytes.NewReader(data), int64(len(data)), "test.m4b")
 
-	atom, err := readAtomHeader(sr, 0)
+	atom, err := readAtomHeader(sr, 0, 1000)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -92,7 +92,7 @@ func TestReadAtomHeader_TooSmall(t *testing.T) {
 
 	sr := audiobinary.NewSafeReader(bytes.NewReader(data), int64(len(data)), "test.m4b")
 
-	_, err := readAtomHeader(sr, 0)
+	_, err := readAtomHeader(sr, 0, int64(len(data)))
 	if err == nil {
 		t.Fatal("expected error for file too small")
 	}
@@ -108,7 +108,7 @@ func TestReadAtomHeader_InvalidSize(t *testing.T) {
 	data := buf.Bytes()
 	sr := audiobinary.NewSafeReader(bytes.NewReader(data), int64(len(data)), "test.m4b")
 
-	_, err := readAtomHeader(sr, 0)
+	_, err := readAtomHeader(sr, 0, int64(len(data)))
 	if err == nil {
 		t.Fatal("expected error for invalid atom size")
 	}
@@ -162,7 +162,7 @@ func TestFindAtom_Nested(t *testing.T) {
 	sr := audiobinary.NewSafeReader(bytes.NewReader(udtaData), int64(len(udtaData)), "test.m4b")
 
 	// Find the udta atom first
-	udtaAtom, err := readAtomHeader(sr, 0)
+	udtaAtom, err := readAtomHeader(sr, 0, int64(len(udtaData)))
 	if err != nil {
 		t.Fatalf("failed to read udta: %v", err)
 	}
@@ -206,5 +206,35 @@ func TestAtom_IsContainer(t *testing.T) {
 		if got := atom.IsContainer(); got != tt.isContainer {
 			t.Errorf("Atom(%s).IsContainer() = %v, want %v", tt.atomType, got, tt.isContainer)
 		}
+	}
+}
+
+func TestReadAtomHeader_ExceedsParent(t *testing.T) {
+	ext := func(size uint64) []byte {
+		buf := &bytes.Buffer{}
+		binary.Write(buf, binary.BigEndian, uint32(1))
+		buf.WriteString("free")
+		binary.Write(buf, binary.BigEndian, size)
+		return buf.Bytes()
+	}
+	tests := []struct {
+		name      string
+		data      []byte
+		offset    int64
+		parentEnd int64
+	}{
+		{"32-bit size larger than remaining", createMockAtom("free", make([]byte, 8)), 0, 12},
+		{"extended size below header", ext(12), 0, 16},
+		{"extended size overflows int64", ext(0xFFFFFFFFFFFFFFF0), 0, 16},
+		{"offset at parent end", createMockAtom("free", nil), 8, 8},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := append(make([]byte, tt.offset), tt.data...)
+			sr := audiobinary.NewSafeReader(bytes.NewReader(data), int64(len(data)), "test.m4b")
+			if _, err := readAtomHeader(sr, tt.offset, tt.parentEnd); err == nil {
+				t.Error("expected error, got nil")
+			}
+		})
 	}
 }

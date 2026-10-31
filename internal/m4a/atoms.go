@@ -55,8 +55,11 @@ func (a *Atom) IsContainer() bool {
 	return containerTypes[a.Type]
 }
 
-// readAtomHeader reads an atom header at the given offset.
-func readAtomHeader(sr *binary.SafeReader, offset int64) (*Atom, error) {
+// readAtomHeader reads the atom header at offset. parentEnd is the exclusive end
+// of the enclosing container (the file size for top-level atoms). An atom that
+// does not fit inside its parent is rejected, so a caller that advances by
+// atom.Size always moves strictly forward and never past parentEnd.
+func readAtomHeader(sr *binary.SafeReader, offset, parentEnd int64) (*Atom, error) {
 	// Read size (4 bytes)
 	size32, err := binary.Read[uint32](sr, offset, "atom size")
 	if err != nil {
@@ -88,11 +91,21 @@ func readAtomHeader(sr *binary.SafeReader, offset int64) (*Atom, error) {
 		atom.Extended = false
 	}
 
-	// Validate atom size
-	if atom.Size < 8 {
+	// Validate atom size: at least its own header, at most what the parent has left.
+	minSize := uint64(8)
+	if atom.Extended {
+		minSize = 16
+	}
+	if atom.Size < minSize {
 		return nil, &types.CorruptedFileError{
 			Offset: offset,
-			Reason: fmt.Sprintf("invalid atom size %d (minimum is 8)", atom.Size),
+			Reason: fmt.Sprintf("invalid atom size %d (minimum is %d)", atom.Size, minSize),
+		}
+	}
+	if offset >= parentEnd || atom.Size > uint64(parentEnd-offset) {
+		return nil, &types.CorruptedFileError{
+			Offset: offset,
+			Reason: fmt.Sprintf("atom %q size %d exceeds its container (%d bytes remain)", atom.Type, atom.Size, parentEnd-offset),
 		}
 	}
 
@@ -104,7 +117,7 @@ func findAtom(sr *binary.SafeReader, start, end int64, atomType string) (*Atom, 
 	offset := start
 
 	for offset < end {
-		atom, err := readAtomHeader(sr, offset)
+		atom, err := readAtomHeader(sr, offset, end)
 		if err != nil {
 			return nil, err
 		}
@@ -113,16 +126,8 @@ func findAtom(sr *binary.SafeReader, start, end int64, atomType string) (*Atom, 
 			return atom, nil
 		}
 
-		// Move to next atom
+		// readAtomHeader guarantees 8 <= atom.Size <= end-offset.
 		offset += int64(atom.Size)
-
-		// Prevent infinite loop on corrupted files
-		if atom.Size == 0 {
-			return nil, &types.CorruptedFileError{
-				Offset: offset,
-				Reason: "atom with zero size",
-			}
-		}
 	}
 
 	return nil, fmt.Errorf("atom '%s' not found", atomType)

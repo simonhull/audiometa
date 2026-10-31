@@ -40,7 +40,7 @@ func TestParseTechnicalInfo_Duration(t *testing.T) {
 	moov := createMockAtom("moov", moovData)
 
 	sr := audiobinary.NewSafeReader(bytes.NewReader(moov), int64(len(moov)), "test.m4b")
-	moovAtom, _ := readAtomHeader(sr, 0)
+	moovAtom, _ := readAtomHeader(sr, 0, int64(len(moov)))
 
 	file := &types.File{}
 	err := parseTechnicalInfo(sr, moovAtom, file)
@@ -61,7 +61,7 @@ func TestParseTechnicalInfo_NonStandardTimescale(t *testing.T) {
 	moov := createMockAtom("moov", moovData)
 
 	sr := audiobinary.NewSafeReader(bytes.NewReader(moov), int64(len(moov)), "test.m4b")
-	moovAtom, _ := readAtomHeader(sr, 0)
+	moovAtom, _ := readAtomHeader(sr, 0, int64(len(moov)))
 
 	file := &types.File{}
 	err := parseTechnicalInfo(sr, moovAtom, file)
@@ -85,7 +85,7 @@ func TestParseTechnicalInfo_NoMvhd(t *testing.T) {
 	moov := createMockAtom("moov", []byte{})
 
 	sr := audiobinary.NewSafeReader(bytes.NewReader(moov), int64(len(moov)), "test.m4b")
-	moovAtom, _ := readAtomHeader(sr, 0)
+	moovAtom, _ := readAtomHeader(sr, 0, int64(len(moov)))
 
 	file := &types.File{}
 	err := parseTechnicalInfo(sr, moovAtom, file)

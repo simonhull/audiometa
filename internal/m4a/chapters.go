@@ -165,7 +165,7 @@ func findChapterTrackReference(sr *binary.SafeReader, moovAtom *Atom) uint32 {
 	end := offset + int64(moovAtom.DataSize())
 
 	for offset < end {
-		trakAtom, err := readAtomHeader(sr, offset)
+		trakAtom, err := readAtomHeader(sr, offset, end)
 		if err != nil {
 			break
 		}
@@ -209,7 +209,7 @@ func findTrackByID(sr *binary.SafeReader, moovAtom *Atom, targetID uint32) *Atom
 	end := offset + int64(moovAtom.DataSize())
 
 	for offset < end {
-		trakAtom, err := readAtomHeader(sr, offset)
+		trakAtom, err := readAtomHeader(sr, offset, end)
 		if err != nil {
 			break
 		}
