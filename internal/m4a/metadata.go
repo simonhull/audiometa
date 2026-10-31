@@ -12,8 +12,11 @@ import (
 
 // Atom types shared by the reader and the writer.
 const (
-	atomData   = "data"
-	itemArtist = "\xA9ART" // ©ART
+	atomData     = "data"
+	itemArtist   = "\xA9ART" // ©ART
+	itemGenre    = "\xA9gen" // ©gen
+	itemComposer = "\xA9wrt" // ©wrt
+	itemLongDesc = "ldes"
 )
 
 // Data atom type indicators (bytes 1-3 of the data atom's version/flags word).
@@ -195,15 +198,15 @@ func extractIlstMetadata(ctx context.Context, sr *binary.SafeReader, ilstAtom *A
 
 // ilstTextFields maps ilst atoms whose value is assigned verbatim to a Tags field.
 var ilstTextFields = map[string]func(*types.Tags) *string{
-	"\xA9nam":  func(t *types.Tags) *string { return &t.Title },       // ©nam
-	itemArtist: func(t *types.Tags) *string { return &t.Artist },      // ©ART
-	"\xA9alb":  func(t *types.Tags) *string { return &t.Album },       // ©alb
-	"\xA9cmt":  func(t *types.Tags) *string { return &t.Comment },     // ©cmt
-	"\xA9grp":  func(t *types.Tags) *string { return &t.Grouping },    // ©grp - often series info for audiobooks
-	"\xA9lyr":  func(t *types.Tags) *string { return &t.Lyrics },      // ©lyr
-	"aART":     func(t *types.Tags) *string { return &t.AlbumArtist }, // album artist
-	"cprt":     func(t *types.Tags) *string { return &t.Copyright },   // copyright
-	"ldes":     func(t *types.Tags) *string { return &t.Description }, // long description wins over desc
+	"\xA9nam":    func(t *types.Tags) *string { return &t.Title },       // ©nam
+	itemArtist:   func(t *types.Tags) *string { return &t.Artist },      // ©ART
+	"\xA9alb":    func(t *types.Tags) *string { return &t.Album },       // ©alb
+	"\xA9cmt":    func(t *types.Tags) *string { return &t.Comment },     // ©cmt
+	"\xA9grp":    func(t *types.Tags) *string { return &t.Grouping },    // ©grp - often series info for audiobooks
+	"\xA9lyr":    func(t *types.Tags) *string { return &t.Lyrics },      // ©lyr
+	"aART":       func(t *types.Tags) *string { return &t.AlbumArtist }, // album artist
+	"cprt":       func(t *types.Tags) *string { return &t.Copyright },   // copyright
+	itemLongDesc: func(t *types.Tags) *string { return &t.Description }, // long description wins over desc
 }
 
 // applyIlstDate stores a ©day value: Date verbatim, Year from its leading four digits.
@@ -222,7 +225,7 @@ func applyIlstDate(file *types.File, value string) {
 // assignIlstText stores a verbatim text atom: the first occurrence wins, except
 // that the first ldes also overrides a desc/©des value that came before it.
 func assignIlstText(dst *string, tag, value string, seen bool) {
-	if *dst == "" || tag == "ldes" && !seen {
+	if *dst == "" || tag == itemLongDesc && !seen {
 		*dst = value
 	}
 }
@@ -244,9 +247,9 @@ func mapTagToField(tag string, value string, file *types.File) {
 	}
 
 	switch tag {
-	case "\xA9gen": // Genre (©gen)
+	case itemGenre: // Genre (©gen)
 		file.Tags.Genres = append(file.Tags.Genres, value)
-	case "\xA9wrt": // Composer (©wrt)
+	case itemComposer: // Composer (©wrt)
 		file.Tags.Composers = append(file.Tags.Composers, value)
 	case "\xA9day": // Date (©day)
 		applyIlstDate(file, value)
@@ -294,9 +297,9 @@ func mapExtraValue(tag, value string, file *types.File) {
 	switch tag {
 	case itemArtist:
 		file.Tags.Artists = append(file.Tags.Artists, value)
-	case "\xA9gen":
+	case itemGenre:
 		file.Tags.Genres = append(file.Tags.Genres, value)
-	case "\xA9wrt":
+	case itemComposer:
 		file.Tags.Composers = append(file.Tags.Composers, value)
 	}
 }

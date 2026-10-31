@@ -31,8 +31,8 @@ var roundTripCorpus = []roundTripCase{
 	{"testdata/sample_v24.mp3", true}, // ID3v2.4 with an ID3v1 trailer
 	{"testdata/sample.flac", true},
 	{"testdata/sample_upper.flac", true},
-	{"testdata/sample.m4a", false},
-	{"testdata/sample.m4b", false},
+	{"testdata/sample.m4a", true},
+	{"testdata/sample.m4b", true},
 	{"testdata/sample.ogg", false},  // deferred format: stays false
 	{"testdata/sample.opus", false}, // deferred format: stays false
 }
@@ -169,6 +169,32 @@ var roundTripFLACEdits = []tagEdit{
 	},
 }
 
+// roundTripM4AEdits are edits of M4A-native keys and typed-only fields.
+var roundTripM4AEdits = []tagEdit{
+	{
+		name:    "set NARRATOR freeform",
+		fields:  []string{"Narrator"},
+		apply:   func(f *audiometa.File) error { f.Tags.Set("NARRATOR", "Reader"); return nil },
+		formats: []audiometa.Format{audiometa.FormatM4A, audiometa.FormatM4B},
+		check: func(t *testing.T, f *audiometa.File) {
+			if f.Tags.Narrator != "Reader" {
+				t.Errorf("Narrator = %q, want Reader", f.Tags.Narrator)
+			}
+		},
+	},
+	{
+		name:    "set track 3/12",
+		fields:  []string{"TrackNumber", "TrackTotal"},
+		apply:   func(f *audiometa.File) error { f.Tags.TrackNumber, f.Tags.TrackTotal = 3, 12; return nil },
+		formats: []audiometa.Format{audiometa.FormatM4A, audiometa.FormatM4B},
+		check: func(t *testing.T, f *audiometa.File) {
+			if f.Tags.TrackNumber != 3 || f.Tags.TrackTotal != 12 {
+				t.Errorf("track = %d/%d, want 3/12", f.Tags.TrackNumber, f.Tags.TrackTotal)
+			}
+		},
+	},
+}
+
 var roundTripArtworkEdits = []tagEdit{
 	{
 		name: "replace front cover",
@@ -263,7 +289,7 @@ func TestWriteRoundTrip_Corpus(t *testing.T) {
 				t.Error("no-edit WriteTo is not byte-identical to the source")
 			}
 
-			for _, e := range slices.Concat(roundTripEdits, roundTripMP3Edits, roundTripFLACEdits, roundTripArtworkEdits) {
+			for _, e := range slices.Concat(roundTripEdits, roundTripMP3Edits, roundTripFLACEdits, roundTripM4AEdits, roundTripArtworkEdits) {
 				t.Run(e.name, func(t *testing.T) { runRoundTrip(t, tc.path, src, e) })
 			}
 			t.Run("delete keys", func(t *testing.T) { runDeleteRoundTrip(t, tc.path, src) })
