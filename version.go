@@ -1,18 +1,35 @@
 package audiometa
 
-import "runtime"
+import (
+	"runtime"
+	"runtime/debug"
+)
 
-// Version is the semantic version of the audiometa library.
-const Version = "0.1.0"
+// version can be overridden at build time via
+//
+//	-ldflags "-X github.com/simonhull/audiometa.version=v1.2.3"
+//
+// When unset, the module version from build info is used: tagged installs
+// report their real tag, working-tree builds report "(devel)".
+var version = ""
 
-// GetVersion returns the current version string.
+// GetVersion returns the library's version string.
+//
+// The value is the ldflags-injected version if present, otherwise the module
+// version recorded in the binary's build info, otherwise "unknown".
 func GetVersion() string {
-	return Version
+	if version != "" {
+		return version
+	}
+	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" {
+		return bi.Main.Version
+	}
+	return "unknown"
 }
 
 // VersionInfo contains detailed version information.
 type VersionInfo struct {
-	// Version is the semantic version (e.g., "0.1.0")
+	// Version is the semantic version (e.g., "v0.10.0")
 	Version string
 	// GitCommit is the git commit hash (set via ldflags at build time)
 	GitCommit string
@@ -40,7 +57,7 @@ func GetVersionInfo() VersionInfo {
 	}
 
 	return VersionInfo{
-		Version:   Version,
+		Version:   GetVersion(),
 		GitCommit: gitCommit,
 		BuildTime: buildTime,
 		GoVersion: goVer,
