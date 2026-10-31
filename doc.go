@@ -76,7 +76,7 @@
 //
 // # Robustness
 //
-// The parsers are written for untrusted input and are fuzzed:
+// The parsers are written for untrusted input and have fuzz tests:
 //
 //   - every read is bounds-checked against the file size;
 //   - length fields read from the file cannot trigger allocations larger than
