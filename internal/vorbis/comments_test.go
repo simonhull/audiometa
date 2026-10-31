@@ -364,3 +364,73 @@ func TestParseReplayGainPeak(t *testing.T) {
 		}
 	}
 }
+
+func TestParseComment_CaseInsensitiveKeys(t *testing.T) {
+	tests := []struct {
+		name    string
+		comment string
+		check   func(*types.File) bool
+	}{
+		{"title", "title=Lower", func(f *types.File) bool { return f.Tags.Title == "Lower" }},
+		{"artist", "Artist=Mixed", func(f *types.File) bool {
+			return f.Tags.Artist == "Mixed" && len(f.Tags.Artists) == 1 && f.Tags.Artists[0] == "Mixed"
+		}},
+		{"album", "album=x", func(f *types.File) bool { return f.Tags.Album == "x" }},
+		{"tracknumber", "tracknumber=7", func(f *types.File) bool { return f.Tags.TrackNumber == 7 }},
+		{"series", "Series=Discworld", func(f *types.File) bool { return f.Tags.Series == "Discworld" }},
+		{"replaygain", "replaygain_track_gain=-6.50 dB", func(f *types.File) bool {
+			rg := f.Audio.ReplayGain
+			return rg != nil && rg.TrackGain == -6.5
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			file := &types.File{}
+			if err := ParseComment(tt.comment, file); err != nil {
+				t.Fatal(err)
+			}
+			if !tt.check(file) {
+				t.Errorf("check failed for %q: %+v", tt.comment, file.Tags)
+			}
+		})
+	}
+}
+
+func allKeys(f *types.File) []string {
+	var keys []string
+	for k := range f.Tags.All() {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+func TestParseComment_RawKeyCanonicalized(t *testing.T) {
+	file := &types.File{}
+	if err := ParseComment("title=Foo", file); err != nil {
+		t.Fatal(err)
+	}
+	if got := file.Tags.Get("TITLE"); len(got) != 1 || got[0] != "Foo" {
+		t.Errorf("Get(TITLE) = %v", got)
+	}
+	if got := file.Tags.Get("title"); got != nil {
+		t.Errorf("Get(title) = %v, want nil", got)
+	}
+	if keys := allKeys(file); len(keys) != 1 || keys[0] != "TITLE" {
+		t.Errorf("keys = %v, want [TITLE]", keys)
+	}
+}
+
+func TestParseComment_MixedCaseSameKey(t *testing.T) {
+	file := &types.File{}
+	for _, c := range []string{"GENRE=Rock", "genre=Jazz"} {
+		if err := ParseComment(c, file); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(file.Tags.Genres) != 2 || file.Tags.Genres[0] != "Rock" || file.Tags.Genres[1] != "Jazz" {
+		t.Errorf("Genres = %v", file.Tags.Genres)
+	}
+	if keys := allKeys(file); len(keys) != 1 || keys[0] != "GENRE" {
+		t.Errorf("keys = %v, want [GENRE]", keys)
+	}
+}

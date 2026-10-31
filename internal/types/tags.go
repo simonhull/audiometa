@@ -82,6 +82,8 @@ func (t *Tags) All() iter.Seq2[string, []string] {
 // Get retrieves all values for a tag key.
 //
 // Tag keys are format-specific (e.g., "TITLE", "TIT2", "©nam").
+// Vorbis-comment keys (FLAC, Ogg Vorbis, Opus) are stored upper-cased, so look them up as
+// "TITLE", not "title". Lookups are exact-match.
 // Returns an empty slice if the key doesn't exist.
 //
 // For standard fields, prefer accessing struct fields directly

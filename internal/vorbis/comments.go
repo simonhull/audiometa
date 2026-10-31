@@ -15,8 +15,8 @@ import (
 // ParseComment parses a single Vorbis comment in "KEY=VALUE" format
 // and populates the appropriate fields in the File struct.
 //
-// Vorbis comment field names are case-insensitive but typically uppercase.
-// The comment is also stored in the raw tags map.
+// Field names are matched case-insensitively, and the comment is stored in the raw tags
+// map under its upper-cased name (e.g. "title=Foo" is retrievable as Get("TITLE")).
 //
 // Returns an error if the comment is not in valid "KEY=VALUE" format.
 func ParseComment(comment string, file *types.File) error { //nolint:gocyclo // Complexity from many simple field mappings - intentionally kept together
@@ -33,11 +33,12 @@ func ParseComment(comment string, file *types.File) error { //nolint:gocyclo // 
 		return fmt.Errorf("missing '=' in comment: %s", comment)
 	}
 
-	key := comment[:eq]
+	// Field names are case-insensitive per the Vorbis comment spec; canonicalize to upper case so
+	// "title=" maps like "TITLE=" and the raw map has one key per logical tag.
+	key := strings.ToUpper(comment[:eq])
 	value := comment[eq+1:]
 
 	// Map Vorbis comments to standard Tags fields
-	// Vorbis comment field names are case-insensitive, but typically uppercase
 	switch key {
 	case "TITLE":
 		tags.Title = value
