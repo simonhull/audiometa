@@ -193,21 +193,31 @@ BenchmarkOpen/M4A-16     2500    480 µs/op    834 B/op    16 allocs/op
 
 ### audiometa
 
-Display metadata for audio files:
+Install the CLI (requires Go 1.27 or newer):
 
 ```bash
 go install github.com/simonhull/audiometa/cmd/audiometa@latest
-audiometa song.flac
 ```
-
-### atom-dump-tool
-
-Debug M4A/M4B atom structure:
 
 ```bash
-go install github.com/simonhull/audiometa/cmd/atom-dump-tool@latest
-atom-dump-tool audiobook.m4b
+audiometa song.flac                      # same as: audiometa inspect song.flac
+audiometa inspect --json *.m4b           # one JSON object per file
+audiometa chapters audiobook.m4b         # [1] 00:00:00.000 -> 00:12:31.500  Chapter 1
+audiometa artwork --out covers/ *.mp3    # extract embedded artwork (add --force to overwrite)
+audiometa atoms audiobook.m4b            # dump the MP4 atom tree (debugging)
+audiometa version
 ```
+
+`--json` output is NDJSON: one object per file, in argument order, so it streams
+over any number of files and pipes straight into `jq`. Objects carry a
+`schema_version` field, durations are integer milliseconds in `*_ms` fields, and
+a file that cannot be read yields an object with an `error` field. Flags must
+come before file names; run `audiometa help` for details.
+
+Exit codes: `0` success, `1` at least one file failed (or a write failed), `2`
+usage error.
+
+The former `atom-dump-tool` is now `audiometa atoms`.
 
 ## API Documentation
 
@@ -298,7 +308,6 @@ mise exec -- golangci-lint run ./...
 
 # Install CLI tools locally
 go install ./cmd/audiometa
-go install ./cmd/atom-dump-tool
 
 # Build all binaries
 go build -v ./cmd/...
