@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	audiobinary "github.com/simonhull/audiometa/internal/binary"
+	"github.com/simonhull/audiometa/internal/parsing"
 	"github.com/simonhull/audiometa/internal/types"
 )
 
@@ -472,4 +473,11 @@ func TestParseAudiobookTags_SeriesPartCaseInsensitive(t *testing.T) {
 	if file.Tags.SeriesPart != "3" {
 		t.Errorf("SeriesPart = %q, want 3", file.Tags.SeriesPart)
 	}
+}
+
+// resolveSeriesPart runs the shared series-part resolution for a file that already has a series.
+func resolveSeriesPart(sr *audiobinary.SafeReader, file *types.File, customTags map[string]string) string {
+	tags := types.Tags{Series: "series", Title: file.Tags.Title, Album: file.Tags.Album}
+	parsing.ResolveSeriesFallbacks(&tags, sr.Path(), seriesSource(file, customTags))
+	return tags.SeriesPart
 }

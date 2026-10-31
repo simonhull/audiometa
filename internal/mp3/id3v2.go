@@ -90,7 +90,7 @@ func parseID3v2(ctx context.Context, sr *binutil.SafeReader, file *types.File) (
 	}
 
 	// Post-parse fallbacks for audiobook series metadata.
-	resolveSeriesFallbacks(sr, file)
+	parsing.ResolveSeriesFallbacks(&file.Tags, sr.Path(), parsing.SeriesSource{})
 
 	// Total tag size including header (as stored on disk, before any de-unsynchronisation)
 	return tagSize, nil
@@ -194,29 +194,6 @@ func frameBody(version, tagFlags byte, flags uint16, data []byte) (body []byte, 
 		data = data[4:]
 	}
 	return data, ""
-}
-
-// resolveSeriesFallbacks applies fallback logic for series metadata after all frames are parsed.
-// This mirrors the M4A audiobook tag resolution: Grouping → Series, then path-based series part.
-func resolveSeriesFallbacks(sr *binutil.SafeReader, file *types.File) {
-	// If no explicit Series, try to extract from Grouping tag.
-	// Grouping often contains series info in formats like "Series Name #5".
-	if file.Tags.Series == "" && file.Tags.Grouping != "" {
-		series, part := parsing.ParseGrouping(file.Tags.Grouping)
-		if series != "" {
-			file.Tags.Series = series
-			if file.Tags.SeriesPart == "" && part != "" {
-				file.Tags.SeriesPart = part
-			}
-		}
-	}
-
-	// If series exists but no part, try to extract from file path.
-	if file.Tags.Series != "" && file.Tags.SeriesPart == "" {
-		if part := parsing.ExtractSeriesPartFromPath(sr.Path()); part != "" {
-			file.Tags.SeriesPart = part
-		}
-	}
 }
 
 // parseID3v2Header reads and validates the ID3v2 header.

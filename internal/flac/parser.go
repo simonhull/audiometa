@@ -172,20 +172,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	file.Audio.Lossless = true
 
 	// Post-parse fallbacks for audiobook series metadata.
-	if file.Tags.Series == "" && file.Tags.Grouping != "" {
-		series, part := parsing.ParseGrouping(file.Tags.Grouping)
-		if series != "" {
-			file.Tags.Series = series
-			if file.Tags.SeriesPart == "" && part != "" {
-				file.Tags.SeriesPart = part
-			}
-		}
-	}
-	if file.Tags.Series != "" && file.Tags.SeriesPart == "" {
-		if part := parsing.ExtractSeriesPartFromPath(path); part != "" {
-			file.Tags.SeriesPart = part
-		}
-	}
+	parsing.ResolveSeriesFallbacks(&file.Tags, path, parsing.SeriesSource{})
 
 	return file, nil
 }

@@ -47,23 +47,8 @@ func parseAudiobookTags(ctx context.Context, sr *binary.SafeReader, ilstAtom *At
 		file.Tags.Narrator = file.Tags.Composers[0]
 	}
 
-	// If no explicit Series atom, try to extract from Grouping tag
-	// Grouping often contains series info in formats like "Series Name #5"
-	if file.Tags.Series == "" && file.Tags.Grouping != "" {
-		series, part := parsing.ParseGrouping(file.Tags.Grouping)
-		if series != "" {
-			file.Tags.Series = series
-			if file.Tags.SeriesPart == "" && part != "" {
-				file.Tags.SeriesPart = part
-			}
-		}
-	}
-
-	// If series exists, always resolve series part from multiple sources
-	// This allows validation/override of potentially incorrect custom atom data
-	if file.Tags.Series != "" && file.Tags.SeriesPart == "" {
-		file.Tags.SeriesPart = resolveSeriesPart(sr, file, customTags)
-	}
+	// Grouping -> Series, then the series part from custom atoms, title, album, path.
+	parsing.ResolveSeriesFallbacks(&file.Tags, sr.Path(), seriesSource(file, customTags))
 
 	return nil
 }
@@ -188,36 +173,17 @@ func lookupFold(tags map[string]string, key string) string {
 	return ""
 }
 
-// Priority: Custom atoms > Title parsing > Album parsing > Path parsing.
-func resolveSeriesPart(sr *binary.SafeReader, file *types.File, customTags map[string]string) string {
-	// Priority 1: Explicit custom iTunes atoms
-	if part := lookupFold(customTags, "Series Part"); part != "" {
-		return part
+// seriesSource builds the extra series-part candidates M4A consults.
+// Priority: custom atoms > title parsing > album parsing (then path, applied by the helper).
+func seriesSource(file *types.File, customTags map[string]string) parsing.SeriesSource {
+	return parsing.SeriesSource{
+		ExplicitParts: []string{
+			lookupFold(customTags, "Series Part"),
+			lookupFold(customTags, "Series Position"),
+			lookupFold(customTags, "Part"),
+			lookupFold(customTags, "Volume"),
+		},
+		Title: file.Tags.Title,
+		Album: file.Tags.Album,
 	}
-	if part := lookupFold(customTags, "Series Position"); part != "" {
-		return part
-	}
-	if part := lookupFold(customTags, "Part"); part != "" {
-		return part
-	}
-	if part := lookupFold(customTags, "Volume"); part != "" {
-		return part
-	}
-
-	// Priority 2: Parse from title
-	if part := parsing.ExtractSeriesPartFromText(file.Tags.Title); part != "" {
-		return part
-	}
-
-	// Priority 3: Parse from album
-	if part := parsing.ExtractSeriesPartFromText(file.Tags.Album); part != "" {
-		return part
-	}
-
-	// Priority 4: Parse from file path
-	if part := parsing.ExtractSeriesPartFromPath(sr.Path()); part != "" {
-		return part
-	}
-
-	return ""
 }
