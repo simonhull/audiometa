@@ -3,8 +3,9 @@
 //
 // It parses tags, technical audio properties, chapters and embedded artwork
 // from FLAC, MP3, M4A/M4B, Ogg Vorbis and Opus files. The format is detected
-// from the file's contents, so callers never pick a parser. audiometa only
-// reads; it never modifies files.
+// from the file's contents, so callers never pick a parser. [File.WriteTo] and
+// [Write] save edited tags and artwork; MP3 is currently the only writable
+// format.
 //
 // # Quick Start
 //
@@ -41,7 +42,12 @@
 //     comments or the CUESHEET block.
 //   - MP3: ID3v2.2, ID3v2.3 and ID3v2.4 tags with an ID3v1 fallback, APIC
 //     artwork, chapters from CHAP frames or OverDrive MediaMarkers, and
-//     Xing/VBRI-aware duration.
+//     Xing/VBRI-aware duration. Writing keeps the ID3v2 version (ID3v2.2 tags
+//     and untagged files get ID3v2.4), re-emits untouched frames byte for byte,
+//     and never edits chapters. An ID3v1 trailer is copied unchanged, never
+//     updated from ID3v2 edits, so after deleting TIT2 a reader that falls
+//     back to ID3v1 can show the stale ID3v1 title (audiometa itself does so
+//     when both TIT2 and TPE1 are gone).
 //   - M4A/M4B: iTunes ilst atoms including freeform (----) atoms, covr
 //     artwork, and QuickTime or Nero chapters.
 //   - Ogg Vorbis and Opus: Vorbis comments, METADATA_BLOCK_PICTURE artwork
