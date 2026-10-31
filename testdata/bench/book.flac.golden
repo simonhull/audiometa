@@ -1,0 +1,64 @@
+{
+  "Path": "book.flac",
+  "Chapters": null,
+  "Warnings": null,
+  "Tags": {
+    "MusicBrainzAlbumID": "",
+    "Narrator": "",
+    "AlbumArtist": "Author",
+    "Artist": "Author",
+    "Copyright": "Copyright",
+    "Label": "",
+    "CatalogNumber": "",
+    "Barcode": "",
+    "Date": "2020",
+    "OriginalDate": "",
+    "ISRC": "",
+    "MusicBrainzArtistID": "",
+    "Title": "Book",
+    "Subtitle": "",
+    "MusicBrainzTrackID": "",
+    "Album": "Book",
+    "Comment": "",
+    "Description": "Comment",
+    "Series": "Series",
+    "Grouping": "Series #1",
+    "Publisher": "Publisher",
+    "Lyrics": "",
+    "SeriesPart": "1",
+    "ISBN": "",
+    "ASIN": "",
+    "Language": "eng",
+    "Performers": null,
+    "Composers": [
+      "Narrator"
+    ],
+    "Genres": [
+      "Audiobook"
+    ],
+    "Artists": [
+      "Author"
+    ],
+    "DiscTotal": 0,
+    "DiscNumber": 1,
+    "TrackTotal": 0,
+    "TrackNumber": 1,
+    "Year": 2020
+  },
+  "Audio": {
+    "ReplayGain": null,
+    "Codec": "FLAC",
+    "CodecDescription": "",
+    "CodecProfile": "",
+    "Container": "FLAC",
+    "Duration": 10000000000,
+    "SampleRate": 44100,
+    "BitDepth": 16,
+    "Channels": 1,
+    "Bitrate": 4036,
+    "Lossless": true,
+    "VBR": false
+  },
+  "Format": 1,
+  "Size": 13654
+}
