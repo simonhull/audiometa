@@ -13,6 +13,19 @@ import (
 // report their real tag, working-tree builds report "(devel)".
 var version = ""
 
+// unknownVersion is reported when no version can be determined.
+const unknownVersion = "unknown"
+
+// modulePath is this library's module path, used to find it in build info.
+const modulePath = "github.com/simonhull/audiometa"
+
+// Version is the library version at program start.
+//
+// Deprecated: use GetVersion. Version was a hand-maintained constant that fell
+// out of date; it is now derived from build info and kept only so existing
+// callers keep compiling.
+var Version = GetVersion()
+
 // GetVersion returns the library's version string.
 //
 // The value is the ldflags-injected version if present, otherwise the module
@@ -21,10 +34,35 @@ func GetVersion() string {
 	if version != "" {
 		return version
 	}
-	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" {
+	if bi, ok := debug.ReadBuildInfo(); ok {
+		return moduleVersion(bi)
+	}
+	return unknownVersion
+}
+
+// moduleVersion finds this library's version in bi. If the library is the main
+// module its version is used; otherwise it is looked up in the dependencies,
+// preferring a replacement's version when one is set. It returns "unknown"
+// when the module cannot be found.
+func moduleVersion(bi *debug.BuildInfo) string {
+	if bi == nil {
+		return unknownVersion
+	}
+	if bi.Main.Path == modulePath && bi.Main.Version != "" {
 		return bi.Main.Version
 	}
-	return "unknown"
+	for _, dep := range bi.Deps {
+		if dep == nil || dep.Path != modulePath {
+			continue
+		}
+		if dep.Replace != nil && dep.Replace.Version != "" {
+			return dep.Replace.Version
+		}
+		if dep.Version != "" {
+			return dep.Version
+		}
+	}
+	return unknownVersion
 }
 
 // VersionInfo contains detailed version information.
