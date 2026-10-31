@@ -116,7 +116,6 @@ linters:
     paths:
       - third_party$
       - builtin$
-      - examples$
     rules:
       # Tests have different requirements
       - path: _test\.go
@@ -134,13 +133,10 @@ linters:
           - revive
           - testifylint
           - thelper
-          - unparam
       - path: _test\.go
         linters:
           - staticcheck
         text: "QF"
-      - path: _test\.go
-        text: 'shadow: declaration of "err"'
 
       # cmd/ tools are utilities, not library code
       - path: cmd/
@@ -153,9 +149,6 @@ linters:
           - nestif
           - revive
 
-      # Library opens user-provided file paths by design
-      - linters: [gosec]
-        text: "G304"
       # Default file permissions - intentional 0o644 for artwork extraction
       - linters: [gosec]
         text: "G301|G306"
