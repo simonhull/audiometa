@@ -15,20 +15,14 @@ func TestOpen_Corpus(t *testing.T) {
 		path       string
 		wantFormat audiometa.Format
 		wantCodec  string
-		// tagsSkip, when non-empty, skips the tag assertions for a known bug.
-		tagsSkip string
 	}{
-		{path: "testdata/sample.mp3", wantFormat: audiometa.FormatMP3,
-			tagsSkip: "known bug: ID3v2 text frames keep trailing NUL written by ffmpeg (no plan assigned yet)"},
-		{path: "testdata/sample.flac", wantFormat: audiometa.FormatFLAC,
-			tagsSkip: "known bug, fixed by plan for lowercase Vorbis keys (ffmpeg writes title=)"},
+		{path: "testdata/sample.mp3", wantFormat: audiometa.FormatMP3},
+		{path: "testdata/sample.flac", wantFormat: audiometa.FormatFLAC},
 		{path: "testdata/sample_upper.flac", wantFormat: audiometa.FormatFLAC},
 		{path: "testdata/sample.m4a", wantFormat: audiometa.FormatM4A},
 		{path: "testdata/sample.m4b", wantFormat: audiometa.FormatM4A},
-		{path: "testdata/sample.ogg", wantFormat: audiometa.FormatOgg,
-			tagsSkip: "known bug, fixed by plan for lowercase Vorbis keys (ffmpeg writes title=)"},
-		{path: "testdata/sample.opus", wantFormat: audiometa.FormatOpus,
-			tagsSkip: "known bug, fixed by plan for lowercase Vorbis keys (ffmpeg writes title=)"},
+		{path: "testdata/sample.ogg", wantFormat: audiometa.FormatOgg},
+		{path: "testdata/sample.opus", wantFormat: audiometa.FormatOpus},
 	}
 	for _, tc := range cases {
 		t.Run(tc.path, func(t *testing.T) {
@@ -52,9 +46,6 @@ func TestOpen_Corpus(t *testing.T) {
 			}
 
 			t.Run("tags", func(t *testing.T) {
-				if tc.tagsSkip != "" {
-					t.Skip(tc.tagsSkip)
-				}
 				if f.Tags.Title != "Test Title" {
 					t.Errorf("Title = %q, want %q", f.Tags.Title, "Test Title")
 				}
@@ -73,12 +64,9 @@ func TestOpen_Corpus_Chapters(t *testing.T) {
 	wantTitles := []string{"Chapter One", "Chapter Two"}
 	cases := []struct {
 		path string
-		skip string
 	}{
-		{path: "testdata/sample.mp3",
-			skip: "known bug: ID3v2 CHAP titles keep trailing NUL (no plan assigned yet)"},
-		{path: "testdata/sample.m4b",
-			skip: "suspected bug: Nero chpl with 2 chapters yields 1 chapter spanning 0-2s (no plan assigned yet)"},
+		{path: "testdata/sample.mp3"},
+		{path: "testdata/sample.m4b"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.path, func(t *testing.T) {
@@ -87,9 +75,6 @@ func TestOpen_Corpus_Chapters(t *testing.T) {
 				t.Fatalf("Open: %v", err)
 			}
 			defer f.Close()
-			if tc.skip != "" {
-				t.Skip(tc.skip)
-			}
 			if len(f.Chapters) != len(wantTitles) {
 				t.Fatalf("got %d chapters, want %d: %+v", len(f.Chapters), len(wantTitles), f.Chapters)
 			}
