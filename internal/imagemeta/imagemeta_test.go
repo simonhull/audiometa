@@ -1,9 +1,9 @@
-package m4a
+package imagemeta
 
 import "testing"
 
-// TestImageSniffing_Characterization pins image MIME and dimension sniffing.
-func TestImageSniffing_Characterization(t *testing.T) {
+// TestDimensions covers JPEG SOF and PNG IHDR parsing, shared by the MP3 and M4A parsers.
+func TestDimensions(t *testing.T) {
 	jpeg := func(marker byte) []byte {
 		return []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x04, 0x00, 0x00, 0xFF, marker, 0x00, 0x11, 0x08, 0x01, 0x2C, 0x02, 0x58, 0x03, 0x00, 0x00}
 	}
@@ -27,10 +27,29 @@ func TestImageSniffing_Characterization(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			w, h := detectImageDimensions(tc.data, tc.mime)
+			w, h := Dimensions(tc.data, tc.mime)
 			if w != tc.wantW || h != tc.wantH {
 				t.Errorf("dimensions = %dx%d, want %dx%d", w, h, tc.wantW, tc.wantH)
 			}
 		})
+	}
+}
+
+func TestMIMEType(t *testing.T) {
+	tests := map[string][]byte{
+		"image/jpeg": {0xFF, 0xD8, 0xFF, 0xE0},
+		"image/png":  {0x89, 0x50, 0x4E, 0x47, 0x0D},
+		"image/gif":  []byte("GIF89a"),
+		"image/bmp":  []byte("BM\x00\x00"),
+		"image/webp": []byte("RIFF\x00\x00\x00\x00WEBP"),
+		"":           []byte("nope"),
+	}
+	for want, data := range tests {
+		if got := MIMEType(data); got != want {
+			t.Errorf("MIMEType(%q) = %q, want %q", data, got, want)
+		}
+	}
+	if got := MIMEType([]byte{0xFF, 0xD8}); got != "" {
+		t.Errorf("short data = %q, want empty", got)
 	}
 }

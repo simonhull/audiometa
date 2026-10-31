@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	binutil "github.com/simonhull/audiometa/internal/binary"
+	"github.com/simonhull/audiometa/internal/imagemeta"
 	"github.com/simonhull/audiometa/internal/types"
 )
 
@@ -16,11 +17,6 @@ var (
 	errAPICNoMIMETerm  = errors.New("APIC MIME type not null-terminated")
 	errAPICTruncated   = errors.New("APIC frame truncated after MIME type")
 	errAPICNoImageData = errors.New("APIC frame has no image data")
-)
-
-const (
-	mimeJPEG = "image/jpeg"
-	mimePNG  = "image/png"
 )
 
 // extractArtwork extracts embedded artwork from MP3 files.
@@ -129,12 +125,12 @@ func parseAPICFrame(data []byte) (types.Artwork, error) {
 	// Handle legacy MIME type markers
 	switch mimeType {
 	case "JPG", "jpg":
-		mimeType = mimeJPEG
+		mimeType = imagemeta.MIMEJPEG
 	case "PNG", "png":
-		mimeType = mimePNG
+		mimeType = imagemeta.MIMEPNG
 	case "", "-->":
 		// Empty or URL reference - try to detect from data
-		mimeType = mimeJPEG // Default, will be overridden if PNG detected
+		mimeType = imagemeta.MIMEJPEG // Default, will be overridden if PNG detected
 	}
 
 	return parsePictureBody(data, pos, encoding, mimeType)
@@ -169,12 +165,12 @@ func parsePictureBody(data []byte, pos int, encoding byte, mimeType string) (typ
 	imageData := data[pos:]
 
 	// Detect actual MIME type from image magic bytes
-	if detectedMIME := detectMIMEType(imageData); detectedMIME != "" {
+	if detectedMIME := imagemeta.MIMEType(imageData); detectedMIME != "" {
 		mimeType = detectedMIME
 	}
 
 	// Detect dimensions
-	width, height := detectImageDimensions(imageData, mimeType)
+	width, height := imagemeta.Dimensions(imageData, mimeType)
 
 	return types.Artwork{
 		MIMEType:    mimeType,
@@ -192,89 +188,9 @@ func parsePICFrame(data []byte) (types.Artwork, error) {
 	if len(data) < 6 {
 		return types.Artwork{}, errAPICTooShort
 	}
-	mimeType := mimeJPEG // default; magic-byte sniffing in parsePictureBody overrides it
+	mimeType := imagemeta.MIMEJPEG // default; magic-byte sniffing in parsePictureBody overrides it
 	if strings.EqualFold(string(data[1:4]), "PNG") {
-		mimeType = mimePNG
+		mimeType = imagemeta.MIMEPNG
 	}
 	return parsePictureBody(data, 4, data[0], mimeType)
-}
-
-// detectMIMEType detects image MIME type from magic bytes.
-//
-//nolint:gocyclo // Flat dispatch on image magic bytes; complexity = number of supported formats.
-func detectMIMEType(data []byte) string {
-	switch {
-	case len(data) < 4:
-		return ""
-	case data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF:
-		return mimeJPEG
-	case data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4E && data[3] == 0x47:
-		return mimePNG
-	case data[0] == 0x47 && data[1] == 0x49 && data[2] == 0x46:
-		return "image/gif"
-	case data[0] == 0x42 && data[1] == 0x4D:
-		return "image/bmp"
-	case len(data) >= 12 && string(data[0:4]) == "RIFF" && string(data[8:12]) == "WEBP":
-		return "image/webp"
-	default:
-		return ""
-	}
-}
-
-// detectImageDimensions extracts width/height from image data.
-func detectImageDimensions(data []byte, mimeType string) (int, int) {
-	switch mimeType {
-	case mimeJPEG:
-		return detectJPEGDimensions(data)
-	case mimePNG:
-		return detectPNGDimensions(data)
-	default:
-		return 0, 0
-	}
-}
-
-// detectJPEGDimensions extracts dimensions from JPEG data.
-func detectJPEGDimensions(data []byte) (int, int) {
-	// JPEG structure: markers are 0xFF followed by marker type
-	// SOF markers contain dimensions: SOF0 (0xC0), SOF1 (0xC1), SOF2 (0xC2)
-	for i := range len(data) - 9 {
-		if data[i] != 0xFF {
-			continue
-		}
-
-		marker := data[i+1]
-		// Check for SOF markers (Start Of Frame)
-		if marker == 0xC0 || marker == 0xC1 || marker == 0xC2 {
-			// SOF format: FF Cn [2 bytes length] [1 byte precision] [2 bytes height] [2 bytes width]
-			if i+9 <= len(data) {
-				height := int(data[i+5])<<8 | int(data[i+6])
-				width := int(data[i+7])<<8 | int(data[i+8])
-				return width, height
-			}
-		}
-	}
-	return 0, 0
-}
-
-// detectPNGDimensions extracts dimensions from PNG data.
-func detectPNGDimensions(data []byte) (int, int) {
-	// PNG structure: 8-byte signature + IHDR chunk
-	// IHDR is at bytes 8-24: [4 len] [4 "IHDR"] [4 width] [4 height] [...]
-	if len(data) < 24 {
-		return 0, 0
-	}
-
-	// Verify PNG signature
-	pngSig := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
-	for i := range 8 {
-		if data[i] != pngSig[i] {
-			return 0, 0
-		}
-	}
-
-	// Read IHDR dimensions (big-endian)
-	width := int(data[16])<<24 | int(data[17])<<16 | int(data[18])<<8 | int(data[19])
-	height := int(data[20])<<24 | int(data[21])<<16 | int(data[22])<<8 | int(data[23])
-
-	return width, height
 }
