@@ -69,7 +69,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		// Read metadata block header (4 bytes)
 		header, err := binary.Read[uint32](sr, offset, "metadata block header")
 		if err != nil {
-			file.Warnings = append(file.Warnings, types.Warning{
+			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 				Stage:   types.StageMetadata,
 				Message: fmt.Sprintf("failed to read metadata block header at offset %d: %v", offset, err),
 				Err:     err,
@@ -89,7 +89,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		switch blockType {
 		case blockTypeStreamInfo:
 			if err := parseStreamInfo(sr, offset, blockLength, file); err != nil {
-				file.Warnings = append(file.Warnings, types.Warning{
+				file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 					Stage:   types.StageMetadata,
 					Message: fmt.Sprintf("failed to parse STREAMINFO: %v", err),
 					Err:     err,
@@ -101,7 +101,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 			comments, err := parseVorbisComment(sr, offset, blockLength, file)
 			vorbisComments = append(vorbisComments, comments...)
 			if err != nil {
-				file.Warnings = append(file.Warnings, types.Warning{
+				file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 					Stage:   types.StageMetadata,
 					Message: fmt.Sprintf("failed to parse Vorbis comments: %v", err),
 					Err:     err,
@@ -124,7 +124,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 
 		case blockTypeCueSheet:
 			if err := parseCueSheet(sr, offset, uint32(blockLength), file); err != nil {
-				file.Warnings = append(file.Warnings, types.Warning{
+				file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 					Stage:   types.StageChapters,
 					Message: fmt.Sprintf("failed to parse CUESHEET: %v", err),
 					Err:     err,
@@ -263,7 +263,7 @@ func parseStreamInfo(sr *binary.SafeReader, offset, blockLength int64, file *typ
 	}
 
 	if totalSamples == 0 {
-		file.Warnings = append(file.Warnings, types.Warning{
+		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 			Stage:   types.StageTechnical,
 			Message: "STREAMINFO total samples is 0 (unknown); duration not available",
 			Offset:  offset,
@@ -321,7 +321,7 @@ func parseVorbisComment(sr *binary.SafeReader, offset, _ int64, file *types.File
 		comments = append(comments, comment)
 		if err := vorbis.ParseComment(comment, file); err != nil {
 			// Non-fatal - add warning and continue
-			file.Warnings = append(file.Warnings, types.Warning{
+			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 				Stage:   types.StageMetadata,
 				Message: fmt.Sprintf("invalid Vorbis comment: %s", err),
 				Err:     err,

@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"runtime"
+	"sync"
 
 	"golang.org/x/sync/errgroup"
 
@@ -31,6 +32,9 @@ type File struct {
 	reader  io.ReaderAt
 	parser  FormatParser
 	artwork []Artwork
+
+	artworkMu     sync.Mutex // guards artwork and artworkLoaded
+	artworkLoaded bool
 }
 
 // Open opens an audio file and reads its metadata.
@@ -84,7 +88,7 @@ func openWithContext(ctx context.Context, path string, opts ...Option) (*File, e
 	size := stat.Size()
 
 	// Parse with the reader
-	typesFile, err := openReader(ctx, f, size, path, options)
+	typesFile, err := openReader(ctx, f, size, path)
 	if err != nil {
 		_ = f.Close()
 		return nil, err
@@ -97,17 +101,11 @@ func openWithContext(ctx context.Context, path string, opts ...Option) (*File, e
 		parser: typesFile.parser,
 	}
 
-	// Check strict parsing mode
-	if options.strictParsing && len(file.Warnings) > 0 {
-		_ = f.Close()
-		return nil, fmt.Errorf("strict parsing failed: %s", file.Warnings[0].Message)
-	}
-
 	// Preload artwork if requested
 	if options.preloadArtwork {
 		if _, err := file.ExtractArtwork(); err != nil {
 			// Don't fail completely, just add warning
-			file.Warnings = append(file.Warnings, Warning{
+			file.Warnings = types.AppendWarning(file.Warnings, Warning{
 				Stage:   StageArtwork,
 				Message: fmt.Sprintf("preload artwork failed: %v", err),
 				Err:     err,
@@ -115,7 +113,81 @@ func openWithContext(ctx context.Context, path string, opts ...Option) (*File, e
 		}
 	}
 
+	if err := applyWarningPolicy(&file.File, options); err != nil {
+		_ = f.Close()
+		return nil, err
+	}
 	return file, nil
+}
+
+// strictParsingError reports that WithStrictParsing rejected a file. Its message
+// names the first warning; Unwrap exposes every warning's underlying error so
+// callers can use errors.Is/As.
+type strictParsingError struct {
+	msg  string
+	errs []error
+}
+
+func (e *strictParsingError) Error() string   { return e.msg }
+func (e *strictParsingError) Unwrap() []error { return e.errs }
+
+// applyWarningPolicy enforces WithStrictParsing, then WithIgnoreWarnings.
+// Strict takes precedence: a file with any warning fails even when
+// warnings are also being ignored.
+func applyWarningPolicy(file *types.File, options *openOptions) error {
+	if options.strictParsing && len(file.Warnings) > 0 {
+		msg := "strict parsing failed: " + file.Warnings[0].Message
+		if n := len(file.Warnings) - 1; n > 0 {
+			msg += fmt.Sprintf(" (and %d more warnings)", n)
+		}
+		var errs []error
+		for _, w := range file.Warnings {
+			if w.Err != nil {
+				errs = append(errs, w.Err)
+			}
+		}
+		return &strictParsingError{msg: msg, errs: errs}
+	}
+	if options.ignoreWarnings {
+		file.Warnings = nil
+	}
+	return nil
+}
+
+// maxPanicDetail bounds how much of a recovered panic value is copied into the error.
+const maxPanicDetail = 256
+
+// panicError converts a recovered panic value into a CorruptedFileError.
+//
+// recover cannot catch Go runtime fatal errors such as out-of-memory or
+// concurrent map writes; those still terminate the process. Bounding
+// allocations from untrusted length fields is a separate safeguard.
+func panicError(path string, rec any) error {
+	detail := fmt.Sprint(rec)
+	if len(detail) > maxPanicDetail {
+		detail = detail[:maxPanicDetail] + "..."
+	}
+	return &types.CorruptedFileError{Path: path, Reason: "parser panic: " + detail}
+}
+
+// parseSafely calls p.Parse, converting a panic into a CorruptedFileError.
+func parseSafely(ctx context.Context, p FormatParser, r io.ReaderAt, size int64, path string) (file *types.File, err error) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			file, err = nil, panicError(path, rec)
+		}
+	}()
+	return p.Parse(ctx, r, size, path)
+}
+
+// extractSafely calls e.ExtractArtwork, converting a panic into a CorruptedFileError.
+func extractSafely(ctx context.Context, e ArtworkExtractor, r io.ReaderAt, size int64, path string) (art []Artwork, err error) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			art, err = nil, panicError(path, rec)
+		}
+	}()
+	return e.ExtractArtwork(ctx, r, size, path)
 }
 
 // parsedFile bundles the parsed data payload with the parser that produced it,
@@ -127,7 +199,7 @@ type parsedFile struct {
 }
 
 // openReader opens from an io.ReaderAt (internal, for testing).
-func openReader(ctx context.Context, r io.ReaderAt, size int64, path string, options *openOptions) (*parsedFile, error) {
+func openReader(ctx context.Context, r io.ReaderAt, size int64, path string) (*parsedFile, error) {
 	// Detect format
 	format, err := types.DetectFormat(r, size, path)
 	if err != nil {
@@ -144,7 +216,7 @@ func openReader(ctx context.Context, r io.ReaderAt, size int64, path string, opt
 	}
 
 	// Parse metadata; parsers check ctx at major boundaries.
-	file, err := parser.Parse(ctx, r, size, path)
+	file, err := parseSafely(ctx, parser, r, size, path)
 	if err != nil {
 		return nil, fmt.Errorf("parse %s: %w", format, err)
 	}
@@ -153,11 +225,6 @@ func openReader(ctx context.Context, r io.ReaderAt, size int64, path string, opt
 	file.Path = path
 	file.Format = format
 	file.Size = size
-
-	// Apply option: ignore warnings
-	if options.ignoreWarnings {
-		file.Warnings = nil
-	}
 
 	return &parsedFile{file: file, parser: parser}, nil
 }
@@ -178,7 +245,9 @@ func (f *File) Close() error {
 // call to ExtractArtwork() reads and caches the artwork. Subsequent
 // calls return the cached data.
 //
-// Returns an empty slice if the file contains no artwork.
+// Returns an empty slice if the file contains no artwork. Safe for concurrent
+// use; extraction runs at most once per File (failed attempts are retried on
+// the next call).
 //
 // Example:
 //
@@ -199,27 +268,26 @@ func (f *File) ExtractArtwork() ([]Artwork, error) {
 // Use this when you want to bound how long artwork extraction can take,
 // for example when scanning many files in a worker pool.
 func (f *File) ExtractArtworkContext(ctx context.Context) ([]Artwork, error) {
-	// Return cached artwork if already loaded
-	if f.artwork != nil {
+	f.artworkMu.Lock()
+	defer f.artworkMu.Unlock()
+
+	if f.artworkLoaded {
 		return f.artwork, nil
 	}
 
-	// Check if parser supports artwork extraction
-	extractor, ok := f.parser.(ArtworkExtractor)
-	if !ok {
-		// Format doesn't support artwork
-		return nil, nil
+	artwork := []Artwork{}
+	if extractor, ok := f.parser.(ArtworkExtractor); ok {
+		extracted, err := extractSafely(ctx, extractor, f.reader, f.Size, f.Path)
+		if err != nil {
+			return nil, fmt.Errorf("extract artwork: %w", err) // Not cached: a later call may retry.
+		}
+		if extracted != nil {
+			artwork = extracted
+		}
 	}
 
-	// Extract artwork
-	artwork, err := extractor.ExtractArtwork(ctx, f.reader, f.Size, f.Path)
-	if err != nil {
-		return nil, fmt.Errorf("extract artwork: %w", err)
-	}
-
-	// Cache for future calls
 	f.artwork = artwork
-
+	f.artworkLoaded = true
 	return artwork, nil
 }
 
@@ -306,6 +374,11 @@ func OpenMany(ctx context.Context, paths ...string) ([]*File, error) {
 
 	for i, path := range paths {
 		g.Go(func() error {
+			defer func() {
+				if rec := recover(); rec != nil {
+					errs[i] = fmt.Errorf("%s: %w", path, panicError(path, rec))
+				}
+			}()
 			file, err := openWithContext(ctx, path)
 			if err != nil {
 				errs[i] = fmt.Errorf("%s: %w", path, err)

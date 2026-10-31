@@ -115,7 +115,7 @@ func parseOpusTags(data []byte, file *types.File) error {
 	for i := range commentCount {
 		if offset+4 > len(data) {
 			// Truncated, but don't fail - just stop reading
-			file.Warnings = append(file.Warnings, types.Warning{
+			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 				Stage:   types.StageMetadata,
 				Message: fmt.Sprintf("truncated comment %d (missing length field)", i),
 			})
@@ -127,7 +127,7 @@ func parseOpusTags(data []byte, file *types.File) error {
 
 		if offset+int(commentLen) > len(data) {
 			// Truncated comment data
-			file.Warnings = append(file.Warnings, types.Warning{
+			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 				Stage:   types.StageMetadata,
 				Message: fmt.Sprintf("truncated comment %d data (expected %d bytes)", i, commentLen),
 			})
@@ -144,7 +144,7 @@ func parseOpusTags(data []byte, file *types.File) error {
 		// (OpusTags uses identical format to Vorbis comments)
 		if err := vorbis.ParseComment(comment, file); err != nil {
 			// Non-fatal - add warning and continue
-			file.Warnings = append(file.Warnings, types.Warning{
+			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 				Stage:   types.StageMetadata,
 				Message: fmt.Sprintf("invalid Opus tag: %s", err),
 				Err:     err,

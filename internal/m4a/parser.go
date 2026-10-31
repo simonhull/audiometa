@@ -55,7 +55,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	// and must not stop technical info or chapters from being parsed.
 	ilstAtom, err := findIlst(sr, moovAtom)
 	if err != nil && !errors.Is(err, errAtomNotFound) {
-		file.Warnings = append(file.Warnings, types.Warning{
+		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 			Stage:   types.StageMetadata,
 			Message: err.Error(),
 			Err:     err,
@@ -65,7 +65,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	// Extract metadata from ilst
 	if ilstAtom != nil {
 		if err := extractIlstMetadata(sr, ilstAtom, file); err != nil {
-			file.Warnings = append(file.Warnings, types.Warning{
+			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 				Stage:   types.StageMetadata,
 				Message: err.Error(),
 				Err:     err,
@@ -75,7 +75,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 
 	// Parse technical info (duration, bitrate, codec, sample rate, channels)
 	if err := parseTechnicalInfo(sr, moovAtom, file); err != nil {
-		file.Warnings = append(file.Warnings, types.Warning{
+		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 			Stage:   types.StageTechnical,
 			Message: err.Error(),
 			Err:     err,
@@ -85,7 +85,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	// Parse chapters
 	chapters, err := parseChapters(sr, moovAtom, file.Audio.Duration)
 	if err != nil {
-		file.Warnings = append(file.Warnings, types.Warning{
+		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 			Stage:   types.StageChapters,
 			Message: err.Error(),
 			Err:     err,
@@ -97,7 +97,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	// Parse audiobook-specific tags (narrator, series, publisher, etc.)
 	if ilstAtom != nil {
 		if err := parseAudiobookTags(sr, ilstAtom, file); err != nil {
-			file.Warnings = append(file.Warnings, types.Warning{
+			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 				Stage:   types.StageMetadata,
 				Message: err.Error(),
 				Err:     err,

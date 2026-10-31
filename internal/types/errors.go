@@ -83,5 +83,26 @@ func (w Warning) String() string {
 	return fmt.Sprintf("%s: %s", w.Stage, w.Message)
 }
 
+// MaxWarnings is the most warnings a single file accumulates. Once reached, one
+// final warning notes the truncation and further warnings are dropped, so a
+// crafted file cannot grow File.Warnings without bound.
+const MaxWarnings = 100
+
+// AppendWarning appends w to ws unless the per-file cap has been reached.
+func AppendWarning(ws []Warning, w Warning) []Warning {
+	switch {
+	case len(ws) < MaxWarnings:
+		return append(ws, w)
+	case len(ws) == MaxWarnings:
+		return append(ws, Warning{
+			Stage:   w.Stage,
+			Message: fmt.Sprintf("further warnings suppressed after %d", MaxWarnings),
+			Offset:  w.Offset,
+		})
+	default:
+		return ws
+	}
+}
+
 // Unwrap returns the underlying error so callers can use errors.Is/As.
 func (w Warning) Unwrap() error { return w.Err }

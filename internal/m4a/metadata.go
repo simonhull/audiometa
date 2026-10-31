@@ -129,7 +129,7 @@ func extractIlstMetadata(sr *binary.SafeReader, ilstAtom *Atom, file *types.File
 			// Parse as text tag
 			value, err := parseMetadataTag(sr, tagAtom)
 			if err != nil {
-				file.Warnings = append(file.Warnings, types.Warning{
+				file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 					Stage:   types.StageMetadata,
 					Message: fmt.Sprintf("failed to parse tag %s: %v", tagAtom.Type, err),
 					Err:     err,

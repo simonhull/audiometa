@@ -65,7 +65,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 				return nil, fmt.Errorf("failed to read first Ogg page: %w", err)
 			}
 			// Subsequent pages - add warning and stop
-			file.Warnings = append(file.Warnings, types.Warning{
+			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 				Stage:   types.StageMetadata,
 				Message: fmt.Sprintf("failed to read Ogg page %d: %v", i, err),
 				Err:     err,
@@ -105,7 +105,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 			duration, err := calculateDuration(sr, size, file.Audio.SampleRate)
 			if err != nil {
 				// Non-fatal - add warning
-				file.Warnings = append(file.Warnings, types.Warning{
+				file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 					Stage:   types.StageTechnical,
 					Message: fmt.Sprintf("failed to calculate duration: %v", err),
 					Err:     err,
@@ -118,7 +118,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		// Parse Vorbis comment header (packet 1)
 		if err := parseVorbisComment(packets[1], file); err != nil {
 			// Non-fatal - add warning
-			file.Warnings = append(file.Warnings, types.Warning{
+			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 				Stage:   types.StageMetadata,
 				Message: fmt.Sprintf("failed to parse Vorbis comment header: %v", err),
 				Err:     err,
@@ -137,7 +137,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		duration, err := calculateDuration(sr, size, 48000)
 		if err != nil {
 			// Non-fatal - add warning
-			file.Warnings = append(file.Warnings, types.Warning{
+			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 				Stage:   types.StageTechnical,
 				Message: fmt.Sprintf("failed to calculate duration: %v", err),
 				Err:     err,
@@ -149,7 +149,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		// Parse OpusTags comment header (packet 1)
 		if err := parseOpusTags(packets[1], file); err != nil {
 			// Non-fatal - add warning
-			file.Warnings = append(file.Warnings, types.Warning{
+			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 				Stage:   types.StageMetadata,
 				Message: fmt.Sprintf("failed to parse OpusTags header: %v", err),
 				Err:     err,

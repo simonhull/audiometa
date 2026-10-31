@@ -112,7 +112,7 @@ func parseVorbisComment(data []byte, file *types.File) error {
 	for i := range commentCount {
 		if offset+4 > len(data) {
 			// Truncated, but don't fail - just stop reading
-			file.Warnings = append(file.Warnings, types.Warning{
+			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 				Stage:   types.StageMetadata,
 				Message: fmt.Sprintf("truncated comment %d", i),
 			})
@@ -124,7 +124,7 @@ func parseVorbisComment(data []byte, file *types.File) error {
 
 		if offset+int(commentLen) > len(data) {
 			// Truncated comment
-			file.Warnings = append(file.Warnings, types.Warning{
+			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 				Stage:   types.StageMetadata,
 				Message: fmt.Sprintf("truncated comment %d data", i),
 			})
@@ -140,7 +140,7 @@ func parseVorbisComment(data []byte, file *types.File) error {
 		// Parse comment using shared Vorbis comment parser
 		if err := vorbis.ParseComment(comment, file); err != nil {
 			// Non-fatal - add warning and continue
-			file.Warnings = append(file.Warnings, types.Warning{
+			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 				Stage:   types.StageMetadata,
 				Message: fmt.Sprintf("invalid Vorbis comment: %s", err),
 				Err:     err,

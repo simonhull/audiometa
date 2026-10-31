@@ -36,7 +36,9 @@ func defaultOptions() *openOptions {
 // like invalid tag encodings or corrupted artwork, returning warnings
 // alongside the parsed data.
 //
-// With strict parsing enabled, any warning becomes a fatal error.
+// With strict parsing enabled, any warning becomes a fatal error. Warnings
+// from WithArtworkPreload count too. Strict parsing takes precedence over
+// WithIgnoreWarnings.
 //
 // Example:
 //
@@ -72,7 +74,8 @@ func WithArtworkPreload() Option {
 // are collected in File.Warnings. This option discards them.
 //
 // Use this for performance-critical code where you don't care about
-// data quality issues.
+// data quality issues. If WithStrictParsing is also set, a file with warnings
+// still fails to open.
 //
 // Example:
 //

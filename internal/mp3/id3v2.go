@@ -185,7 +185,7 @@ func readSingleFrame(sr *binutil.SafeReader, file *types.File, header ID3v2Heade
 	// Read frame data
 	frameData := make([]byte, frameSize)
 	if err := sr.ReadAt(frameData, offset+10, fmt.Sprintf("frame %s data", frameID)); err != nil {
-		file.Warnings = append(file.Warnings, types.Warning{
+		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 			Stage:   types.StageMetadata,
 			Message: fmt.Sprintf("failed to read frame %s: %v", frameID, err),
 			Err:     err,
