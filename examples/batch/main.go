@@ -44,13 +44,17 @@ func main() {
 	// Open all files concurrently
 	files, err := audiometa.OpenMany(ctx, paths...)
 	if err != nil {
-		log.Fatalf("Failed to process files: %v", err)
+		// OpenMany returns partial results: files that opened successfully are
+		// still present, failed slots are nil.
+		log.Printf("partial failure: %v", err)
 	}
 
 	// Ensure all files are closed when done
 	defer func() {
 		for _, f := range files {
-			f.Close()
+			if f != nil {
+				f.Close()
+			}
 		}
 	}()
 
@@ -68,7 +72,12 @@ func main() {
 		withWarnings  int
 	)
 
+	processed := 0
 	for i, file := range files {
+		if file == nil {
+			continue // failed to open; see the joined error logged above
+		}
+		processed++
 		fmt.Printf("\n[%d] %s\n", i+1, file.Path)
 		fmt.Printf("    Format:   %s\n", file.Format)
 		fmt.Printf("    Tags:     %s - %s\n", file.Tags.Artist, file.Tags.Title)
@@ -97,23 +106,27 @@ func main() {
 		formatCounts[file.Format]++
 	}
 
+	if processed == 0 {
+		log.Fatal("no files could be opened")
+	}
+
 	// Print statistics
 	fmt.Println("\n════════════════════════════════════════════════════════")
 	fmt.Println("Statistics:")
 	fmt.Println("────────────────────────────────────────────────────────")
-	fmt.Printf("Files Processed:   %d\n", len(files))
+	fmt.Printf("Files Processed:   %d of %d\n", processed, len(files))
 	fmt.Printf("Total Duration:    %s\n", totalDuration)
 	fmt.Printf("Total Size:        %.2f MB\n", float64(totalSize)/(1024*1024))
-	fmt.Printf("With Artwork:      %d (%.0f%%)\n", withArtwork, float64(withArtwork)/float64(len(files))*100)
+	fmt.Printf("With Artwork:      %d (%.0f%%)\n", withArtwork, float64(withArtwork)/float64(processed)*100)
 	if withWarnings > 0 {
-		fmt.Printf("With Warnings:     %d (%.0f%%)\n", withWarnings, float64(withWarnings)/float64(len(files))*100)
+		fmt.Printf("With Warnings:     %d (%.0f%%)\n", withWarnings, float64(withWarnings)/float64(processed)*100)
 	}
 
 	// Format breakdown
 	if len(formatCounts) > 0 {
 		fmt.Println("\nFormat Breakdown:")
 		for format, count := range formatCounts {
-			fmt.Printf("  %s: %d (%.0f%%)\n", format, count, float64(count)/float64(len(files))*100)
+			fmt.Printf("  %s: %d (%.0f%%)\n", format, count, float64(count)/float64(processed)*100)
 		}
 	}
 
@@ -121,6 +134,6 @@ func main() {
 	fmt.Println("\nPerformance:")
 	fmt.Println("────────────────────────────────────────────────────────")
 	fmt.Printf("Total Time:        %s\n", elapsed)
-	fmt.Printf("Average per File:  %s\n", elapsed/time.Duration(len(files)))
-	fmt.Printf("Files per Second:  %.1f\n", float64(len(files))/elapsed.Seconds())
+	fmt.Printf("Average per File:  %s\n", elapsed/time.Duration(max(processed, 1)))
+	fmt.Printf("Files per Second:  %.1f\n", float64(processed)/elapsed.Seconds())
 }
