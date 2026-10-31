@@ -921,3 +921,25 @@ func TestParse_ChapterEndTimeUsesDuration(t *testing.T) {
 		})
 	}
 }
+
+func TestParseOpus_InformationalHeaderFieldsDoNotWarn(t *testing.T) {
+	data := createMinimalOpus("T", "A", "B")
+	// Patch OpusHead: input sample rate 44100, output gain 256 (+1 dB).
+	i := bytes.Index(data, []byte("OpusHead"))
+	if i < 0 {
+		t.Fatal("OpusHead not found")
+	}
+	binary.LittleEndian.PutUint32(data[i+12:], 44100)
+	binary.LittleEndian.PutUint16(data[i+16:], 256)
+
+	file, err := (&parser{}).Parse(context.Background(), bytes.NewReader(data), int64(len(data)), "test.opus")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(file.Warnings) != 0 {
+		t.Errorf("unexpected warnings: %+v", file.Warnings)
+	}
+	if file.Audio.SampleRate != 48000 {
+		t.Errorf("SampleRate = %d, want 48000", file.Audio.SampleRate)
+	}
+}

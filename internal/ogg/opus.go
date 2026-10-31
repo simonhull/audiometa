@@ -53,21 +53,11 @@ func parseOpusHead(data []byte, file *types.File) error {
 	file.Audio.Lossless = false
 	file.Audio.VBR = true // Opus is VBR
 
-	// Add informational warnings for non-default values
-	if inputSampleRate != 48000 && inputSampleRate > 0 {
-		file.Warnings = append(file.Warnings, types.Warning{
-			Stage:   types.StageTechnical,
-			Message: fmt.Sprintf("original sample rate was %d Hz (Opus outputs at 48 kHz)", inputSampleRate),
-		})
-	}
-
-	if outputGain != 0 {
-		gainDB := float64(outputGain) / 256.0
-		file.Warnings = append(file.Warnings, types.Warning{
-			Stage:   types.StageTechnical,
-			Message: fmt.Sprintf("output gain: %.2f dB", gainDB),
-		})
-	}
+	// inputSampleRate and outputGain are informational (normal encoder metadata,
+	// not defects) - do not emit warnings for them; warnings are reserved for
+	// parse degradation and would trip WithStrictParsing.
+	_ = inputSampleRate
+	_ = outputGain
 
 	// Pre-skip and mapping family are informational, not needed for metadata
 	_ = preSkip
