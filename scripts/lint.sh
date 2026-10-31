@@ -4,27 +4,25 @@ set -euo pipefail
 echo "Running audiometa linters..."
 echo
 
-# Check if golangci-lint is installed
-if ! command -v golangci-lint &> /dev/null; then
-    echo "Error: golangci-lint not found"
-    echo "Install: https://golangci-lint.run/usage/install/"
-    echo "Quick: curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b \$(go env GOPATH)/bin"
+# Use the mise-pinned toolchain so local lint matches CI
+if ! command -v mise &> /dev/null; then
+    echo "Error: mise not found"
+    echo "Install: https://mise.jdx.dev/getting-started.html, then run: mise install"
     exit 1
 fi
 
-# Run golangci-lint
-echo "→ Running golangci-lint..."
-golangci-lint run ./...
+echo "→ Running golangci-lint ($(mise exec -- golangci-lint version --short 2>/dev/null || echo pinned))..."
+mise exec -- golangci-lint run ./...
 
 # Run go vet
 echo
 echo "→ Running go vet..."
-go vet ./...
+mise exec -- go vet ./...
 
 # Check formatting
 echo
 echo "→ Checking formatting..."
-UNFORMATTED=$(gofmt -l . | grep -v '^vendor/' || true)
+UNFORMATTED=$(mise exec -- gofmt -l . | grep -v '^vendor/' || true)
 if [ -n "$UNFORMATTED" ]; then
     echo "Error: The following files need formatting:"
     echo "$UNFORMATTED"

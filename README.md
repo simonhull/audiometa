@@ -266,6 +266,9 @@ than an optional dependency, following the same pattern as Go's `image` package.
 git clone https://github.com/simonhull/audiometa.git
 cd audiometa
 
+# Install the pinned toolchain (Go, golangci-lint, stringer, goimports)
+mise install
+
 # Run all tests
 go test ./...
 
@@ -290,8 +293,8 @@ go generate ./...
 gofmt -s -w .
 goimports -w .
 
-# Run linters (install golangci-lint first: https://golangci-lint.run/usage/install/)
-golangci-lint run ./...
+# Run linters (uses the mise-pinned golangci-lint)
+mise exec -- golangci-lint run ./...
 
 # Install CLI tools locally
 go install ./cmd/audiometa
