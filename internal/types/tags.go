@@ -42,6 +42,7 @@ import (
 //   - Composers: ID3 TCOM; M4A ©wrt; Vorbis COMPOSER.
 type Tags struct {
 	raw                 map[string][]string
+	format              Format // bound by BindFormat; zero = unbound (Set touches raw only)
 	MusicBrainzAlbumID  string
 	Narrator            string
 	AlbumArtist         string
@@ -172,12 +173,16 @@ func (t *Tags) GetBest(candidates ...string) string {
 	return ""
 }
 
-// Set sets a tag value (in-memory only).
+// Set sets a tag value in the raw tag map. Keys are format-native (see Get).
 //
-// If values is empty, the tag is removed.
-// Multiple values can be provided for multi-value tags.
+// If values is empty, the tag is removed; [Tags.Delete] is the clearer
+// spelling for that. Multiple values can be provided for multi-value tags.
 //
-// Note: This only modifies the in-memory representation.
+// On Tags returned by Open, Set also updates the typed field that key
+// represents, so Set("TIT2", "x") on an MP3 makes Title "x". It never changes
+// any other field: Set("TCOM", ...) changes Composers, not Narrator. On a zero
+// or caller-built Tags, Set changes only the raw map.
+// Changes are in memory; use File.WriteTo or Write to persist them.
 //
 // Example:
 //
@@ -190,10 +195,60 @@ func (t *Tags) Set(key string, values ...string) {
 
 	if len(values) == 0 {
 		delete(t.raw, key)
+	} else {
+		t.raw[key] = slices.Clone(values)
+	}
+	t.syncKey(key)
+}
+
+// Delete removes the raw tags with the given format-native keys (see Get).
+// Keys that are not present are ignored.
+//
+// On Tags returned by Open, Delete also updates the typed field each key
+// represents: the field is re-derived from any remaining key for that field,
+// or cleared if none remains. When the File is written, deleted keys are
+// removed from the file; no other tag is changed.
+//
+// Delete can remove any tag, including keys that fill no typed field, such
+// as a Vorbis SHOW comment, an ID3 TXXX description or an iTunes freeform
+// atom name.
+func (t *Tags) Delete(keys ...string) {
+	for _, key := range keys {
+		if _, ok := t.raw[key]; !ok {
+			continue
+		}
+		delete(t.raw, key)
+		t.syncKey(key)
+	}
+}
+
+// BindFormat records the format whose parser produced t, enabling Set and
+// Delete to keep typed fields in sync with raw keys. Called by the root
+// package after parsing.
+func BindFormat(t *Tags, format Format) { t.format = format }
+
+// syncKey recomputes every typed field bound to key on a bound Tags: each
+// such field is decoded from the highest-precedence bound key still present
+// in raw, or cleared if none is. Fields not bound to key are never touched.
+func (t *Tags) syncKey(key string) {
+	if t.format == FormatUnknown {
 		return
 	}
-
-	t.raw[key] = slices.Clone(values)
+	for _, b := range bindingsFor(t.format) {
+		if !slices.Contains(b.Keys, key) {
+			continue
+		}
+		decoded := false
+		for _, k := range b.Keys {
+			if decodeField(t, t.format, b.Field, k, t.raw[k]) {
+				decoded = true
+				break
+			}
+		}
+		if !decoded {
+			setFieldValues(t, b.Field, nil)
+		}
+	}
 }
 
 // AddRaw appends a value to the raw tag map under key, creating the entry if
@@ -343,6 +398,8 @@ func (t *Tags) Clone() *Tags {
 	}
 
 	clone := &Tags{
+		format: t.format,
+
 		// Copy all standard fields
 		Title:               t.Title,
 		Subtitle:            t.Subtitle,

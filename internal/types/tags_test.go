@@ -472,3 +472,227 @@ func TestMergeUnique(t *testing.T) {
 		})
 	}
 }
+
+// boundTags returns an empty Tags bound to format.
+func boundTags(format Format) *Tags {
+	t := &Tags{}
+	BindFormat(t, format)
+	return t
+}
+
+// snapshotFields returns fieldValues for every field, keyed by field.
+func snapshotFields(t *Tags) map[Field][]string {
+	out := map[Field][]string{}
+	for f := range AllFields() {
+		out[f] = fieldValues(t, f)
+	}
+	return out
+}
+
+// assertOnlyChanged fails unless exactly the fields in changed differ between before and after.
+func assertOnlyChanged(t *testing.T, before, after map[Field][]string, changed ...Field) {
+	t.Helper()
+	for f := range AllFields() {
+		differs := !slices.Equal(before[f], after[f])
+		if differs != slices.Contains(changed, f) {
+			t.Errorf("%s: before %q, after %q (expected change: %v)", f, before[f], after[f], slices.Contains(changed, f))
+		}
+	}
+}
+
+func TestSet_UnboundTouchesRawOnly(t *testing.T) {
+	tags := &Tags{}
+	tags.Set("TITLE", "x")
+	if tags.Title != "" {
+		t.Errorf("Title = %q, want unchanged empty", tags.Title)
+	}
+	if got := tags.GetFirst("TITLE"); got != "x" {
+		t.Errorf("raw TITLE = %q", got)
+	}
+}
+
+func TestSet_SyncsTypedField(t *testing.T) {
+	tests := []struct {
+		name   string
+		format Format
+		key    string
+		values []string
+		want   map[Field][]string
+	}{
+		{"mp3 title", FormatMP3, "TIT2", []string{"T"}, map[Field][]string{FieldTitle: {"T"}}},
+		{"mp3 track", FormatMP3, "TRCK", []string{"3/12"}, map[Field][]string{FieldTrackNumber: {"3"}, FieldTrackTotal: {"12"}}},
+		{"mp3 year", FormatMP3, "TDRC", []string{"2021-05-03"}, map[Field][]string{FieldYear: {"2021"}}},
+		{"mp3 artists", FormatMP3, "TPE1", []string{"A", "B"}, map[Field][]string{FieldArtist: {"A"}, FieldArtists: {"A", "B"}}},
+		{"vorbis artist", FormatFLAC, "ARTIST", []string{"A", "B"}, map[Field][]string{FieldArtist: {"A"}, FieldArtists: {"A", "B"}}},
+		{"vorbis date", FormatOgg, "DATE", []string{"1999-12-31"}, map[Field][]string{FieldDate: {"1999-12-31"}, FieldYear: {"1999"}}},
+		{"opus title", FormatOpus, "TITLE", []string{"T"}, map[Field][]string{FieldTitle: {"T"}}},
+		{"m4a title", FormatM4A, "\xA9nam", []string{"T"}, map[Field][]string{FieldTitle: {"T"}}},
+		{"m4b narrator", FormatM4B, "NARRATOR", []string{"N"}, map[Field][]string{FieldNarrator: {"N"}}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tags := boundTags(tc.format)
+			before := snapshotFields(tags)
+			tags.Set(tc.key, tc.values...)
+			after := snapshotFields(tags)
+			changed := make([]Field, 0, len(tc.want))
+			for f, want := range tc.want {
+				changed = append(changed, f)
+				if !slices.Equal(after[f], want) {
+					t.Errorf("%s = %q, want %q", f, after[f], want)
+				}
+			}
+			assertOnlyChanged(t, before, after, changed...)
+		})
+	}
+}
+
+func TestSet_DeleteZeroesField(t *testing.T) {
+	tags := boundTags(FormatMP3)
+	tags.Set("TIT2", "T")
+	tags.Set("TIT2")
+	if tags.Title != "" {
+		t.Errorf("Title = %q after Set with no values, want empty", tags.Title)
+	}
+}
+
+func TestSet_LowerPrecedenceKeyDoesNotOverride(t *testing.T) {
+	tags := boundTags(FormatFLAC)
+	tags.Set("SERIES", "A")
+	tags.Set("MVNM", "B")
+	if tags.Series != "A" {
+		t.Errorf("Series = %q, want A (SERIES outranks MVNM)", tags.Series)
+	}
+	tags.Delete("SERIES")
+	if tags.Series != "B" {
+		t.Errorf("Series = %q after Delete(SERIES), want B", tags.Series)
+	}
+}
+
+func TestSet_MP3YearFallsBackPastOutOfRangeKey(t *testing.T) {
+	tags := boundTags(FormatMP3)
+	tags.Set("TYER", "1987")
+	tags.Set("TDRC", "0001")
+	if tags.Year != 1987 {
+		t.Errorf("Year = %d, want 1987 (TDRC out of range, parser ignores it)", tags.Year)
+	}
+}
+
+func TestClone_PreservesBinding(t *testing.T) {
+	tags := boundTags(FormatMP3)
+	clone := tags.Clone()
+	clone.Set("TIT2", "x")
+	if clone.Title != "x" {
+		t.Errorf("clone Title = %q, want x", clone.Title)
+	}
+	if tags.Title != "" || tags.GetFirst("TIT2") != "" {
+		t.Errorf("Set on clone changed the original")
+	}
+}
+
+func TestEqual_IgnoresBinding(t *testing.T) {
+	a := &Tags{Title: "x"}
+	b := boundTags(FormatMP3)
+	b.Title = "x"
+	if !a.Equal(b) {
+		t.Error("Equal must ignore the bound format")
+	}
+}
+
+// sentinelTags returns a Tags bound to format with every typed field set.
+func sentinelTags(format Format) *Tags {
+	tags := boundTags(format)
+	for f := range AllFields() {
+		switch {
+		case intField(tags, f) != nil:
+			setFieldValues(tags, f, []string{"9"})
+		default:
+			setFieldValues(tags, f, []string{"sentinel-" + f.String()})
+		}
+	}
+	return tags
+}
+
+func TestSet_NoCrossFieldSync(t *testing.T) {
+	type keys struct{ composer, grouping, title string }
+	formats := map[Format]keys{
+		FormatMP3:  {"TCOM", "GRP1", "TIT2"},
+		FormatFLAC: {"COMPOSER", "GROUPING", "TITLE"},
+		FormatOgg:  {"COMPOSER", "GROUPING", "TITLE"},
+		FormatOpus: {"COMPOSER", "GROUPING", "TITLE"},
+		FormatM4A:  {"\xA9wrt", "\xA9grp", "\xA9nam"},
+		FormatM4B:  {"\xA9wrt", "\xA9grp", "\xA9nam"},
+	}
+	for format, k := range formats {
+		t.Run(format.String(), func(t *testing.T) {
+			cases := []struct {
+				key   string
+				value string
+				field Field
+			}{
+				{k.composer, "Some Narrator", FieldComposers},
+				{k.grouping, "Saga #5", FieldGrouping},
+				{k.title, "Book 3", FieldTitle},
+			}
+			for _, c := range cases {
+				tags := sentinelTags(format)
+				before := snapshotFields(tags)
+				tags.Set(c.key, c.value)
+				after := snapshotFields(tags)
+				if !slices.Equal(after[c.field], []string{c.value}) {
+					t.Errorf("Set(%q): %s = %q", c.key, c.field, after[c.field])
+				}
+				assertOnlyChanged(t, before, after, c.field)
+			}
+		})
+	}
+}
+
+func TestDelete_RemovesUnmappedKey(t *testing.T) {
+	tags := boundTags(FormatFLAC)
+	tags.AddRaw("SHOW", "Foo")
+	tags.Set("TITLE", "T")
+	before := snapshotFields(tags)
+	tags.Delete("SHOW")
+	if got := tags.Get("SHOW"); got != nil {
+		t.Errorf("Get(SHOW) = %v after Delete", got)
+	}
+	if tags.Title != "T" {
+		t.Errorf("Title = %q, want T", tags.Title)
+	}
+	assertOnlyChanged(t, before, snapshotFields(tags))
+}
+
+func TestDelete_ZeroesTypedField(t *testing.T) {
+	tags := boundTags(FormatMP3)
+	tags.Set("TIT2", "T")
+	tags.Delete("TIT2")
+	if tags.Title != "" {
+		t.Errorf("Title = %q, want empty", tags.Title)
+	}
+}
+
+func TestDelete_MultipleAndMissingKeys(t *testing.T) {
+	tags := &Tags{}
+	tags.Delete("A", "missing") // nil raw map: no panic
+	tags.Set("A", "1")
+	tags.Set("B", "2")
+	tags.Set("C", "3")
+	tags.Delete("A", "missing", "B")
+	if tags.Get("A") != nil || tags.Get("B") != nil {
+		t.Errorf("A or B still present: %v %v", tags.Get("A"), tags.Get("B"))
+	}
+	if tags.GetFirst("C") != "3" {
+		t.Errorf("C = %q, want 3", tags.GetFirst("C"))
+	}
+}
+
+func TestDelete_ReDerivesFromRemainingKey(t *testing.T) {
+	tags := boundTags(FormatFLAC)
+	tags.Set("SERIES", "A")
+	tags.Set("MVNM", "B")
+	tags.Delete("SERIES")
+	if tags.Series != "B" {
+		t.Errorf("Series = %q, want B", tags.Series)
+	}
+}
