@@ -2,6 +2,7 @@ package types
 
 import (
 	"io"
+	"slices"
 
 	"github.com/simonhull/audiometa/internal/binary"
 )
@@ -171,34 +172,50 @@ func DetectFormat(r io.ReaderAt, size int64, path string) (Format, error) { //no
 		}
 	}
 
-	// Read major brand (next 4 bytes)
-	majorBrand, err := binary.Read[uint32](sr, 8, "major brand")
-	if err != nil {
-		return FormatUnknown, &UnsupportedFormatError{
-			Path:   path,
-			Reason: "failed to read major brand",
-		}
+	return detectMP4Brand(sr, int64(atomSize), size, path)
+}
+
+// maxFtypSize bounds how much of the ftyp atom is read for brand detection.
+// Real ftyp atoms list a handful of brands; 1 KiB is generous.
+const maxFtypSize = 1024
+
+// mp4AudioBrands are the ISO-BMFF brands (major or compatible) accepted as
+// M4A. "M4B " is handled separately because it selects FormatM4B.
+var mp4AudioBrands = map[string]bool{
+	"M4A ": true, // iTunes audio
+	"M4P ": true, // iTunes protected (FairPlay) audio
+	"mp41": true, // MP4 v1
+	"mp42": true, // MP4 v2
+	"isom": true, // ISO base media
+	"iso2": true, // ISO base media, 2nd edition
+}
+
+// detectMP4Brand classifies an ftyp atom (starting at offset 0, ftypSize
+// bytes long) by its major and compatible brands: any "M4B " brand selects
+// FormatM4B; otherwise any brand in mp4AudioBrands selects FormatM4A.
+func detectMP4Brand(sr *binary.SafeReader, ftypSize, fileSize int64, path string) (Format, error) {
+	// ftyp payload: major brand(4), minor version(4), compatible brands(4 each).
+	end := min(ftypSize, fileSize, maxFtypSize)
+	if end < 12 {
+		return FormatUnknown, &UnsupportedFormatError{Path: path, Reason: "failed to read major brand"}
+	}
+	buf := make([]byte, end-8)
+	if err := sr.ReadAt(buf, 8, "ftyp brands"); err != nil {
+		return FormatUnknown, &UnsupportedFormatError{Path: path, Reason: "failed to read major brand"}
 	}
 
-	// Check for M4B brand (0x4D344220 = "M4B ")
-	m4bMagic := uint32(0x4D344220)
-	if majorBrand == m4bMagic {
+	brands := []string{string(buf[0:4])}
+	for i := 8; i+4 <= len(buf); i += 4 {
+		brands = append(brands, string(buf[i:i+4]))
+	}
+
+	if slices.Contains(brands, "M4B ") {
 		return FormatM4B, nil
 	}
-
-	// Check for M4A brands
-	// M4A  = 0x4D344120 = "M4A "
-	// mp42 = 0x6D703432 = "mp42"
-	// isom = 0x69736F6D = "isom"
-	m4aMagic := uint32(0x4D344120)
-	mp42Magic := uint32(0x6D703432)
-	isomMagic := uint32(0x69736F6D)
-
-	if majorBrand == m4aMagic || majorBrand == mp42Magic || majorBrand == isomMagic {
+	if slices.ContainsFunc(brands, func(b string) bool { return mp4AudioBrands[b] }) {
 		return FormatM4A, nil
 	}
 
-	// Unsupported brand
 	return FormatUnknown, &UnsupportedFormatError{
 		Path:   path,
 		Reason: "unsupported file brand",

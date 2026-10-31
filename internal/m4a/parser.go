@@ -13,44 +13,13 @@ import (
 // parser implements the audiometa.FormatParser interface.
 type parser struct{}
 
-// detectM4Format determines if this is M4A or M4B by checking the ftyp atom.
-func detectM4Format(sr *binary.SafeReader, size int64) types.Format {
-	// Try to find ftyp atom
-	ftypAtom, err := findAtom(sr, 0, size, "ftyp")
-	if err != nil {
-		// No ftyp found, default to M4A
-		return types.FormatM4A
+// detectM4Format classifies the file as M4A or M4B using the same ftyp brand
+// rules as types.DetectFormat, so Parse and the public Open path agree.
+// Files DetectFormat rejects (no ftyp, unknown brand) default to M4A.
+func detectM4Format(r io.ReaderAt, size int64, path string) types.Format {
+	if format, err := types.DetectFormat(r, size, path); err == nil && format == types.FormatM4B {
+		return types.FormatM4B
 	}
-
-	// Read the major brand (4 bytes after ftyp header)
-	majorBrand := make([]byte, 4)
-	if err := sr.ReadAt(majorBrand, ftypAtom.DataOffset(), "ftyp major brand"); err != nil {
-		return types.FormatM4A
-	}
-
-	// Check for M4B-specific brands
-	brand := string(majorBrand)
-	if brand == "M4B " || brand == "M4A " {
-		if brand == "M4B " {
-			return types.FormatM4B
-		}
-		return types.FormatM4A
-	}
-
-	// Check compatible brands for M4B
-	if ftypAtom.DataSize() > 8 {
-		compatibleBrands := make([]byte, ftypAtom.DataSize()-8)
-		if err := sr.ReadAt(compatibleBrands, ftypAtom.DataOffset()+8, "ftyp compatible brands"); err == nil {
-			// Check for M4B in compatible brands
-			for i := 0; i+4 <= len(compatibleBrands); i += 4 {
-				if string(compatibleBrands[i:i+4]) == "M4B " {
-					return types.FormatM4B
-				}
-			}
-		}
-	}
-
-	// Default to M4A
 	return types.FormatM4A
 }
 
@@ -64,7 +33,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	sr := binary.NewSafeReader(r, size, path)
 
 	// Detect format internally (check for ftyp atom to determine M4A vs M4B)
-	format := detectM4Format(sr, size)
+	format := detectM4Format(r, size, path)
 
 	// Initialize file
 	file := &types.File{

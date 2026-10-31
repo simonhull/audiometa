@@ -270,3 +270,46 @@ func TestDetectFormat_AIFF(t *testing.T) {
 		t.Errorf("DetectFormat() = %v, want %v", format, FormatAIFF)
 	}
 }
+
+// createFtyp builds an ftyp-only file with the given major and compatible brands.
+func createFtyp(major string, compatible ...string) []byte {
+	buf := &bytes.Buffer{}
+	binary.Write(buf, binary.BigEndian, uint32(16+4*len(compatible)))
+	buf.WriteString("ftyp")
+	buf.WriteString(major)
+	binary.Write(buf, binary.BigEndian, uint32(0))
+	for _, b := range compatible {
+		buf.WriteString(b)
+	}
+	return buf.Bytes()
+}
+
+func TestDetectFormat_Brands(t *testing.T) {
+	tests := []struct {
+		name    string
+		data    []byte
+		want    Format
+		wantErr bool
+	}{
+		{"M4B major", createFtyp("M4B "), FormatM4B, false},
+		{"isom with compatible M4B", createFtyp("isom", "isom", "M4B "), FormatM4B, false},
+		{"mp42 with compatible M4B", createFtyp("mp42", "M4B ", "mp42"), FormatM4B, false},
+		{"mp41 major", createFtyp("mp41", "mp41", "isom"), FormatM4A, false},
+		{"iso2 major", createFtyp("iso2", "iso2", "mp41"), FormatM4A, false},
+		{"M4P major", createFtyp("M4P ", "M4P ", "mp42"), FormatM4A, false},
+		{"unknown major, allowlisted compatible", createFtyp("dash", "iso6", "mp41"), FormatM4A, false},
+		{"unknown brands only", createFtyp("XXXX", "YYYY"), FormatUnknown, true},
+		{"truncated after ftyp header", createFtyp("M4A ")[:10], FormatUnknown, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := DetectFormat(bytes.NewReader(tt.data), int64(len(tt.data)), "test.mp4")
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("DetectFormat() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Errorf("DetectFormat() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
