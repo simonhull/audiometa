@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/simonhull/audiometa"
 )
@@ -26,22 +27,39 @@ func ExampleFile_WriteTo() {
 	// Output: true
 }
 
-// ExampleWrite sets the title and the front cover of an audiobook and
-// replaces the file atomically.
+// ExampleWrite sets the title of an MP3 file and replaces the file
+// atomically. It edits a copy so the sample stays unchanged.
 func ExampleWrite() {
-	cover, err := os.ReadFile("cover.jpg")
+	data, err := os.ReadFile("testdata/sample.mp3")
 	if err != nil {
 		log.Fatal(err)
 	}
+	dir, err := os.MkdirTemp("", "audiometa-example")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	path := filepath.Join(dir, "book.mp3")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		log.Fatal(err)
+	}
 
-	err = audiometa.Write("book.mp3", func(f *audiometa.File) error {
+	err = audiometa.Write(path, func(f *audiometa.File) error {
 		f.Tags.Title = "New Title"
 		f.Tags.Delete("TCOP") // any tag can be removed by its native key
-		return f.ReplaceArtwork(audiometa.Artwork{Data: cover, Type: audiometa.ArtworkFrontCover})
+		return nil
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	f, err := audiometa.Open(path)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+	fmt.Println(f.Tags.Title)
+	// Output: New Title
 }
 
 // ExampleFile_ReplaceArtwork replaces the front cover. The MIME type and

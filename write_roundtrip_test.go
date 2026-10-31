@@ -25,9 +25,10 @@ type roundTripCase struct {
 }
 
 var roundTripCorpus = []roundTripCase{
-	{"testdata/sample.mp3", false},
-	{"testdata/sample_mono_vbr.mp3", false},
-	{"testdata/sample_mpeg2.mp3", false},
+	{"testdata/sample.mp3", true},
+	{"testdata/sample_mono_vbr.mp3", true},
+	{"testdata/sample_mpeg2.mp3", true},
+	{"testdata/sample_v24.mp3", true}, // ID3v2.4 with an ID3v1 trailer
 	{"testdata/sample.flac", false},
 	{"testdata/sample_upper.flac", false},
 	{"testdata/sample.m4a", false},
@@ -37,13 +38,22 @@ var roundTripCorpus = []roundTripCase{
 }
 
 // tagEdit is one format-agnostic edit; unsupported lists formats where it must
-// return ErrUnsupportedWrite.
+// return ErrUnsupportedWrite. A non-empty formats or paths restricts the edit
+// to those formats or corpus files.
 type tagEdit struct {
 	name        string
 	fields      []string // Go names of the Tags fields the edit sets or clears
 	apply       func(f *audiometa.File) error
 	check       func(t *testing.T, f *audiometa.File) // asserts on the re-opened file
 	unsupported []audiometa.Format
+	formats     []audiometa.Format
+	paths       []string
+}
+
+// appliesTo reports whether e runs on the corpus file path of format.
+func (e tagEdit) appliesTo(path string, format audiometa.Format) bool {
+	return (len(e.formats) == 0 || slices.Contains(e.formats, format)) &&
+		(len(e.paths) == 0 || slices.Contains(e.paths, path))
 }
 
 var longComment = strings.Repeat("0123456789abcdef", 256) // 4096 characters
@@ -100,6 +110,34 @@ var roundTripEdits = []tagEdit{
 		check: func(t *testing.T, f *audiometa.File) {
 			if f.Tags.Year != 1999 {
 				t.Errorf("Year = %d, want 1999", f.Tags.Year)
+			}
+		},
+	},
+}
+
+// roundTripMP3Edits are edits of MP3-native keys.
+var roundTripMP3Edits = []tagEdit{
+	{
+		name:    "set NARRATOR",
+		fields:  []string{"Narrator"},
+		apply:   func(f *audiometa.File) error { f.Tags.Set("NARRATOR", "Reader"); return nil },
+		formats: []audiometa.Format{audiometa.FormatMP3},
+		check: func(t *testing.T, f *audiometa.File) {
+			if f.Tags.Narrator != "Reader" {
+				t.Errorf("Narrator = %q, want Reader", f.Tags.Narrator)
+			}
+		},
+	},
+	{
+		// Only on a file without an ID3v1 trailer, which would supply a fallback title.
+		name:    "delete TIT2",
+		fields:  []string{"Title"},
+		apply:   func(f *audiometa.File) error { f.Tags.Delete("TIT2"); return nil },
+		formats: []audiometa.Format{audiometa.FormatMP3},
+		paths:   []string{"testdata/sample.mp3"},
+		check: func(t *testing.T, f *audiometa.File) {
+			if f.Tags.Title != "" {
+				t.Errorf("Title = %q, want empty", f.Tags.Title)
 			}
 		},
 	},
@@ -199,7 +237,7 @@ func TestWriteRoundTrip_Corpus(t *testing.T) {
 				t.Error("no-edit WriteTo is not byte-identical to the source")
 			}
 
-			for _, e := range slices.Concat(roundTripEdits, roundTripArtworkEdits) {
+			for _, e := range slices.Concat(roundTripEdits, roundTripMP3Edits, roundTripArtworkEdits) {
 				t.Run(e.name, func(t *testing.T) { runRoundTrip(t, tc.path, src, e) })
 			}
 			t.Run("delete keys", func(t *testing.T) { runDeleteRoundTrip(t, tc.path, src) })
@@ -211,6 +249,9 @@ func TestWriteRoundTrip_Corpus(t *testing.T) {
 func runRoundTrip(t *testing.T, path string, src []byte, e tagEdit) {
 	t.Helper()
 	orig := openFile(t, path)
+	if !e.appliesTo(path, orig.Format) {
+		t.Skipf("%s does not apply to %s", e.name, path)
+	}
 	f := openFile(t, path)
 	if err := e.apply(f); err != nil {
 		t.Fatalf("apply: %v", err)
@@ -387,4 +428,80 @@ func rawKeys(a, b *audiometa.File) map[string]bool {
 		keys[k] = true
 	}
 	return keys
+}
+
+// mp3RoundTripPaths lists the writable MP3 corpus files.
+func mp3RoundTripPaths(t *testing.T) []string {
+	t.Helper()
+	var paths []string
+	for _, tc := range roundTripCorpus {
+		if tc.writable && strings.HasSuffix(tc.path, ".mp3") {
+			paths = append(paths, tc.path)
+		}
+	}
+	if len(paths) == 0 {
+		t.Fatal("no writable MP3 corpus files")
+	}
+	return paths
+}
+
+// writeEdited applies edit to a fresh File for path and returns WriteTo's output.
+func writeEdited(t *testing.T, path string, edit func(f *audiometa.File)) []byte {
+	t.Helper()
+	f := openFile(t, path)
+	edit(f)
+	var out bytes.Buffer
+	if _, err := f.WriteTo(&out); err != nil {
+		t.Fatalf("WriteTo: %v", err)
+	}
+	return out.Bytes()
+}
+
+func TestWriteRoundTrip_MP3VersionPreserved(t *testing.T) {
+	for path, want := range map[string]byte{"testdata/sample.mp3": 3, "testdata/sample_v24.mp3": 4} {
+		out := writeEdited(t, path, func(f *audiometa.File) { f.Tags.Title = "New" })
+		if string(out[:3]) != "ID3" || out[3] != want {
+			t.Errorf("%s: output header %q, want ID3v2.%d", path, out[:4], want)
+		}
+	}
+}
+
+func TestWriteRoundTrip_MP3ID3v1Preserved(t *testing.T) {
+	const path = "testdata/sample_v24.mp3"
+	src := readTestdata(t, path)
+	if string(src[len(src)-128:len(src)-125]) != "TAG" {
+		t.Fatal("sample_v24.mp3 has no ID3v1 trailer")
+	}
+	out := writeEdited(t, path, func(f *audiometa.File) { f.Tags.Title = "New" })
+	if !bytes.Equal(out[len(out)-128:], src[len(src)-128:]) {
+		t.Error("ID3v1 trailer changed")
+	}
+}
+
+// Deleting every raw key leaves a valid file with no raw tags, the same audio
+// and the same chapters. The ID3v2 tag is kept (with the non-key frames such
+// as APIC and CHAP, and padding).
+func TestWriteRoundTrip_MP3DeleteAllKeys(t *testing.T) {
+	for _, path := range mp3RoundTripPaths(t) {
+		t.Run(filepath.Base(path), func(t *testing.T) {
+			src := readTestdata(t, path)
+			orig := openFile(t, path)
+			out := writeEdited(t, path, func(f *audiometa.File) {
+				f.Tags.Delete(slices.Collect(maps.Keys(maps.Collect(f.Tags.All())))...)
+			})
+			if string(out[:3]) != "ID3" {
+				t.Error("ID3v2 tag dropped")
+			}
+			reopened := writeAndReopen(t, path, out)
+			for k, v := range reopened.Tags.All() {
+				t.Errorf("raw key %q = %q survived", k, v)
+			}
+			if audioDigest(t, audiometa.FormatMP3, src) != audioDigest(t, audiometa.FormatMP3, out) {
+				t.Error("audio payload changed")
+			}
+			if !slices.Equal(reopened.Chapters, orig.Chapters) {
+				t.Errorf("chapters changed: %+v", reopened.Chapters)
+			}
+		})
+	}
 }

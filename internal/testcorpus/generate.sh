@@ -76,5 +76,14 @@ $FF $SILENCE -c:a libopus \
 	-metadata title="Test Title" -metadata artist="Test Artist" \
 	-metadata album="Test Album" "$OUT/sample.opus"
 
+# MP3, ID3v2.4 with an ID3v1 trailer, cover art (write-path coverage).
+# shellcheck disable=SC2046,SC2086
+$FF $SILENCE -i "$TMP/cover.jpg" -map 0:a -map 1:v \
+	-c:a libmp3lame -c:v copy -id3v2_version 4 -write_id3v1 1 \
+	-metadata title="Test Title" -metadata artist="Test Artist" \
+	-metadata album="Test Album" -metadata date="2021" \
+	-metadata:s:v title="Cover" -metadata:s:v comment="Cover (front)" \
+	"$OUT/sample_v24.mp3"
+
 echo "Generated:"
 ls -l "$OUT"

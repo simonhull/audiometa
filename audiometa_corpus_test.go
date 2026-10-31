@@ -17,6 +17,7 @@ func TestOpen_Corpus(t *testing.T) {
 		wantCodec  string
 	}{
 		{path: "testdata/sample.mp3", wantFormat: audiometa.FormatMP3},
+		{path: "testdata/sample_v24.mp3", wantFormat: audiometa.FormatMP3},
 		{path: "testdata/sample.flac", wantFormat: audiometa.FormatFLAC},
 		{path: "testdata/sample_upper.flac", wantFormat: audiometa.FormatFLAC},
 		{path: "testdata/sample.m4a", wantFormat: audiometa.FormatM4A},
