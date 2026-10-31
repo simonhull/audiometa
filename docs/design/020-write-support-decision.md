@@ -63,4 +63,9 @@ or (b); the README change would then be to drop the Write column.
 
 ## Decision
 
-Maintainer decision: ____
+Maintainer decision (2026-10-31): **GO.**
+
+- Format order: MP3 (ID3v2), then FLAC, then M4B/M4A. Ogg/Opus is deferred.
+- v1 scope: text tags **and artwork**. Chapters are preserved byte-for-byte but are not editable in v1; chapter writing gets a follow-up plan.
+- ID3 output version: preserve the input version (v2.3 stays v2.3, v2.4 stays v2.4). An untagged file, or an ID3v2.2 input, gets v2.4.
+- API status: **stable from day one**. There is no experimental label, so the public surface must be reviewed and frozen before the first format writer merges.
