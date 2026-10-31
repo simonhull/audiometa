@@ -2,12 +2,14 @@ package audiometa_test
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"errors"
 	"image"
 	"image/png"
 	"io"
 	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -33,6 +35,8 @@ var roundTripCorpus = []roundTripCase{
 	{"testdata/sample_upper.flac", true},
 	{"testdata/sample.m4a", true},
 	{"testdata/sample.m4b", true},
+	{"testdata/sample_faststart.m4a", true},
+	{"testdata/sample_faststart.m4b", true},
 	{"testdata/sample.ogg", false},  // deferred format: stays false
 	{"testdata/sample.opus", false}, // deferred format: stays false
 }
@@ -601,6 +605,112 @@ func TestWriteRoundTrip_FLACDeleteAllKeys(t *testing.T) {
 				t.Errorf("raw key %q = %q survived", k, v)
 			}
 			if audioDigest(t, audiometa.FormatFLAC, src) != audioDigest(t, audiometa.FormatFLAC, out) {
+				t.Error("audio payload changed")
+			}
+			if !slices.Equal(reopened.Chapters, orig.Chapters) {
+				t.Errorf("chapters changed: %+v", reopened.Chapters)
+			}
+		})
+	}
+}
+
+// TestWriteRoundTrip_M4AFaststartGrowth grows the metadata of a faststart
+// M4B (moov before mdat), which moves the audio and shifts every chunk
+// offset, and checks that the audio, chapters and atom layout survive. With
+// ffmpeg on PATH it also decodes the result and compares the decoded PCM.
+func TestWriteRoundTrip_M4AFaststartGrowth(t *testing.T) {
+	const path = "testdata/sample_faststart.m4b"
+	src := readTestdata(t, path)
+	orig := openFile(t, path)
+	out := writeEdited(t, path, func(f *audiometa.File) { f.Tags.Comment = longComment })
+	if len(out) <= len(src) {
+		t.Fatalf("output is %d bytes, source %d: the edit did not grow the file", len(out), len(src))
+	}
+	reopened := writeAndReopen(t, path, out)
+	if reopened.Tags.Comment != longComment {
+		t.Errorf("Comment has %d characters, want %d", len(reopened.Tags.Comment), len(longComment))
+	}
+	if audioDigest(t, orig.Format, src) != audioDigest(t, orig.Format, out) {
+		t.Error("audio payload changed")
+	}
+	if len(orig.Chapters) != 2 || !slices.Equal(reopened.Chapters, orig.Chapters) {
+		t.Errorf("chapters = %+v, want %+v", reopened.Chapters, orig.Chapters)
+	}
+	if got, want := m4aTopLevelTypes(t, out), m4aTopLevelTypes(t, src); !slices.Equal(got, want) {
+		t.Errorf("top-level atoms = %v, want %v", got, want)
+	}
+
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		t.Skip("ffmpeg not on PATH")
+	}
+	if pcm(t, reopened.Path) != pcm(t, path) {
+		t.Error("decoded audio differs from the source")
+	}
+}
+
+// pcm decodes path with ffmpeg to 16-bit PCM and returns its SHA-256. Any
+// decoder message fails the test.
+func pcm(t *testing.T, path string) [32]byte {
+	t.Helper()
+	var stdout, stderr bytes.Buffer
+	cmd := exec.Command("ffmpeg", "-v", "error", "-i", path, "-map", "0:a", "-f", "s16le", "-")
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil || stderr.Len() > 0 {
+		t.Fatalf("ffmpeg decode of %s: %v %s", path, err, stderr.String())
+	}
+	if stdout.Len() == 0 {
+		t.Fatalf("ffmpeg decoded no audio from %s", path)
+	}
+	return sha256.Sum256(stdout.Bytes())
+}
+
+// TestWriteRoundTrip_M4AInPlace shortens the title of a faststart M4B with
+// Write and WithInPlace: the new moov fits in the old one plus its free
+// atom, so the file keeps its size and the audio does not move.
+func TestWriteRoundTrip_M4AInPlace(t *testing.T) {
+	src := readTestdata(t, "testdata/sample_faststart.m4b")
+	path := filepath.Join(t.TempDir(), "book.m4b")
+	if err := os.WriteFile(path, src, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := audiometa.Write(path, func(f *audiometa.File) error { f.Tags.Title = "Short"; return nil }, audiometa.WithInPlace())
+	if err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	out := readTestdata(t, path)
+	if len(out) != len(src) {
+		t.Errorf("in-place write changed the size from %d to %d", len(src), len(out))
+	}
+	if got := openFile(t, path).Tags.Title; got != "Short" {
+		t.Errorf("Title = %q", got)
+	}
+	if audioDigest(t, audiometa.FormatM4A, src) != audioDigest(t, audiometa.FormatM4A, out) {
+		t.Error("audio payload changed")
+	}
+}
+
+// Deleting every raw key of an M4A/M4B leaves a valid file whose ilst holds
+// only covr (artwork is not a raw key), with no raw tags, the same audio and
+// the same chapters.
+func TestWriteRoundTrip_M4ADeleteAllKeys(t *testing.T) {
+	for _, tc := range roundTripCorpus {
+		if !tc.writable || !strings.Contains(tc.path, ".m4") {
+			continue
+		}
+		t.Run(filepath.Base(tc.path), func(t *testing.T) {
+			src := readTestdata(t, tc.path)
+			orig := openFile(t, tc.path)
+			out := writeEdited(t, tc.path, func(f *audiometa.File) {
+				f.Tags.Delete(slices.Collect(maps.Keys(maps.Collect(f.Tags.All())))...)
+			})
+			if !bytes.Contains(out, []byte("ilst")) {
+				t.Error("ilst dropped") // it keeps covr, which is artwork, not a raw key
+			}
+			reopened := writeAndReopen(t, tc.path, out)
+			for k, v := range reopened.Tags.All() {
+				t.Errorf("raw key %q = %q survived", k, v)
+			}
+			if audioDigest(t, orig.Format, src) != audioDigest(t, orig.Format, out) {
 				t.Error("audio payload changed")
 			}
 			if !slices.Equal(reopened.Chapters, orig.Chapters) {

@@ -362,3 +362,33 @@ func TestWriter_ContextCanceled(t *testing.T) {
 		t.Errorf("err = %v, want context.Canceled", err)
 	}
 }
+
+func TestLayout_FaststartCorpusGrowth(t *testing.T) {
+	for _, path := range []string{"../../testdata/sample_faststart.m4a", "../../testdata/sample_faststart.m4b"} {
+		src, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		grow := func(tg *types.Tags) { tg.Comment = strings.Repeat("c", 4096) }
+		l := layoutOf(t, src, grow)
+		if l.delta <= 0 {
+			t.Fatalf("%s: delta = %d, want growth", path, l.delta)
+		}
+		out := writeTags(t, src, grow)
+		before, after := chunkOffsets(t, src), chunkOffsets(t, out)
+		if len(before) == 0 || len(after) != len(before) {
+			t.Fatalf("%s: %d chunk offsets, want %d", path, len(after), len(before))
+		}
+		for i := range before {
+			if after[i] != before[i]+uint64(l.delta) {
+				t.Errorf("%s: offset %d -> %d, want +%d", path, before[i], after[i], l.delta)
+			}
+			if n := min(64, uint64(len(src))-before[i]); !bytes.Equal(out[after[i]:after[i]+n], src[before[i]:before[i]+n]) {
+				t.Errorf("%s: bytes at shifted offset %d differ", path, after[i])
+			}
+		}
+		if !bytes.Equal(digestOf(t, out), digestOf(t, src)) {
+			t.Errorf("%s: audio digest changed", path)
+		}
+	}
+}

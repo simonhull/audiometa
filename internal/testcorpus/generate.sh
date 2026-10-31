@@ -85,5 +85,17 @@ $FF $SILENCE -i "$TMP/cover.jpg" -map 0:a -map 1:v \
 	-metadata:s:v title="Cover" -metadata:s:v comment="Cover (front)" \
 	"$OUT/sample_v24.mp3"
 
+# Faststart variants (moov before mdat) for write-path offset shifting.
+# shellcheck disable=SC2086
+$FF $SILENCE -i "$TMP/cover.jpg" -i "$TMP/chapters.txt" -map 0:a -map 1:v -map_metadata 2 \
+	-c:a aac -c:v copy -disposition:v attached_pic -movflags +faststart \
+	-metadata title="Test Title" -metadata artist="Test Artist" \
+	-metadata album="Test Album" -f ipod "$OUT/sample_faststart.m4b"
+
+# shellcheck disable=SC2086
+$FF $SILENCE -c:a aac -movflags +faststart \
+	-metadata title="Test Title" -metadata artist="Test Artist" \
+	-metadata album="Test Album" "$OUT/sample_faststart.m4a"
+
 echo "Generated:"
 ls -l "$OUT"

@@ -22,6 +22,8 @@ func TestOpen_Corpus(t *testing.T) {
 		{path: "testdata/sample_upper.flac", wantFormat: audiometa.FormatFLAC},
 		{path: "testdata/sample.m4a", wantFormat: audiometa.FormatM4A},
 		{path: "testdata/sample.m4b", wantFormat: audiometa.FormatM4A},
+		{path: "testdata/sample_faststart.m4a", wantFormat: audiometa.FormatM4A},
+		{path: "testdata/sample_faststart.m4b", wantFormat: audiometa.FormatM4A},
 		{path: "testdata/sample.ogg", wantFormat: audiometa.FormatOgg},
 		{path: "testdata/sample.opus", wantFormat: audiometa.FormatOpus},
 	}
@@ -68,6 +70,7 @@ func TestOpen_Corpus_Chapters(t *testing.T) {
 	}{
 		{path: "testdata/sample.mp3"},
 		{path: "testdata/sample.m4b"},
+		{path: "testdata/sample_faststart.m4b"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.path, func(t *testing.T) {

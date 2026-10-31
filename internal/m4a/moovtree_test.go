@@ -11,7 +11,8 @@ import (
 )
 
 func TestMAtom_RoundTripCorpus(t *testing.T) {
-	for _, path := range []string{"../../testdata/sample.m4b", "../../testdata/sample.m4a", "../../testdata/bench/book.m4b"} {
+	for _, path := range []string{"../../testdata/sample.m4b", "../../testdata/sample.m4a", "../../testdata/bench/book.m4b",
+		"../../testdata/sample_faststart.m4a", "../../testdata/sample_faststart.m4b"} {
 		data, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
