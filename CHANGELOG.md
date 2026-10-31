@@ -15,6 +15,7 @@ All notable changes to this project are documented here.
 ### Added
 
 - MP3 writing through `File.WriteTo` and `Write`: edited keys, typed fields and APIC artwork are rewritten; every other ID3v2 frame (including CHAP/CTOC chapters, which are not editable) is preserved byte for byte, the ID3v2 version is kept (ID3v2.2 and untagged files get ID3v2.4), and `WithInPlace` works when the new tag fits in the old one. The ID3v1 trailer is copied verbatim and never updated, so after deleting `TIT2` a stale ID3v1 title can show through in readers that fall back to ID3v1 (audiometa does when both title and artist are gone).
+- FLAC writing through `File.WriteTo` and `Write`: edited Vorbis comments and PICTURE artwork are rewritten; every other metadata block (STREAMINFO, SEEKTABLE, APPLICATION, CUESHEET, unknown types) and the vendor string are preserved byte for byte, the PADDING block absorbs growth (when it runs out, 8192 bytes of fresh padding are added), and `WithInPlace` works when the edit fits in the existing padding. `CHAPTERnnn` comments and the CUESHEET are not editable.
 - `audiometa` CLI with `inspect`, `chapters`, `artwork`, `atoms` and `version` subcommands.
 - Tagged release binaries for linux, darwin and windows (amd64 and arm64).
 - MP3: read ID3v2.2 tags; fall back to an ID3v1 tag when ID3v2 gives no title or artist.

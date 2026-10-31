@@ -4,8 +4,8 @@
 // It parses tags, technical audio properties, chapters and embedded artwork
 // from FLAC, MP3, M4A/M4B, Ogg Vorbis and Opus files. The format is detected
 // from the file's contents, so callers never pick a parser. [File.WriteTo] and
-// [Write] save edited tags and artwork; MP3 is currently the only writable
-// format.
+// [Write] save edited tags and artwork; MP3 and FLAC are currently the
+// writable formats.
 //
 // # Quick Start
 //
@@ -39,7 +39,11 @@
 // # Supported Formats
 //
 //   - FLAC: Vorbis comments, PICTURE blocks, and chapters from CHAPTER
-//     comments or the CUESHEET block.
+//     comments or the CUESHEET block. Writing rewrites only the edited
+//     comments and pictures; every other metadata block and the vendor string
+//     are kept byte for byte, and the PADDING block absorbs growth so the
+//     audio usually stays in place. CHAPTER comments and the CUESHEET are
+//     never edited.
 //   - MP3: ID3v2.2, ID3v2.3 and ID3v2.4 tags with an ID3v1 fallback, APIC
 //     artwork, chapters from CHAP frames or OverDrive MediaMarkers, and
 //     Xing/VBRI-aware duration. Writing keeps the ID3v2 version (ID3v2.2 tags
