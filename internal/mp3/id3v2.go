@@ -191,12 +191,18 @@ func readSingleFrame(sr *binutil.SafeReader, file *types.File, header ID3v2Heade
 	frameSize := decodeFrameSize(header.Version, frameHeaderBuf[4:8])
 	frameFlags := binary.BigEndian.Uint16(frameHeaderBuf[8:10])
 
+	if !isMetadataFrame(frameID) {
+		// processFrame ignores this frame (e.g. APIC artwork, which ExtractArtwork
+		// reads lazily), so skip its payload entirely.
+		return nil, 10 + int64(frameSize), false
+	}
+
 	// Read frame data
 	var frameData []byte
 	err := sr.CheckLen(offset+10, int(frameSize), 1, "ID3 frame")
 	if err == nil {
 		frameData = make([]byte, frameSize)
-		err = sr.ReadAt(frameData, offset+10, fmt.Sprintf("frame %s data", frameID))
+		err = sr.ReadAt(frameData, offset+10, "frame data")
 	}
 	if err != nil {
 		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
@@ -225,17 +231,26 @@ func decodeFrameSize(version byte, sizeBytes []byte) uint32 {
 	return binary.BigEndian.Uint32(sizeBytes)
 }
 
+// frameIDTXXX is the user-defined text frame, handled apart from the T*** text frames.
+const frameIDTXXX = "TXXX"
+
 // isTextFrameID reports whether parseTextFrame handles this frame ID: every
 // standard T*** text frame except TXXX, plus the iTunes non-T text frames
 // GRP1 (grouping), MVNM (movement name) and MVIN (movement number).
 func isTextFrameID(id string) bool {
 	switch id {
-	case "TXXX":
+	case frameIDTXXX:
 		return false
 	case "GRP1", "MVNM", "MVIN":
 		return true
 	}
 	return strings.HasPrefix(id, "T")
+}
+
+// isMetadataFrame reports whether processFrame consumes this frame's payload.
+// Keep in sync with processFrame.
+func isMetadataFrame(id string) bool {
+	return isTextFrameID(id) || id == frameIDTXXX || id == "COMM" || id == "CHAP"
 }
 
 // frameState accumulates results that are resolved after the whole tag is walked.
@@ -251,7 +266,7 @@ func processFrame(frame ID3v2Frame, file *types.File, st *frameState) {
 	switch {
 	case isTextFrameID(frame.ID):
 		parseTextFrame(frame, file)
-	case frame.ID == "TXXX":
+	case frame.ID == frameIDTXXX:
 		parseTXXXFrame(frame, file)
 	case frame.ID == "COMM":
 		parseCommentFrame(frame, file, st)
