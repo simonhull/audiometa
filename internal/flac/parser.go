@@ -203,13 +203,10 @@ func (p *parser) ExtractArtwork(ctx context.Context, r io.ReaderAt, size int64, 
 
 		// If this is a PICTURE block, parse it
 		if blockType == blockTypePicture {
-			pic, err := parsePicture(sr, offset, blockLength)
-			if err != nil {
-				// Skip this picture but continue
-				offset += blockLength
-				continue
+			// An unparseable picture is skipped; the block chain is still followed normally.
+			if pic, err := parsePicture(sr, offset, blockLength); err == nil {
+				artwork = append(artwork, pic)
 			}
-			artwork = append(artwork, pic)
 		}
 
 		offset += blockLength
