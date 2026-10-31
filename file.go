@@ -33,6 +33,9 @@ type File struct {
 	parser  FormatParser
 	artwork []Artwork
 
+	maxArtworkSize int  // from WithMaxArtworkSize; 0 = no limit
+	ignoreWarnings bool // from WithIgnoreWarnings; also suppresses artwork-stage warnings
+
 	artworkMu     sync.Mutex // guards artwork and artworkLoaded
 	artworkLoaded bool
 }
@@ -99,6 +102,9 @@ func openWithContext(ctx context.Context, path string, opts ...Option) (*File, e
 		File:   *typesFile.file,
 		reader: f,
 		parser: typesFile.parser,
+
+		maxArtworkSize: options.maxArtworkSize,
+		ignoreWarnings: options.ignoreWarnings,
 	}
 
 	// Preload artwork if requested
@@ -285,10 +291,35 @@ func (f *File) ExtractArtworkContext(ctx context.Context) ([]Artwork, error) {
 			artwork = extracted
 		}
 	}
+	artwork = f.filterOversized(artwork)
 
 	f.artwork = artwork
 	f.artworkLoaded = true
 	return artwork, nil
+}
+
+// filterOversized drops images larger than the WithMaxArtworkSize limit and
+// records a warning for each. The filter runs after extraction, so the image is
+// still read transiently; binary.MaxAllocBytes bounds that read regardless.
+// The caller must hold artworkMu.
+func (f *File) filterOversized(artwork []Artwork) []Artwork {
+	if f.maxArtworkSize <= 0 {
+		return artwork
+	}
+	kept := make([]Artwork, 0, len(artwork))
+	for _, a := range artwork {
+		if len(a.Data) <= f.maxArtworkSize {
+			kept = append(kept, a)
+			continue
+		}
+		if !f.ignoreWarnings {
+			f.Warnings = types.AppendWarning(f.Warnings, Warning{
+				Stage:   StageArtwork,
+				Message: fmt.Sprintf("artwork (%s, %d bytes) exceeds max size %d; skipped", a.MIMEType, len(a.Data), f.maxArtworkSize),
+			})
+		}
+	}
+	return kept
 }
 
 // OpenContext opens a file with context-aware cancellation.

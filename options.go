@@ -89,8 +89,11 @@ func WithIgnoreWarnings() Option {
 
 // WithMaxArtworkSize sets a maximum size limit for artwork extraction.
 //
-// If artwork exceeds this size (in bytes), it will be skipped with a warning.
-// This protects against excessively large embedded images.
+// Each image larger than this size (in bytes) is omitted from the slice
+// returned by ExtractArtwork and a StageArtwork warning is appended to
+// File.Warnings (unless WithIgnoreWarnings is set). The limit applies per
+// image and is enforced after extraction; a hard cap on individual parse
+// allocations applies regardless of this option.
 //
 // Default is 0 (no limit).
 //
