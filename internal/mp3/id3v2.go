@@ -46,7 +46,7 @@ func parseID3v2(sr *binutil.SafeReader, file *types.File) (int64, error) {
 
 	// Process chapters
 	if len(chapters) > 0 {
-		file.Chapters = parseChapterFrames(chapters, file.Audio.Duration)
+		file.Chapters = parseChapterFrames(chapters, header.Version)
 	}
 
 	// Post-parse fallbacks for audiobook series metadata.
@@ -208,10 +208,23 @@ func decodeFrameSize(version byte, sizeBytes []byte) uint32 {
 	return binary.BigEndian.Uint32(sizeBytes)
 }
 
+// isTextFrameID reports whether parseTextFrame handles this frame ID: every
+// standard T*** text frame except TXXX, plus the iTunes non-T text frames
+// GRP1 (grouping), MVNM (movement name) and MVIN (movement number).
+func isTextFrameID(id string) bool {
+	switch id {
+	case "TXXX":
+		return false
+	case "GRP1", "MVNM", "MVIN":
+		return true
+	}
+	return strings.HasPrefix(id, "T")
+}
+
 // processFrame processes a single frame based on its ID.
 func processFrame(frame ID3v2Frame, file *types.File, chapters *[]ID3v2Frame) {
 	switch {
-	case strings.HasPrefix(frame.ID, "T") && frame.ID != "TXXX":
+	case isTextFrameID(frame.ID):
 		parseTextFrame(frame, file)
 	case frame.ID == "TXXX":
 		parseTXXXFrame(frame, file)
@@ -283,9 +296,10 @@ func parseTextFrame(frame ID3v2Frame, file *types.File) { //nolint:gocyclo // Co
 		if file.Tags.Series == "" {
 			file.Tags.Series = text
 		}
-	case "MVIN": // Movement number (series position in ID3v2.4)
+	case "MVIN": // Movement number "N" or "N/count" (series position)
 		if file.Tags.SeriesPart == "" {
-			file.Tags.SeriesPart = text
+			part, _, _ := strings.Cut(text, "/")
+			file.Tags.SeriesPart = strings.TrimSpace(part)
 		}
 	}
 }
@@ -374,8 +388,8 @@ func parseCommentFrame(frame ID3v2Frame, file *types.File) {
 // parseChapterFrames parses CHAP frames and builds chapter list.
 // CHAP frame format:
 //
-//	[encoding][element_id\0][start_time(4)][end_time(4)][start_offset(4)][end_offset(4)][subframes...]
-func parseChapterFrames(frames []ID3v2Frame, _ time.Duration) []types.Chapter {
+//	[element_id\0][start_time(4)][end_time(4)][start_offset(4)][end_offset(4)][subframes...]
+func parseChapterFrames(frames []ID3v2Frame, version byte) []types.Chapter {
 	type chapterData struct {
 		ElementID string
 		Title     string
@@ -387,10 +401,6 @@ func parseChapterFrames(frames []ID3v2Frame, _ time.Duration) []types.Chapter {
 	chapters := make([]chapterData, 0, len(frames))
 
 	for _, frame := range frames {
-		if len(frame.Data) < 20 {
-			continue
-		}
-
 		// CHAP frames start directly with element ID (no encoding byte at frame level)
 		data := frame.Data
 
@@ -414,7 +424,7 @@ func parseChapterFrames(frames []ID3v2Frame, _ time.Duration) []types.Chapter {
 		// Skip startOffset and endOffset (usually 0xFFFFFFFF) at data[8:16]
 
 		// Parse subframes for chapter title
-		title := extractChapterTitleFromSubframes(data[16:], elementID)
+		title := extractChapterTitleFromSubframes(data[16:], version, elementID)
 
 		chapters = append(chapters, chapterData{
 			Index:     len(chapters),
@@ -444,36 +454,27 @@ func parseChapterFrames(frames []ID3v2Frame, _ time.Duration) []types.Chapter {
 	return result
 }
 
-// extractChapterTitleFromSubframes extracts chapter title from TIT2 subframe.
-func extractChapterTitleFromSubframes(subframeData []byte, fallbackTitle string) string {
-	if len(subframeData) < 10 {
-		return fallbackTitle
+// extractChapterTitleFromSubframes walks the CHAP subframes (sized per the tag
+// version) and returns the first non-empty TIT2 title, else fallbackTitle.
+func extractChapterTitleFromSubframes(subframeData []byte, version byte, fallbackTitle string) string {
+	for len(subframeData) >= 10 {
+		if subframeData[0] == 0 { // padding
+			break
+		}
+		id := string(subframeData[0:4])
+		size := uint64(decodeFrameSize(version, subframeData[4:8]))
+		if size > uint64(len(subframeData)-10) { // truncated/corrupt: stop, don't guess
+			break
+		}
+		body := subframeData[10 : 10+size]
+		if id == "TIT2" && len(body) > 0 {
+			if title := decodeText(body[1:], body[0]); title != "" {
+				return title
+			}
+		}
+		subframeData = subframeData[10+size:]
 	}
-
-	// Try to parse TIT2 subframe
-	subframeID := string(subframeData[0:4])
-	if subframeID != "TIT2" {
-		return fallbackTitle
-	}
-
-	// Try synchsafe size (CHAP subframes may use synchsafe)
-	subframeSize := decodeSynchsafe(subframeData[4:8])
-	if len(subframeData) < int(10+subframeSize) {
-		return fallbackTitle
-	}
-
-	titleData := subframeData[10 : 10+subframeSize]
-	if len(titleData) == 0 {
-		return fallbackTitle
-	}
-
-	titleEncoding := titleData[0]
-	title := decodeText(titleData[1:], titleEncoding)
-	if title == "" {
-		return fallbackTitle
-	}
-
-	return title
+	return fallbackTitle
 }
 
 // decodeText decodes text based on ID3v2 encoding byte.
