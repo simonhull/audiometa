@@ -1,4 +1,10 @@
-// Package binary provides type-safe binary reading primitives with bounds checking
+// Package binary provides bounds-checked binary reading primitives.
+//
+// [SafeReader] wraps an [io.ReaderAt] with the file size, rejects reads past
+// the end with an [*OutOfBoundsError], buffers small reads, and offers generic
+// fixed-width integer reads. [SafeReader.CheckLen] and [MaxAllocBytes] bound
+// allocations driven by length fields, and [Canceled] gives parse loops a
+// cheap periodic context check.
 package binary
 
 import (
@@ -16,6 +22,7 @@ type OutOfBoundsError struct {
 	Size   int64
 }
 
+// Error implements the error interface.
 func (e *OutOfBoundsError) Error() string {
 	if e.Offset < 0 || e.Offset >= e.Size {
 		return fmt.Sprintf("%s: offset %d out of bounds (file size: %d) while reading %s",

@@ -10,23 +10,27 @@ import (
 // It is defined in internal/binary, which cannot import this package.
 type OutOfBoundsError = binary.OutOfBoundsError
 
-// UnsupportedFormatError is returned when the file format is not M4B/M4A.
+// UnsupportedFormatError is returned when a file's format is not recognized,
+// its header cannot be read, or no parser is registered for its format.
 type UnsupportedFormatError struct {
 	Path   string
 	Reason string
 }
 
+// Error implements the error interface.
 func (e *UnsupportedFormatError) Error() string {
 	return fmt.Sprintf("%s: unsupported format: %s", e.Path, e.Reason)
 }
 
-// CorruptedFileError is returned when file structure is invalid.
+// CorruptedFileError is returned when a file's container structure is invalid.
+// It also reports a recovered parser panic.
 type CorruptedFileError struct {
 	Path   string
 	Reason string
 	Offset int64
 }
 
+// Error implements the error interface.
 func (e *CorruptedFileError) Error() string {
 	return fmt.Sprintf("%s: corrupted file at offset %d: %s", e.Path, e.Offset, e.Reason)
 }

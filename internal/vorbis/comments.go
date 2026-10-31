@@ -1,7 +1,8 @@
 // Package vorbis provides shared Vorbis comment parsing utilities.
 //
-// Vorbis comments are used by both FLAC and Ogg Vorbis formats.
-// The format is identical: UTF-8 strings in "KEY=VALUE" format.
+// Vorbis comments are used by FLAC, Ogg Vorbis and Opus. The format is the
+// same in all three: UTF-8 strings in "KEY=VALUE" form, with keys matched
+// case-insensitively.
 package vorbis
 
 import (

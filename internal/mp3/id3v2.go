@@ -1,4 +1,11 @@
-// Package mp3 provides MP3 audio file parsing and ID3 tag extraction.
+// Package mp3 parses MP3 files.
+//
+// It reads ID3v2.2, ID3v2.3 and ID3v2.4 tags (undoing unsynchronisation and
+// skipping compressed or encrypted frames), falls back to an ID3v1 trailer,
+// reads chapters from CHAP frames or the OverDrive MediaMarkers TXXX frame,
+// extracts APIC artwork lazily, and derives technical properties from the
+// first MPEG frame and any Xing/Info or VBRI header. It registers itself for
+// [types.FormatMP3].
 package mp3
 
 import (
@@ -20,7 +27,7 @@ import (
 
 // ID3v2Header represents an ID3v2 tag header.
 type ID3v2Header struct {
-	Version      byte // Major version (3 or 4)
+	Version      byte // Major version (2, 3 or 4)
 	Revision     byte // Minor version
 	Flags        byte
 	Size         uint32 // Tag size (excluding header), synchsafe

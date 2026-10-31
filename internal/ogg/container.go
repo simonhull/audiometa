@@ -1,4 +1,10 @@
-// Package ogg implements Ogg Vorbis format parsing.
+// Package ogg parses Ogg Vorbis and Opus files.
+//
+// It walks Ogg pages, reassembles the identification and comment header
+// packets, reads Vorbis comments (including CHAPTER comments and
+// METADATA_BLOCK_PICTURE artwork) and derives duration from the last
+// granule position. It registers itself for [types.FormatOgg] and
+// [types.FormatOpus].
 package ogg
 
 import (

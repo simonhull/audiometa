@@ -10,10 +10,12 @@ import (
 // Tags represents format-agnostic audio metadata.
 //
 // Tags provides a unified view of metadata across different formats.
-// Format-specific tags are mapped to standard fields where possible.
+// Format-specific tags are mapped to the standard fields where possible;
+// empty or zero fields were not present in the file.
 //
-// For access to unmapped or custom tags, use the All() iterator or
-// Get() method to retrieve raw tag values by key.
+// Every tag is also stored under its native, format-specific key. Use
+// [Tags.Get], [Tags.GetFirst] or [Tags.GetBest] to look one up and [Tags.All]
+// or [Tags.Filter] to iterate over them.
 type Tags struct {
 	raw                 map[string][]string
 	MusicBrainzAlbumID  string
@@ -55,9 +57,8 @@ type Tags struct {
 
 // All returns an iterator over all raw tags.
 //
-// This uses Go 1.23+ iterator pattern for zero-allocation iteration.
-// The iterator yields key-value pairs where values are string slices
-// (as tags can have multiple values).
+// The iterator yields each raw key with its values (tags can have multiple
+// values), in unspecified order. Sort the keys if you need a stable order.
 //
 // Example:
 //
@@ -81,10 +82,17 @@ func (t *Tags) All() iter.Seq2[string, []string] {
 
 // Get retrieves all values for a tag key.
 //
-// Tag keys are format-specific (e.g., "TITLE", "TIT2", "©nam").
-// Vorbis-comment keys (FLAC, Ogg Vorbis, Opus) are stored upper-cased, so look them up as
-// "TITLE", not "title". Lookups are exact-match.
-// Returns an empty slice if the key doesn't exist.
+// Tag keys are format-specific:
+//
+//   - FLAC, Ogg Vorbis and Opus: the Vorbis comment field name, stored
+//     upper-cased, so look it up as "TITLE", not "title".
+//   - MP3: the ID3v2 frame ID ("TIT2"); TXXX frames use their upper-cased
+//     description.
+//   - M4A/M4B: the ilst atom name ("\xa9nam" for ©nam); freeform (----)
+//     atoms use their upper-cased name.
+//
+// Lookups are exact-match. Get returns a copy of the values, or nil if the
+// key doesn't exist.
 //
 // For standard fields, prefer accessing struct fields directly
 // (Title, Artist, etc.) as they provide format-agnostic access.

@@ -13,7 +13,7 @@ import (
 
 // ParseChapters extracts chapters from Vorbis CHAPTER comments.
 //
-// Ogg Vorbis and Opus support chapters via special comments:
+// FLAC, Ogg Vorbis and Opus support chapters via special comments:
 //
 //	CHAPTERxxx=HH:MM:SS.mmm
 //	CHAPTERxxxNAME=Title

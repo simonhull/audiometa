@@ -1,4 +1,6 @@
-// Package parsing provides utilities for parsing and extracting metadata from text.
+// Package parsing holds metadata heuristics shared by the format parsers:
+// series name and part extraction from grouping tags, titles and paths, and
+// the narrator fallback.
 package parsing
 
 import (

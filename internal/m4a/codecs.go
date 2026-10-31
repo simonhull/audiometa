@@ -1,4 +1,3 @@
-// Package m4a provides M4A/M4B format parsing
 package m4a
 
 import (

@@ -7,7 +7,7 @@ import (
 	"github.com/simonhull/audiometa/internal/binary"
 )
 
-// Format represents the detected audio format
+// Format represents the detected audio format.
 //
 //go:generate stringer -type=Format -linecomment
 type Format int

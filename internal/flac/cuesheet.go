@@ -1,4 +1,9 @@
-// Package flac provides FLAC audio file parsing and metadata extraction.
+// Package flac parses FLAC files.
+//
+// It walks the metadata blocks, reading STREAMINFO for technical properties,
+// VORBIS_COMMENT for tags and chapters, CUESHEET for chapters when no
+// CHAPTER comments exist, and PICTURE blocks for artwork (lazily). It
+// registers itself for [types.FormatFLAC].
 package flac
 
 import (

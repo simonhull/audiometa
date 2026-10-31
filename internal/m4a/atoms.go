@@ -1,4 +1,9 @@
-// Package m4a provides M4A/M4B audio file parsing
+// Package m4a parses MP4-family audio files (M4A, M4B).
+//
+// It reads iTunes ilst metadata (including freeform ---- atoms), technical
+// properties from the sound track's sample description, QuickTime chapter
+// tracks and Nero chpl chapters, and covr artwork. It registers itself for
+// [types.FormatM4A] and [types.FormatM4B].
 package m4a
 
 import (
