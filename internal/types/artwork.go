@@ -68,6 +68,15 @@ const (
 	ArtworkPublisherLogotype // Publisher/studio logotype
 )
 
+// ArtworkTypeFromPictureType maps an ID3v2 APIC / FLAC PICTURE type code to an ArtworkType.
+// Codes 0-20 map one-to-one; anything else is ArtworkOther.
+func ArtworkTypeFromPictureType(code uint32) ArtworkType {
+	if code > uint32(ArtworkPublisherLogotype) {
+		return ArtworkOther
+	}
+	return ArtworkType(code)
+}
+
 // String returns a human-readable representation of the artwork.
 // Example output: "Front cover (1200x1200 JPEG, 245KB)".
 func (a Artwork) String() string {

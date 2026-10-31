@@ -141,15 +141,7 @@ func parseMetadataBlockPicture(base64Value string) (types.Artwork, error) {
 	pictureData := data[offset : offset+int(dataLength)]
 
 	// Map FLAC picture type to types.ArtworkType
-	var artType types.ArtworkType
-	switch pictureType {
-	case 3:
-		artType = types.ArtworkFrontCover
-	case 4:
-		artType = types.ArtworkBackCover
-	default:
-		artType = types.ArtworkOther
-	}
+	artType := types.ArtworkTypeFromPictureType(pictureType)
 
 	return types.Artwork{
 		Data:        pictureData,

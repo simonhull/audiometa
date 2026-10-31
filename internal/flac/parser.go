@@ -262,6 +262,14 @@ func parseStreamInfo(sr *binary.SafeReader, offset, blockLength int64, file *typ
 		file.Audio.Duration = time.Duration(durationSeconds * float64(time.Second))
 	}
 
+	if totalSamples == 0 {
+		file.Warnings = append(file.Warnings, types.Warning{
+			Stage:   types.StageTechnical,
+			Message: "STREAMINFO total samples is 0 (unknown); duration not available",
+			Offset:  offset,
+		})
+	}
+
 	// Set audio properties
 	file.Audio.SampleRate = int(sampleRate)
 	file.Audio.Channels = int(channels)
@@ -397,15 +405,7 @@ func parsePicture(sr *binary.SafeReader, offset, _ int64) (types.Artwork, error)
 	}
 
 	// Map FLAC picture type to types.ArtworkType
-	var artType types.ArtworkType
-	switch pictureType {
-	case 3:
-		artType = types.ArtworkFrontCover
-	case 4:
-		artType = types.ArtworkBackCover
-	default:
-		artType = types.ArtworkOther
-	}
+	artType := types.ArtworkTypeFromPictureType(pictureType)
 
 	return types.Artwork{
 		Data:        pictureData,

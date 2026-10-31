@@ -162,3 +162,25 @@ func createTestPictureBlock(pictureType uint32, mimeType, description string, wi
 
 	return data
 }
+
+func TestParseMetadataBlockPicture_ExtendedTypes(t *testing.T) {
+	tests := []struct {
+		code uint32
+		want types.ArtworkType
+	}{
+		{6, types.ArtworkMedia},
+		{20, types.ArtworkPublisherLogotype},
+		{21, types.ArtworkOther},
+		{0xFFFFFFFF, types.ArtworkOther},
+	}
+	for _, tt := range tests {
+		pic := createTestPictureBlock(tt.code, "image/png", "", 1, 1, []byte{1, 2, 3})
+		artwork, err := parseMetadataBlockPicture(base64.StdEncoding.EncodeToString(pic))
+		if err != nil {
+			t.Fatalf("type %d: %v", tt.code, err)
+		}
+		if artwork.Type != tt.want {
+			t.Errorf("type %d = %v, want %v", tt.code, artwork.Type, tt.want)
+		}
+	}
+}
