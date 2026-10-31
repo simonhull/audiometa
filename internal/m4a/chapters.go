@@ -1,6 +1,8 @@
 package m4a
 
 import (
+	"errors"
+	"slices"
 	"time"
 
 	"github.com/simonhull/audiometa/internal/binary"
@@ -60,7 +62,7 @@ func parseChplChapters(sr *binary.SafeReader, moovAtom *Atom, fileDuration time.
 	offset := chplAtom.DataOffset()
 
 	// Read version (1 byte)
-	_, err = binary.Read[uint8](sr, offset, "chpl version")
+	version, err := binary.Read[uint8](sr, offset, "chpl version")
 	if err != nil {
 		return nil, err
 	}
@@ -69,8 +71,11 @@ func parseChplChapters(sr *binary.SafeReader, moovAtom *Atom, fileDuration time.
 	// Skip flags (3 bytes)
 	offset += 3
 
-	// Skip reserved (4 bytes)
-	offset += 4
+	// The 4-byte reserved field exists only when version != 0
+	// (ffmpeg libavformat/mov.c mov_read_chpl).
+	if version != 0 {
+		offset += 4
+	}
 
 	// Read chapter count (1 byte)
 	chapterCount, err := binary.Read[uint8](sr, offset, "chapter count")
@@ -286,7 +291,7 @@ func parseTextTrackChapters(sr *binary.SafeReader, trakAtom *Atom, fileDuration 
 	}
 
 	// Parse sample sizes
-	sampleSizes, err := parseSampleSizes(sr, stblAtom)
+	sampleSizes, err := parseSampleSizes(sr, stblAtom, len(chapterTimes))
 	if err != nil {
 		return nil, err
 	}
@@ -297,8 +302,19 @@ func parseTextTrackChapters(sr *binary.SafeReader, trakAtom *Atom, fileDuration 
 		return nil, err
 	}
 
+	if len(chunkOffsets) == 0 || len(sampleSizes) == 0 {
+		return nil, nil
+	}
+
+	// Map samples to chunks (non-fatal if stsc is unreadable: legacy layout is used)
+	stsc, err := parseSampleToChunk(sr, stblAtom)
+	if err != nil {
+		stsc = nil
+	}
+	sampleOffsets := computeSampleOffsets(sampleSizes, chunkOffsets, stsc)
+
 	// Build chapters from text samples
-	chapters := buildChaptersFromText(sr, chapterTimes, sampleSizes, chunkOffsets)
+	chapters := buildChaptersFromText(sr, chapterTimes, sampleSizes, sampleOffsets)
 
 	// Calculate end times
 	calculateChapterEndTimes(chapters, fileDuration)
@@ -372,7 +388,7 @@ func parseChapterTimings(sr *binary.SafeReader, stblAtom *Atom, timescale uint32
 }
 
 // parseSampleSizes extracts sample sizes from the stsz atom.
-func parseSampleSizes(sr *binary.SafeReader, stblAtom *Atom) ([]uint32, error) {
+func parseSampleSizes(sr *binary.SafeReader, stblAtom *Atom, maxSamples int) ([]uint32, error) {
 	stszAtom, err := findAtom(sr, stblAtom.DataOffset(), stblAtom.DataOffset()+int64(stblAtom.DataSize()), "stsz")
 	if err != nil {
 		return nil, err
@@ -380,8 +396,9 @@ func parseSampleSizes(sr *binary.SafeReader, stblAtom *Atom) ([]uint32, error) {
 
 	offset := stszAtom.DataOffset() + 4 // Skip version + flags
 
-	// Read default sample size (if 0, sizes are in table)
-	_, err = binary.Read[uint32](sr, offset, "default sample size")
+	// Default sample size: if non-zero every sample has this size and no table follows
+	// (ISO/IEC 14496-12 section 8.7.3).
+	defaultSize, err := binary.Read[uint32](sr, offset, "default sample size")
 	if err != nil {
 		return nil, err
 	}
@@ -393,8 +410,14 @@ func parseSampleSizes(sr *binary.SafeReader, stblAtom *Atom) ([]uint32, error) {
 	}
 	offset += 4
 
-	sampleSizes := make([]uint32, sampleCount)
-	for i := range sampleCount {
+	// Only samples that have a timing can become chapters.
+	n := int(min(uint64(sampleCount), uint64(max(maxSamples, 0))))
+	if defaultSize != 0 {
+		return slices.Repeat([]uint32{defaultSize}, n), nil
+	}
+
+	sampleSizes := make([]uint32, n)
+	for i := range sampleSizes {
 		size, err := binary.Read[uint32](sr, offset, "sample size")
 		if err != nil {
 			break // Return partial results
@@ -404,6 +427,87 @@ func parseSampleSizes(sr *binary.SafeReader, stblAtom *Atom) ([]uint32, error) {
 	}
 
 	return sampleSizes, nil
+}
+
+// stscEntry is one sample-to-chunk run (ISO/IEC 14496-12 section 8.7.4).
+type stscEntry struct {
+	firstChunk      uint32 // 1-based
+	samplesPerChunk uint32
+}
+
+// parseSampleToChunk reads stsc; returns nil, nil when the atom is absent.
+func parseSampleToChunk(sr *binary.SafeReader, stblAtom *Atom) ([]stscEntry, error) {
+	stscAtom, err := findAtom(sr, stblAtom.DataOffset(), stblAtom.DataOffset()+int64(stblAtom.DataSize()), "stsc")
+	if err != nil {
+		if errors.Is(err, errAtomNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	offset := stscAtom.DataOffset() + 4 // Skip version + flags
+	entryCount, err := binary.Read[uint32](sr, offset, "stsc entry count")
+	if err != nil {
+		return nil, err
+	}
+	offset += 4
+
+	var entries []stscEntry
+	for range entryCount {
+		firstChunk, err := binary.Read[uint32](sr, offset, "stsc first chunk")
+		if err != nil {
+			break // Return partial results
+		}
+		perChunk, err := binary.Read[uint32](sr, offset+4, "stsc samples per chunk")
+		if err != nil {
+			break
+		}
+		entries = append(entries, stscEntry{firstChunk: firstChunk, samplesPerChunk: perChunk})
+		offset += 12 // skip sample_description_index
+	}
+
+	return entries, nil
+}
+
+// computeSampleOffsets lays samples out in chunks per stsc. Without stsc it falls back to the
+// legacy layout: one chunk => all samples contiguous; otherwise one sample per chunk.
+// The result may be shorter than sampleSizes when the tables describe fewer samples.
+func computeSampleOffsets(sampleSizes []uint32, chunkOffsets []uint64, stsc []stscEntry) []uint64 {
+	if len(chunkOffsets) == 0 || len(sampleSizes) == 0 {
+		return nil
+	}
+
+	if len(stsc) == 0 {
+		if len(chunkOffsets) == 1 {
+			offsets := make([]uint64, len(sampleSizes))
+			pos := chunkOffsets[0]
+			for i, size := range sampleSizes {
+				offsets[i] = pos
+				pos += uint64(size)
+			}
+			return offsets
+		}
+		return slices.Clone(chunkOffsets[:min(len(chunkOffsets), len(sampleSizes))])
+	}
+
+	offsets := make([]uint64, 0, len(sampleSizes))
+	e := 0
+	for c, chunkStart := range chunkOffsets {
+		chunkNum := uint64(c) + 1
+		for e+1 < len(stsc) && uint64(stsc[e+1].firstChunk) <= chunkNum {
+			e++
+		}
+		pos := chunkStart
+		for range stsc[e].samplesPerChunk {
+			if len(offsets) == len(sampleSizes) {
+				return offsets
+			}
+			offsets = append(offsets, pos)
+			pos += uint64(sampleSizes[len(offsets)-1])
+		}
+	}
+
+	return offsets
 }
 
 // parseChunkOffsets extracts chunk offsets from stco or co64 atom.
@@ -431,10 +535,8 @@ func parseChunkOffsets(sr *binary.SafeReader, stblAtom *Atom) ([]uint64, error) 
 			chunkOffsets[i], readErr = binary.Read[uint64](sr, offset, "chunk offset")
 			offset += 8
 		} else {
-			offset32, readErr := binary.Read[uint32](sr, offset, "chunk offset")
-			if readErr != nil {
-				break // Return partial results
-			}
+			var offset32 uint32
+			offset32, readErr = binary.Read[uint32](sr, offset, "chunk offset")
 			chunkOffsets[i] = uint64(offset32)
 			offset += 4
 		}
@@ -447,50 +549,27 @@ func parseChunkOffsets(sr *binary.SafeReader, stblAtom *Atom) ([]uint64, error) 
 }
 
 // buildChaptersFromText reads text samples and builds chapter list.
-// Handles both single-chunk (all samples in one chunk) and multi-chunk layouts.
-func buildChaptersFromText(sr *binary.SafeReader, chapterTimes []time.Duration, sampleSizes []uint32, chunkOffsets []uint64) []types.Chapter {
+// sampleOffsets[i] is the file offset of sample i (see computeSampleOffsets); samples
+// without an offset yield a chapter with an empty title.
+func buildChaptersFromText(sr *binary.SafeReader, chapterTimes []time.Duration, sampleSizes []uint32, sampleOffsets []uint64) []types.Chapter {
 	chapters := make([]types.Chapter, 0, len(chapterTimes))
 
-	if len(chunkOffsets) == 0 || len(sampleSizes) == 0 {
-		return chapters
-	}
-
-	// Calculate sample offsets
-	// If there's only one chunk, all samples are sequential within it
-	// If there are multiple chunks, we need sample-to-chunk mapping (simplified: assume 1:1)
-	sampleOffsets := make([]uint64, len(sampleSizes))
-
-	if len(chunkOffsets) == 1 {
-		// All samples are in a single chunk - calculate offsets by summing sizes
-		currentOffset := chunkOffsets[0]
-		for i := range sampleSizes {
-			sampleOffsets[i] = currentOffset
-			currentOffset += uint64(sampleSizes[i])
-		}
-	} else {
-		// Multiple chunks - assume 1:1 mapping (one sample per chunk)
-		// This is a simplification; proper handling would parse stsc atom
-		for i := 0; i < len(chunkOffsets) && i < len(sampleSizes); i++ {
-			sampleOffsets[i] = chunkOffsets[i]
-		}
-	}
-
-	maxSamples := min(len(sampleOffsets), len(sampleSizes), len(chapterTimes))
-
-	for i := range maxSamples {
+	for i := range min(len(sampleSizes), len(chapterTimes)) {
 		sampleSize := sampleSizes[i]
 		if sampleSize == 0 || sampleSize >= 10000 {
 			continue // Skip invalid sizes
 		}
 
-		title := extractChapterTitle(sr, int64(sampleOffsets[i]), sampleSize)
+		var title string
+		if i < len(sampleOffsets) {
+			title = extractChapterTitle(sr, int64(sampleOffsets[i]), sampleSize)
+		}
 
-		chapter := types.Chapter{
+		chapters = append(chapters, types.Chapter{
 			Index:     i + 1,
 			Title:     title,
 			StartTime: chapterTimes[i],
-		}
-		chapters = append(chapters, chapter)
+		})
 	}
 
 	return chapters
