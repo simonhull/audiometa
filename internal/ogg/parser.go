@@ -35,7 +35,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	if err := sr.ReadAt(magic, 0, "Ogg magic bytes"); err != nil {
 		return nil, fmt.Errorf("read Ogg magic: %w", err)
 	}
-	if string(magic) != "OggS" {
+	if string(magic) != capturePattern {
 		return nil, &types.CorruptedFileError{
 			Path:   path,
 			Offset: 0,
@@ -52,41 +52,10 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		Audio:  types.AudioInfo{},
 	}
 
-	// Read first few pages (Vorbis headers are always in the first pages)
-	var pages []*Page
-	offset := int64(0)
-
-	// Read up to 3 pages (identification, comment, setup headers)
-	for i := 0; i < 3 && offset < size; i++ {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-
-		page, nextOffset, err := readPage(sr, offset)
-		if err != nil {
-			if i == 0 {
-				// First page failed - this is fatal
-				return nil, fmt.Errorf("failed to read first Ogg page: %w", err)
-			}
-			// Subsequent pages - add warning and stop
-			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-				Stage:   types.StageMetadata,
-				Message: fmt.Sprintf("failed to read Ogg page %d: %v", i, err),
-				Err:     err,
-				Offset:  offset,
-			})
-			break
-		}
-		pages = append(pages, page)
-		offset = nextOffset
+	packets, err := readHeaderPackets(ctx, sr, size, file, maxHeaderBytes)
+	if err != nil {
+		return nil, err
 	}
-
-	if len(pages) == 0 {
-		return nil, errors.New("no Ogg pages found")
-	}
-
-	// Extract packets from pages
-	packets := extractPackets(pages)
 
 	if len(packets) < 2 {
 		return nil, fmt.Errorf("not enough packets found (need at least 2, got %d)", len(packets))
@@ -186,6 +155,70 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	}
 
 	return file, nil
+}
+
+// maxHeaderBytes bounds how much page data is read while looking for the
+// identification and comment headers. Comment packets carrying embedded cover
+// art (METADATA_BLOCK_PICTURE) can span many pages.
+const maxHeaderBytes = 16 << 20
+
+// readHeaderPackets reads pages from the start of the first logical stream until
+// its first two packets (identification and comment headers) are complete, the
+// file ends, or maxBytes of page data have been read. A read error on the first
+// page is fatal; later errors and hitting the cap are recorded as warnings and
+// parsing continues with the packets gathered so far.
+func readHeaderPackets(ctx context.Context, sr *binary.SafeReader, size int64, file *types.File, maxBytes int64) ([][]byte, error) {
+	var pages []*Page
+	var serial uint32
+	var read int64
+	complete := 0 // packets terminated so far
+	offset := int64(0)
+
+	for i := 0; offset < size && complete < 2; i++ {
+		if err := binary.Canceled(ctx, i); err != nil {
+			return nil, err
+		}
+
+		page, nextOffset, err := readPage(sr, offset)
+		if err != nil {
+			if i == 0 {
+				return nil, fmt.Errorf("failed to read first Ogg page: %w", err)
+			}
+			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
+				Stage:   types.StageMetadata,
+				Message: fmt.Sprintf("failed to read Ogg page %d: %v", i, err),
+				Err:     err,
+				Offset:  offset,
+			})
+			break
+		}
+		offset = nextOffset
+		if i == 0 {
+			serial = page.SerialNumber
+		} else if page.SerialNumber != serial {
+			continue // another multiplexed stream
+		}
+
+		read += int64(len(page.Data))
+		if read > maxBytes {
+			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
+				Stage:   types.StageMetadata,
+				Message: fmt.Sprintf("Ogg comment header exceeds %d bytes; truncated", maxBytes),
+			})
+			break
+		}
+		pages = append(pages, page)
+		for _, lace := range page.laceValues() {
+			if lace < 255 {
+				complete++
+			}
+		}
+	}
+
+	if len(pages) == 0 {
+		return nil, errors.New("no Ogg pages found")
+	}
+	return extractPackets(pages), nil
 }
 
 // detectOggCodec determines whether this is Vorbis or Opus

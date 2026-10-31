@@ -8,12 +8,16 @@ import (
 	"github.com/simonhull/audiometa/internal/binary"
 )
 
+// capturePattern starts every Ogg page.
+const capturePattern = "OggS"
+
 // Page represents an Ogg page.
 //
 // An Ogg page is the fundamental unit of the Ogg container format.
 // Each page contains a header and payload data.
 type Page struct {
 	Data            []byte
+	Lacing          []byte // segment table; each value < 255 terminates a packet
 	GranulePosition int64
 	SerialNumber    uint32
 	SequenceNumber  uint32
@@ -29,7 +33,7 @@ func readPage(sr *binary.SafeReader, offset int64) (*Page, int64, error) {
 	if err := sr.ReadAt(magic, offset, "Ogg magic"); err != nil {
 		return nil, 0, err
 	}
-	if string(magic) != "OggS" {
+	if string(magic) != capturePattern {
 		return nil, 0, fmt.Errorf("invalid Ogg page at offset %d", offset)
 	}
 
@@ -93,6 +97,7 @@ func readPage(sr *binary.SafeReader, offset int64) (*Page, int64, error) {
 		SerialNumber:    serial,
 		SequenceNumber:  sequence,
 		Data:            data,
+		Lacing:          segments,
 	}
 
 	// Calculate next page offset
@@ -101,42 +106,77 @@ func readPage(sr *binary.SafeReader, offset int64) (*Page, int64, error) {
 	return page, nextOffset, nil
 }
 
-// extractPackets extracts complete packets from a series of pages.
-//
-// Ogg packets can span multiple pages. A packet ends when a segment
-// has a size < 255 bytes.
-//
-// This function handles:
-//   - Packets split across multiple pages (continued packets)
-//   - Multiple packets in a single page
-//   - Packets exactly 255 bytes (continued in next segment)
-func extractPackets(pages []*Page) [][]byte {
-	var packets [][]byte
-	var currentPacket []byte
+// laceValues returns the page's segment table, synthesizing one (a single
+// packet filling the page) for pages built without it.
+func (p *Page) laceValues() []byte {
+	if p.Lacing != nil {
+		return p.Lacing
+	}
+	n := len(p.Data)
+	lacing := make([]byte, 0, n/255+1)
+	for ; n >= 255; n -= 255 {
+		lacing = append(lacing, 255)
+	}
+	return append(lacing, byte(n))
+}
 
+// splitPackets assembles packets from a series of pages using each page's
+// segment table (RFC 3533 section 6): a lacing value below 255 terminates a
+// packet, 255 continues it, possibly onto the next page when that page has the
+// continuation flag set. The final packet is returned even if it is still
+// open; open reports whether the last packet is unterminated.
+func splitPackets(pages []*Page) (packets [][]byte, open bool) {
+	var cur []byte
 	for _, page := range pages {
-		// If page is a continuation and we have a packet in progress,
-		// append to current packet
-		if page.HeaderType&0x01 != 0 && len(currentPacket) > 0 {
-			currentPacket = append(currentPacket, page.Data...)
-		} else {
-			// Not a continuation page
-			// Save any packet in progress
-			if len(currentPacket) > 0 {
-				packets = append(packets, currentPacket)
+		if open && page.HeaderType&0x01 == 0 {
+			// The stream dropped the continuation; keep what we have.
+			packets = append(packets, cur)
+			cur, open = nil, false
+		}
+		data := page.Data
+		for _, lace := range page.laceValues() {
+			n := min(int(lace), len(data))
+			cur = append(cur, data[:n]...)
+			data = data[n:]
+			open = lace == 255
+			if !open {
+				packets = append(packets, cur)
+				cur = nil
 			}
-			// Start new packet with this page's data
-			currentPacket = make([]byte, len(page.Data))
-			copy(currentPacket, page.Data)
 		}
 	}
-
-	// Don't forget the last packet
-	if len(currentPacket) > 0 {
-		packets = append(packets, currentPacket)
+	if open {
+		packets = append(packets, cur)
 	}
+	return packets, open
+}
 
+// extractPackets extracts packets from a series of pages, including a trailing
+// unterminated packet. See splitPackets.
+func extractPackets(pages []*Page) [][]byte {
+	packets, _ := splitPackets(pages)
 	return packets
+}
+
+// plausiblePageAt reports whether buf[i:] starts a well-formed Ogg page header
+// whose declared length fits the buffer.
+func plausiblePageAt(buf []byte, i int) bool {
+	const fixedHeader = 27
+	if i+fixedHeader > len(buf) || string(buf[i:i+4]) != capturePattern {
+		return false
+	}
+	if buf[i+4] != 0 || buf[i+5] > 0x07 {
+		return false
+	}
+	segCount := int(buf[i+26])
+	if i+fixedHeader+segCount > len(buf) {
+		return false
+	}
+	total := fixedHeader + segCount
+	for _, l := range buf[i+fixedHeader : i+fixedHeader+segCount] {
+		total += int(l)
+	}
+	return i+total <= len(buf)
 }
 
 // findLastGranulePosition searches backwards from the end of file
@@ -155,8 +195,9 @@ func findLastGranulePosition(sr *binary.SafeReader, fileSize int64) (int64, erro
 
 	// Find last "OggS" marker
 	lastOggPos := int64(-1)
+	// Payload bytes can contain "OggS", so only accept a plausible page header.
 	for i := len(buf) - 4; i >= 0; i-- {
-		if buf[i] == 'O' && buf[i+1] == 'g' && buf[i+2] == 'g' && buf[i+3] == 'S' {
+		if plausiblePageAt(buf, i) {
 			lastOggPos = searchStart + int64(i)
 			break
 		}
