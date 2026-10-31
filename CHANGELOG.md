@@ -38,6 +38,8 @@ All notable changes to this project are documented here.
 - M4A: read technical info from the sound track and honor the sample entry version.
 - `WithMaxArtworkSize` is now enforced: oversized images are dropped from `ExtractArtwork` with a warning.
 - `WithStrictParsing` and `WithIgnoreWarnings` now also apply to warnings from `WithArtworkPreload`.
+- Hostile size and time fields can no longer wrap integers: FLAC cue offsets, M4A chpl start times, chapter time sums, 64-bit chunk offsets and extended atom sizes are bounds-checked (gosec G115 enabled).
+- Tests now also pass on 32-bit targets (`GOARCH=386`), and CI runs them.
 - `ExtractArtwork` is safe for concurrent use, and a failed extraction is retried instead of cached.
 - `AudioInfo.ApplyReplayGain`: correct clipping limit, and no limit when the peak is unknown.
 - Library version is derived from build info instead of a stale constant.
