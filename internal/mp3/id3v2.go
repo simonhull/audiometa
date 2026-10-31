@@ -42,11 +42,14 @@ func parseID3v2(sr *binutil.SafeReader, file *types.File) (int64, error) {
 	}
 
 	frameDataOffset := skipExtendedHeader(sr, header)
-	chapters := parseID3v2Frames(sr, file, header, frameDataOffset)
+	st := parseID3v2Frames(sr, file, header, frameDataOffset)
+	if file.Tags.Comment == "" {
+		file.Tags.Comment = st.describedComment
+	}
 
 	// Process chapters
-	if len(chapters) > 0 {
-		file.Chapters = parseChapterFrames(chapters, header.Version)
+	if len(st.chapters) > 0 {
+		file.Chapters = parseChapterFrames(st.chapters, header.Version)
 	}
 
 	// Post-parse fallbacks for audiobook series metadata.
@@ -141,10 +144,10 @@ func skipExtendedHeader(sr *binutil.SafeReader, header ID3v2Header) int64 {
 }
 
 // parseID3v2Frames parses all frames in the ID3v2 tag.
-func parseID3v2Frames(sr *binutil.SafeReader, file *types.File, header ID3v2Header, startOffset int64) []ID3v2Frame {
+func parseID3v2Frames(sr *binutil.SafeReader, file *types.File, header ID3v2Header, startOffset int64) *frameState {
 	tagEnd := int64(10 + header.Size)
 	offset := startOffset
-	chapters := make([]ID3v2Frame, 0)
+	st := &frameState{}
 
 	for offset < tagEnd {
 		frame, bytesRead, stop := readSingleFrame(sr, file, header, offset)
@@ -153,13 +156,13 @@ func parseID3v2Frames(sr *binutil.SafeReader, file *types.File, header ID3v2Head
 		}
 
 		if frame != nil {
-			processFrame(*frame, file, &chapters)
+			processFrame(*frame, file, st)
 		}
 
 		offset += bytesRead
 	}
 
-	return chapters
+	return st
 }
 
 // readSingleFrame reads a single ID3v2 frame.
@@ -221,17 +224,25 @@ func isTextFrameID(id string) bool {
 	return strings.HasPrefix(id, "T")
 }
 
+// frameState accumulates results that are resolved after the whole tag is walked.
+type frameState struct {
+	chapters []ID3v2Frame
+	// describedComment is the first COMM text with a non-empty, non-iTunes
+	// short description; used only when no COMM has an empty description.
+	describedComment string
+}
+
 // processFrame processes a single frame based on its ID.
-func processFrame(frame ID3v2Frame, file *types.File, chapters *[]ID3v2Frame) {
+func processFrame(frame ID3v2Frame, file *types.File, st *frameState) {
 	switch {
 	case isTextFrameID(frame.ID):
 		parseTextFrame(frame, file)
 	case frame.ID == "TXXX":
 		parseTXXXFrame(frame, file)
 	case frame.ID == "COMM":
-		parseCommentFrame(frame, file)
+		parseCommentFrame(frame, file, st)
 	case frame.ID == "CHAP":
-		*chapters = append(*chapters, frame)
+		st.chapters = append(st.chapters, frame)
 	}
 }
 
@@ -253,7 +264,11 @@ func parseTextFrame(frame ID3v2Frame, file *types.File) { //nolint:gocyclo // Co
 	}
 
 	encoding := frame.Data[0]
-	text := decodeText(frame.Data[1:], encoding)
+	values := splitTextValues(decodeText(frame.Data[1:], encoding))
+	var text string
+	if len(values) > 0 {
+		text = values[0]
+	}
 
 	switch frame.ID {
 	case "TIT2": // Title
@@ -265,9 +280,7 @@ func parseTextFrame(frame ID3v2Frame, file *types.File) { //nolint:gocyclo // Co
 	case "TALB": // Album
 		file.Tags.Album = text
 	case "TCON": // Genre
-		if text != "" {
-			file.Tags.Genres = append(file.Tags.Genres, text)
-		}
+		file.Tags.Genres = append(file.Tags.Genres, values...)
 	case "TYER": // Year (ID3v2.3)
 		if year := parseYear(text); year > 0 {
 			file.Tags.Year = year
@@ -277,9 +290,7 @@ func parseTextFrame(frame ID3v2Frame, file *types.File) { //nolint:gocyclo // Co
 			file.Tags.Year = year
 		}
 	case "TCOM": // Composer (often used for Narrator)
-		if text != "" {
-			file.Tags.Composers = append(file.Tags.Composers, text)
-		}
+		file.Tags.Composers = append(file.Tags.Composers, values...)
 	case "TRCK": // Track number/total
 		file.Tags.TrackNumber, file.Tags.TrackTotal = parseTrackNumber(text)
 	case "TPOS": // Disc number/total
@@ -355,34 +366,43 @@ func parseTXXXFrame(frame ID3v2Frame, file *types.File) {
 	}
 
 	description := decodeText(data[:nullIdx], encoding)
-	value := decodeText(data[nullIdx+terminatorSize(encoding):], encoding)
+	value := firstValue(decodeText(data[nullIdx+terminatorSize(encoding):], encoding))
 
 	if handler, ok := txxxFieldHandlers[strings.ToLower(description)]; ok {
 		handler(file, value)
 	}
 }
 
-// Format: [encoding][language(3)][short description\0][text].
-func parseCommentFrame(frame ID3v2Frame, file *types.File) {
+// parseCommentFrame handles COMM: [encoding][language(3)][short description\0][text].
+// iTunes stores internal data (iTunNORM, iTunSMPB, iTunPGAP, iTunes_CDDB_*) in
+// described COMM frames; those are ignored. The first COMM with an empty
+// description is the user comment; otherwise the first described one is kept
+// as a fallback.
+func parseCommentFrame(frame ID3v2Frame, file *types.File, st *frameState) {
 	if len(frame.Data) < 4 {
 		return
 	}
-
 	encoding := frame.Data[0]
-	// Skip language (3 bytes)
-	data := frame.Data[4:]
+	data := frame.Data[4:] // skip encoding + language
 
-	// Find null terminator separating short description from text
-	nullIdx := findNullTerminator(data, encoding)
-	if nullIdx < 0 {
-		// No null terminator - treat all as comment
-		file.Tags.Comment = decodeText(data, encoding)
-		return
+	var desc, text string
+	if nullIdx := findNullTerminator(data, encoding); nullIdx < 0 {
+		text = firstValue(decodeText(data, encoding)) // malformed: no description
+	} else {
+		desc = decodeText(data[:nullIdx], encoding)
+		text = firstValue(decodeText(data[nullIdx+terminatorSize(encoding):], encoding))
 	}
 
-	// Extract comment text (after short description)
-	comment := decodeText(data[nullIdx+terminatorSize(encoding):], encoding)
-	file.Tags.Comment = comment
+	switch {
+	case text == "", strings.HasPrefix(desc, "iTun"):
+		return
+	case desc == "":
+		if file.Tags.Comment == "" {
+			file.Tags.Comment = text
+		}
+	case st.describedComment == "":
+		st.describedComment = text
+	}
 }
 
 // parseChapterFrames parses CHAP frames and builds chapter list.
@@ -477,32 +497,56 @@ func extractChapterTitleFromSubframes(subframeData []byte, version byte, fallbac
 	return fallbackTitle
 }
 
-// decodeText decodes text based on ID3v2 encoding byte.
+// decodeText decodes ID3v2 text for the given encoding byte and trims NUL
+// terminators. Encodings: 0 ISO-8859-1, 1 UTF-16 with BOM, 2 UTF-16BE, 3 UTF-8.
 func decodeText(data []byte, encoding byte) string {
-	if len(data) == 0 {
-		return ""
-	}
-
+	var s string
 	switch encoding {
-	case 0: // ISO-8859-1
-		return string(data)
+	case 1:
+		s = decodeUTF16(data)
+	case 2:
+		s = decodeUTF16BE(data)
+	default: // 0, 3 and unknown encodings
+		s = decodeSingleByteText(data)
+	}
+	return strings.TrimRight(s, "\x00")
+}
 
-	case 1: // UTF-16 with BOM
-		return decodeUTF16(data)
-
-	case 2: // UTF-16BE (ID3v2.4)
-		return decodeUTF16BE(data)
-
-	case 3: // UTF-8 (ID3v2.4)
-		if utf8.Valid(data) {
-			return string(data)
-		}
-		return string(data) // Return as-is even if invalid
-
-	default:
-		// Unknown encoding - try as ISO-8859-1
+// decodeSingleByteText decodes ISO-8859-1 or UTF-8 text. Valid UTF-8 is used
+// as-is (ASCII is both, and many taggers write UTF-8 into frames labeled
+// ISO-8859-1); anything else is decoded as ISO-8859-1, where each byte is the
+// code point of the same value. The result is always valid UTF-8.
+func decodeSingleByteText(data []byte) string {
+	if utf8.Valid(data) {
 		return string(data)
 	}
+	var b strings.Builder
+	b.Grow(len(data) * 2)
+	for _, c := range data {
+		b.WriteRune(rune(c))
+	}
+	return b.String()
+}
+
+// splitTextValues splits decoded text-frame content into its values. ID3v2.4
+// separates multiple values with NUL; UTF-16 values may each carry their own
+// BOM, which decodes to U+FEFF and is dropped. Empty values are removed.
+func splitTextValues(s string) []string {
+	var out []string
+	for p := range strings.SplitSeq(s, "\x00") {
+		if p = strings.TrimPrefix(p, "\uFEFF"); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// firstValue returns the first value of a possibly multi-valued text, or "".
+func firstValue(s string) string {
+	if values := splitTextValues(s); len(values) > 0 {
+		return values[0]
+	}
+	return ""
 }
 
 // decodeUTF16 decodes UTF-16 with BOM.
