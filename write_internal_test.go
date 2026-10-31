@@ -143,13 +143,14 @@ func tinyPNG(t *testing.T) []byte {
 }
 
 func TestWriteTo_NoWriterIsUnsupported(t *testing.T) {
-	f := openSample(t, sampleFLAC)
+	const sampleOgg = "testdata/sample.ogg" // Ogg Vorbis has no writer
+	f := openSample(t, sampleOgg)
 	n, err := f.WriteTo(io.Discard)
 	if !errors.Is(err, ErrUnsupportedWrite) || n != 0 {
 		t.Errorf("WriteTo = %d, %v; want 0, ErrUnsupportedWrite", n, err)
 	}
 
-	path, data := copySample(t, sampleFLAC)
+	path, data := copySample(t, sampleOgg)
 	err = Write(path, func(f *File) error { f.Tags.Title = "x"; return nil })
 	if !errors.Is(err, ErrUnsupportedWrite) {
 		t.Errorf("Write err = %v, want ErrUnsupportedWrite", err)

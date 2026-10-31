@@ -29,8 +29,8 @@ var roundTripCorpus = []roundTripCase{
 	{"testdata/sample_mono_vbr.mp3", true},
 	{"testdata/sample_mpeg2.mp3", true},
 	{"testdata/sample_v24.mp3", true}, // ID3v2.4 with an ID3v1 trailer
-	{"testdata/sample.flac", false},
-	{"testdata/sample_upper.flac", false},
+	{"testdata/sample.flac", true},
+	{"testdata/sample_upper.flac", true},
 	{"testdata/sample.m4a", false},
 	{"testdata/sample.m4b", false},
 	{"testdata/sample.ogg", false},  // deferred format: stays false
@@ -143,6 +143,32 @@ var roundTripMP3Edits = []tagEdit{
 	},
 }
 
+// roundTripFLACEdits are edits of Vorbis comment keys and fields only the
+// FLAC harness checks.
+var roundTripFLACEdits = []tagEdit{
+	{
+		name:    "set REPLAYGAIN_TRACK_GAIN",
+		apply:   func(f *audiometa.File) error { f.Tags.Set("REPLAYGAIN_TRACK_GAIN", "-6.00 dB"); return nil },
+		formats: []audiometa.Format{audiometa.FormatFLAC},
+		check: func(t *testing.T, f *audiometa.File) {
+			if rg := f.Audio.ReplayGain; rg == nil || rg.TrackGain != -6.0 {
+				t.Errorf("ReplayGain = %+v, want TrackGain -6", rg)
+			}
+		},
+	},
+	{
+		name:    "set lyrics",
+		fields:  []string{"Lyrics"},
+		apply:   func(f *audiometa.File) error { f.Tags.Lyrics = "la la"; return nil },
+		formats: []audiometa.Format{audiometa.FormatFLAC},
+		check: func(t *testing.T, f *audiometa.File) {
+			if f.Tags.Lyrics != "la la" {
+				t.Errorf("Lyrics = %q, want la la", f.Tags.Lyrics)
+			}
+		},
+	},
+}
+
 var roundTripArtworkEdits = []tagEdit{
 	{
 		name: "replace front cover",
@@ -237,7 +263,7 @@ func TestWriteRoundTrip_Corpus(t *testing.T) {
 				t.Error("no-edit WriteTo is not byte-identical to the source")
 			}
 
-			for _, e := range slices.Concat(roundTripEdits, roundTripMP3Edits, roundTripArtworkEdits) {
+			for _, e := range slices.Concat(roundTripEdits, roundTripMP3Edits, roundTripFLACEdits, roundTripArtworkEdits) {
 				t.Run(e.name, func(t *testing.T) { runRoundTrip(t, tc.path, src, e) })
 			}
 			t.Run("delete keys", func(t *testing.T) { runDeleteRoundTrip(t, tc.path, src) })
@@ -497,6 +523,58 @@ func TestWriteRoundTrip_MP3DeleteAllKeys(t *testing.T) {
 				t.Errorf("raw key %q = %q survived", k, v)
 			}
 			if audioDigest(t, audiometa.FormatMP3, src) != audioDigest(t, audiometa.FormatMP3, out) {
+				t.Error("audio payload changed")
+			}
+			if !slices.Equal(reopened.Chapters, orig.Chapters) {
+				t.Errorf("chapters changed: %+v", reopened.Chapters)
+			}
+		})
+	}
+}
+
+// flacAudioStart walks the metadata blocks of a FLAC file to the first audio byte.
+func flacAudioStart(t *testing.T, data []byte) int {
+	t.Helper()
+	off := 4
+	for {
+		if off+4 > len(data) {
+			t.Fatalf("flac: metadata block header at %d past EOF", off)
+		}
+		last := data[off]&0x80 != 0
+		off += 4 + (int(data[off+1])<<16 | int(data[off+2])<<8 | int(data[off+3]))
+		if last {
+			return off
+		}
+	}
+}
+
+// A small edit fits in sample.flac's PADDING block, so the audio stays put.
+func TestWriteRoundTrip_FLACKeepsAudioOffset(t *testing.T) {
+	const path = "testdata/sample.flac"
+	if got := flacAudioStart(t, readTestdata(t, path)); got != 8618 {
+		t.Fatalf("source audio starts at %d, want 8618", got)
+	}
+	out := writeEdited(t, path, func(f *audiometa.File) { f.Tags.Title = "New" })
+	if got := flacAudioStart(t, out); got != 8618 {
+		t.Errorf("audio starts at %d, want 8618", got)
+	}
+}
+
+// Deleting every raw key leaves a VORBIS_COMMENT block with only the vendor
+// string: re-open gives no raw tags, and the audio and chapters are unchanged.
+func TestWriteRoundTrip_FLACDeleteAllKeys(t *testing.T) {
+	for _, path := range []string{"testdata/sample.flac", "testdata/sample_upper.flac"} {
+		t.Run(filepath.Base(path), func(t *testing.T) {
+			src := readTestdata(t, path)
+			orig := openFile(t, path)
+			out := writeEdited(t, path, func(f *audiometa.File) {
+				f.Tags.Delete(slices.Collect(maps.Keys(maps.Collect(f.Tags.All())))...)
+			})
+			reopened := writeAndReopen(t, path, out)
+			for k, v := range reopened.Tags.All() {
+				t.Errorf("raw key %q = %q survived", k, v)
+			}
+			if audioDigest(t, audiometa.FormatFLAC, src) != audioDigest(t, audiometa.FormatFLAC, out) {
 				t.Error("audio payload changed")
 			}
 			if !slices.Equal(reopened.Chapters, orig.Chapters) {
