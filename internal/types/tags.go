@@ -164,6 +164,16 @@ func (t *Tags) Set(key string, values ...string) {
 	t.raw[key] = slices.Clone(values)
 }
 
+// AddRaw appends a value to the raw tag map under key, creating the entry if
+// absent. Unlike Set it never replaces existing values, so format parsers use
+// it to record every occurrence of a repeated tag.
+func (t *Tags) AddRaw(key, value string) {
+	if t.raw == nil {
+		t.raw = make(map[string][]string)
+	}
+	t.raw[key] = append(t.raw[key], value)
+}
+
 // Merge merges tags from another Tags object.
 //
 // For standard fields, non-empty values in other override empty values in t.

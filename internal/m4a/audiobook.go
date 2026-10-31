@@ -68,6 +68,14 @@ func parseAudiobookTags(ctx context.Context, sr *binary.SafeReader, ilstAtom *At
 	return nil
 }
 
+// recordFreeformRaw stores a ---- atom in the raw tag map under the upper-cased
+// freeform name, matching the Vorbis key convention.
+func recordFreeformRaw(file *types.File, name, value string) {
+	if name != "" && value != "" {
+		file.Tags.AddRaw(strings.ToUpper(name), value)
+	}
+}
+
 // parseCustomAtomWithTags parses a ---- custom atom and returns the field name and value.
 func parseCustomAtomWithTags(sr *binary.SafeReader, customAtom *Atom, file *types.File) (string, string, error) {
 	offset := customAtom.DataOffset()
@@ -128,6 +136,7 @@ func parseCustomAtomWithTags(sr *binary.SafeReader, customAtom *Atom, file *type
 	// Namespace is usually "com.apple.iTunes" but can vary
 	_ = namespace // Unused for now, but parsed for potential future filtering
 	mapAudiobookField(fieldName, value, file)
+	recordFreeformRaw(file, fieldName, value)
 
 	return fieldName, value, nil
 }

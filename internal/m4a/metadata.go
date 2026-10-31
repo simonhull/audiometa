@@ -183,6 +183,10 @@ func mapTagToField(tag string, value string, file *types.File) {
 	if value == "" {
 		return
 	}
+	file.Tags.AddRaw(tag, value)
+	if tag == "\xA9ART" {
+		file.Tags.Artists = append(file.Tags.Artists, value)
+	}
 	if field, ok := ilstTextFields[tag]; ok {
 		*field(&file.Tags) = value
 		return

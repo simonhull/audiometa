@@ -151,7 +151,7 @@ func ParseComment(comment string, file *types.File) error { //nolint:gocyclo // 
 	}
 
 	// Store in raw tags as well
-	tags.Set(key, value)
+	tags.AddRaw(key, value)
 
 	return nil
 }

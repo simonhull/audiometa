@@ -299,6 +299,10 @@ func parseTextFrame(frame ID3v2Frame, file *types.File) { //nolint:gocyclo // Co
 		text = values[0]
 	}
 
+	for _, v := range values {
+		file.Tags.AddRaw(frame.ID, v)
+	}
+
 	switch frame.ID {
 	case "TIT2": // Title
 		file.Tags.Title = text
@@ -306,6 +310,7 @@ func parseTextFrame(frame ID3v2Frame, file *types.File) { //nolint:gocyclo // Co
 		file.Tags.Subtitle = text
 	case "TPE1": // Artist
 		file.Tags.Artist = text
+		file.Tags.Artists = append(file.Tags.Artists, values...)
 	case "TALB": // Album
 		file.Tags.Album = text
 	case "TCON": // Genre
@@ -396,6 +401,11 @@ func parseTXXXFrame(frame ID3v2Frame, file *types.File) {
 
 	description := decodeText(data[:nullIdx], encoding)
 	value := firstValue(decodeText(data[nullIdx+terminatorSize(encoding):], encoding))
+
+	// Raw key convention: the upper-cased TXXX description (matches Vorbis keys).
+	if description != "" {
+		file.Tags.AddRaw(strings.ToUpper(description), value)
+	}
 
 	if handler, ok := txxxFieldHandlers[strings.ToLower(description)]; ok {
 		handler(file, value)
