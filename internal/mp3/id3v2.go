@@ -183,8 +183,13 @@ func readSingleFrame(sr *binutil.SafeReader, file *types.File, header ID3v2Heade
 	frameFlags := binary.BigEndian.Uint16(frameHeaderBuf[8:10])
 
 	// Read frame data
-	frameData := make([]byte, frameSize)
-	if err := sr.ReadAt(frameData, offset+10, fmt.Sprintf("frame %s data", frameID)); err != nil {
+	var frameData []byte
+	err := sr.CheckLen(offset+10, int(frameSize), 1, "ID3 frame")
+	if err == nil {
+		frameData = make([]byte, frameSize)
+		err = sr.ReadAt(frameData, offset+10, fmt.Sprintf("frame %s data", frameID))
+	}
+	if err != nil {
 		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 			Stage:   types.StageMetadata,
 			Message: fmt.Sprintf("failed to read frame %s: %v", frameID, err),

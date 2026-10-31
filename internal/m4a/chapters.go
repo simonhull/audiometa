@@ -349,11 +349,19 @@ func parseTrackTimescale(sr *binary.SafeReader, mdiaAtom *Atom) (uint32, error) 
 	return timescale, nil
 }
 
+// maxChapterSamples bounds the timings accumulated from stts; real audiobooks
+// have thousands of chapters, never a million.
+const maxChapterSamples = 1 << 20
+
 // parseChapterTimings extracts chapter start times from the stts atom.
 func parseChapterTimings(sr *binary.SafeReader, stblAtom *Atom, timescale uint32) ([]time.Duration, error) {
 	sttsAtom, err := findAtom(sr, stblAtom.DataOffset(), stblAtom.DataOffset()+int64(stblAtom.DataSize()), "stts")
 	if err != nil {
 		return nil, err
+	}
+
+	if timescale == 0 {
+		return nil, nil
 	}
 
 	offset := sttsAtom.DataOffset() + 4 // Skip version + flags
@@ -378,6 +386,9 @@ func parseChapterTimings(sr *binary.SafeReader, stblAtom *Atom, timescale uint32
 		offset += 8
 
 		for range sampleCount {
+			if len(chapterTimes) >= maxChapterSamples {
+				return chapterTimes, nil // Bounded: stop accumulating on pathological input.
+			}
 			timeNs := (currentTime * 1_000_000_000) / uint64(timescale)
 			chapterTimes = append(chapterTimes, time.Duration(timeNs))
 			currentTime += uint64(sampleDuration)
@@ -528,6 +539,13 @@ func parseChunkOffsets(sr *binary.SafeReader, stblAtom *Atom) ([]uint64, error) 
 	}
 	offset += 4
 
+	elemSize := 4
+	if stcoAtom.Type == "co64" {
+		elemSize = 8
+	}
+	if err := sr.CheckLen(offset, int(chunkCount), elemSize, "chunk table"); err != nil {
+		return nil, err
+	}
 	chunkOffsets := make([]uint64, chunkCount)
 	for i := range chunkCount {
 		var readErr error

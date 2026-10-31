@@ -83,7 +83,7 @@ func parseCustomAtomWithTags(sr *binary.SafeReader, customAtom *Atom, file *type
 			// Skip version+flags (4 bytes)
 			dataOffset := atom.DataOffset() + 4
 			dataSize := int64(atom.DataSize()) - 4
-			if dataSize > 0 {
+			if dataSize > 0 && sr.CheckLen(dataOffset, int(dataSize), 1, "mean namespace") == nil {
 				buf := make([]byte, dataSize)
 				if err := sr.ReadAt(buf, dataOffset, "mean namespace"); err == nil {
 					namespace = string(buf)
@@ -95,7 +95,7 @@ func parseCustomAtomWithTags(sr *binary.SafeReader, customAtom *Atom, file *type
 			// Skip version+flags (4 bytes)
 			dataOffset := atom.DataOffset() + 4
 			dataSize := int64(atom.DataSize()) - 4
-			if dataSize > 0 {
+			if dataSize > 0 && sr.CheckLen(dataOffset, int(dataSize), 1, "name field") == nil {
 				buf := make([]byte, dataSize)
 				if err := sr.ReadAt(buf, dataOffset, "name field"); err == nil {
 					fieldName = string(buf)
@@ -107,7 +107,7 @@ func parseCustomAtomWithTags(sr *binary.SafeReader, customAtom *Atom, file *type
 			// Skip version (1 byte) + flags (3 bytes) + reserved (4 bytes) = 8 bytes
 			valueOffset := atom.DataOffset() + 8
 			valueSize := int64(atom.DataSize()) - 8
-			if valueSize > 0 {
+			if valueSize > 0 && sr.CheckLen(valueOffset, int(valueSize), 1, "data value") == nil {
 				buf := make([]byte, valueSize)
 				if err := sr.ReadAt(buf, valueOffset, "data value"); err == nil {
 					value = strings.TrimRight(string(buf), "\x00")

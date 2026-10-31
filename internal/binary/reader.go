@@ -55,6 +55,28 @@ func (sr *SafeReader) ReadAt(b []byte, off int64, what string) error {
 	return nil
 }
 
+// MaxAllocBytes is the absolute ceiling on any single length/count-driven
+// allocation, regardless of file size. Real audio metadata blocks are far
+// smaller; this rejects crafted files that declare implausible sizes.
+const MaxAllocBytes = 256 << 20 // 256 MiB
+
+// CheckLen validates that count elements of elemSize bytes each, starting at
+// off, fit within the file and within MaxAllocBytes. It allocates nothing.
+// Call it immediately before make([]T, count) when count came from file data.
+func (sr *SafeReader) CheckLen(off int64, count, elemSize int, what string) error {
+	if count < 0 || elemSize <= 0 {
+		return fmt.Errorf("%s: invalid %s length %d", sr.path, what, count)
+	}
+	total := int64(count) * int64(elemSize)
+	if total > MaxAllocBytes {
+		return fmt.Errorf("%s: %s length %d exceeds max %d", sr.path, what, total, int64(MaxAllocBytes))
+	}
+	if off < 0 || off > sr.size || total > sr.size-off {
+		return fmt.Errorf("%s: %s length %d at offset %d exceeds file size %d", sr.path, what, total, off, sr.size)
+	}
+	return nil
+}
+
 // Read reads a value of type T from the given offset.
 // T must be uint8, uint16, uint32, or uint64.
 func Read[T uint8 | uint16 | uint32 | uint64](sr *SafeReader, off int64, what string) (T, error) {
@@ -138,6 +160,9 @@ func ReadValue[T uint8 | uint16 | uint32 | uint64](r *Reader, what string) (T, e
 
 // ReadString reads a string of the given length and advances the offset.
 func (r *Reader) ReadString(length int, what string) (string, error) {
+	if err := r.CheckLen(r.offset, length, 1, what); err != nil {
+		return "", err
+	}
 	buf := make([]byte, length)
 	if err := r.ReadAt(buf, r.offset, what); err != nil {
 		return "", err

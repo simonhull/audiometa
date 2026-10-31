@@ -310,6 +310,9 @@ func parseVorbisComment(sr *binary.SafeReader, offset, _ int64, file *types.File
 		currentOffset += 4
 
 		// Read comment string (UTF-8)
+		if err := sr.CheckLen(currentOffset, int(commentLength), 1, fmt.Sprintf("comment %d", i)); err != nil {
+			return comments, fmt.Errorf("read comment %d: %w", i, err)
+		}
 		commentData := make([]byte, commentLength)
 		if err := sr.ReadAt(commentData, currentOffset, fmt.Sprintf("comment %d", i)); err != nil {
 			return comments, fmt.Errorf("read comment %d: %w", i, err)
@@ -351,6 +354,9 @@ func parsePicture(sr *binary.SafeReader, offset, _ int64) (types.Artwork, error)
 	currentOffset += 4
 
 	// Read MIME type string
+	if err := sr.CheckLen(currentOffset, int(mimeLength), 1, "MIME type"); err != nil {
+		return types.Artwork{}, err
+	}
 	mimeData := make([]byte, mimeLength)
 	if err := sr.ReadAt(mimeData, currentOffset, "MIME type"); err != nil {
 		return types.Artwork{}, err
@@ -366,6 +372,9 @@ func parsePicture(sr *binary.SafeReader, offset, _ int64) (types.Artwork, error)
 	currentOffset += 4
 
 	// Read description string (UTF-8)
+	if err := sr.CheckLen(currentOffset, int(descLength), 1, "description"); err != nil {
+		return types.Artwork{}, err
+	}
 	descData := make([]byte, descLength)
 	if descLength > 0 {
 		if err := sr.ReadAt(descData, currentOffset, "description"); err != nil {
@@ -399,6 +408,9 @@ func parsePicture(sr *binary.SafeReader, offset, _ int64) (types.Artwork, error)
 	currentOffset += 4
 
 	// Read picture data
+	if err := sr.CheckLen(currentOffset, int(dataLength), 1, "picture data"); err != nil {
+		return types.Artwork{}, err
+	}
 	pictureData := make([]byte, dataLength)
 	if err := sr.ReadAt(pictureData, currentOffset, "picture data"); err != nil {
 		return types.Artwork{}, err

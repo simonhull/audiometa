@@ -380,3 +380,46 @@ func TestParseChapters_ChplVersion0(t *testing.T) {
 	got := parseQTChapters(t, moov, 0, 5*time.Minute)
 	checkChapters(t, got, []string{"One", "Two"}, []time.Duration{0, 60 * time.Second})
 }
+
+func TestQTChapters_HugeSttsCountIsBounded(t *testing.T) {
+	data, moovOff := buildQTChapterFile(1000, textSample("Only"),
+		sttsAtom([2]uint32{0xFFFFFFFF, 1000}),
+		stszAtom(0, 1, 6),
+		stcoAtom(8),
+	)
+	chapters := parseQTChapters(t, data, moovOff, time.Hour)
+	if len(chapters) > 1 {
+		t.Errorf("got %d chapters, want at most 1", len(chapters))
+	}
+}
+
+func TestParseChapterTimings_CapsAccumulation(t *testing.T) {
+	stts := sttsAtom([2]uint32{0xFFFFFFFF, 1})
+	stbl := createMockAtom("stbl", stts)
+	sr := audiobinary.NewSafeReader(bytes.NewReader(stbl), int64(len(stbl)), "t.m4b")
+	atom, err := readAtomHeader(sr, 0, int64(len(stbl)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	times, err := parseChapterTimings(sr, atom, 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(times) != maxChapterSamples {
+		t.Errorf("len = %d, want %d", len(times), maxChapterSamples)
+	}
+}
+
+func TestParseChunkOffsets_CountPastFile(t *testing.T) {
+	for _, typ := range []string{"stco", "co64"} {
+		stbl := createMockAtom("stbl", fullAtom(typ, u32be(0xFFFFFFFF)))
+		sr := audiobinary.NewSafeReader(bytes.NewReader(stbl), int64(len(stbl)), "t.m4b")
+		atom, err := readAtomHeader(sr, 0, int64(len(stbl)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := parseChunkOffsets(sr, atom); err == nil {
+			t.Errorf("%s: expected error for count past end of file", typ)
+		}
+	}
+}

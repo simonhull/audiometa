@@ -84,6 +84,9 @@ func parseMetadataTag(sr *binary.SafeReader, tagAtom *Atom) (string, error) {
 	}
 
 	// Read the string value
+	if err := sr.CheckLen(valueOffset, int(valueSize), 1, "metadata value"); err != nil {
+		return "", err
+	}
 	buf := make([]byte, valueSize)
 	if err := sr.ReadAt(buf, valueOffset, "metadata value"); err != nil {
 		return "", err

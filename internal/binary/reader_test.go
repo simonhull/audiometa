@@ -260,3 +260,31 @@ func BenchmarkReader_Sequential(b *testing.B) {
 		}
 	}
 }
+
+func TestSafeReader_CheckLen(t *testing.T) {
+	sr := NewSafeReader(&mockReader{data: make([]byte, 100)}, 100, "t")
+	tests := []struct {
+		name            string
+		off             int64
+		count, elemSize int
+		wantErr         bool
+	}{
+		{"valid", 10, 90, 1, false},
+		{"valid elem size", 0, 25, 4, false},
+		{"exceeds file", 10, 91, 1, true},
+		{"exceeds file via elem size", 0, 26, 4, true},
+		{"exceeds max alloc", 0, MaxAllocBytes + 1, 1, true},
+		{"negative count", 0, -1, 1, true},
+		{"negative offset", -1, 1, 1, true},
+		{"offset past end", 101, 0, 1, true},
+		{"zero elem size", 0, 1, 0, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := sr.CheckLen(tt.off, tt.count, tt.elemSize, "x")
+			if (err != nil) != tt.wantErr {
+				t.Errorf("err = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}

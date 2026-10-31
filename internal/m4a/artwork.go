@@ -94,6 +94,9 @@ func parseCovrData(sr *binary.SafeReader, dataAtom *Atom) (types.Artwork, error)
 		return types.Artwork{}, fmt.Errorf("invalid image size: %d", imageSize)
 	}
 
+	if err := sr.CheckLen(offset, int(imageSize), 1, "cover image data"); err != nil {
+		return types.Artwork{}, err
+	}
 	imageData := make([]byte, imageSize)
 	if err := sr.ReadAt(imageData, offset, "cover image data"); err != nil {
 		return types.Artwork{}, err
