@@ -662,10 +662,9 @@ func BenchmarkParseOgg(b *testing.B) {
 
 	path := tmpFile.Name()
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for range b.N {
+	for b.Loop() {
 		f, err := os.Open(path)
 		if err != nil {
 			b.Fatal(err)
@@ -700,10 +699,9 @@ func BenchmarkParseVorbisIdentification(b *testing.B) {
 
 	path := tmpFile.Name()
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for range b.N {
+	for b.Loop() {
 		f, err := os.Open(path)
 		if err != nil {
 			b.Fatal(err)
@@ -742,10 +740,9 @@ func BenchmarkParseVorbisComment(b *testing.B) {
 
 	path := tmpFile.Name()
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for range b.N {
+	for b.Loop() {
 		f, err := os.Open(path)
 		if err != nil {
 			b.Fatal(err)
@@ -784,10 +781,9 @@ func BenchmarkParseOpus(b *testing.B) {
 
 	path := tmpFile.Name()
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for range b.N {
+	for b.Loop() {
 		f, err := os.Open(path)
 		if err != nil {
 			b.Fatal(err)
@@ -822,10 +818,9 @@ func BenchmarkParseOpusHead(b *testing.B) {
 
 	path := tmpFile.Name()
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for range b.N {
+	for b.Loop() {
 		f, err := os.Open(path)
 		if err != nil {
 			b.Fatal(err)
@@ -864,10 +859,9 @@ func BenchmarkParseOpusTags(b *testing.B) {
 
 	path := tmpFile.Name()
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for range b.N {
+	for b.Loop() {
 		f, err := os.Open(path)
 		if err != nil {
 			b.Fatal(err)

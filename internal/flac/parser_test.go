@@ -340,10 +340,9 @@ func BenchmarkParseFLAC(b *testing.B) {
 
 	path := tmpFile.Name()
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for range b.N {
+	for b.Loop() {
 		f, err := os.Open(path)
 		if err != nil {
 			b.Fatal(err)
@@ -378,10 +377,9 @@ func BenchmarkParseStreamInfo(b *testing.B) {
 
 	path := tmpFile.Name()
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for range b.N {
+	for b.Loop() {
 		f, err := os.Open(path)
 		if err != nil {
 			b.Fatal(err)
@@ -421,10 +419,9 @@ func BenchmarkParseVorbisComment(b *testing.B) {
 
 	path := tmpFile.Name()
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for range b.N {
+	for b.Loop() {
 		f, err := os.Open(path)
 		if err != nil {
 			b.Fatal(err)
@@ -476,10 +473,9 @@ func BenchmarkExtractArtwork(b *testing.B) {
 
 	p := &parser{}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for range b.N {
+	for b.Loop() {
 		_, err := p.ExtractArtwork(context.Background(), f, stat.Size(), path)
 		if err != nil {
 			b.Fatal(err)

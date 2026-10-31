@@ -226,8 +226,7 @@ func BenchmarkReadLE_Uint32(b *testing.B) {
 	data := []byte{0x01, 0x02, 0x03, 0x04}
 	sr := NewSafeReader(bytes.NewReader(data), int64(len(data)), "bench")
 
-	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		sr.ReadLE[uint32](0, "uint32")
 	}
 }
@@ -236,8 +235,7 @@ func BenchmarkRead_Uint32_Legacy(b *testing.B) {
 	data := []byte{0x01, 0x02, 0x03, 0x04}
 	sr := NewSafeReader(bytes.NewReader(data), int64(len(data)), "bench")
 
-	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		sr.Read[uint32](0, "uint32")
 	}
 }

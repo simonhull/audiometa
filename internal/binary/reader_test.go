@@ -132,10 +132,11 @@ func BenchmarkRead_Uint32(b *testing.B) {
 	mock := &mockReader{data: data}
 	sr := NewSafeReader(mock, int64(len(data)), "bench.m4b")
 
-	b.ResetTimer()
-	for i := range b.N {
+	i := 0
+	for b.Loop() {
 		offset := int64((i % (len(data) / 4)) * 4)
 		_, _ = sr.Read[uint32](offset, "benchmark")
+		i++
 	}
 }
 
