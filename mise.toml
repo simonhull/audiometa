@@ -3,3 +3,23 @@ go = "1.27.3"
 golangci-lint = "2.15.0"
 "go:golang.org/x/tools/cmd/stringer" = "0.52.0"
 "go:golang.org/x/tools/cmd/goimports" = "0.52.0"
+
+[tasks.build]
+description = "Build library and race build (mirrors CI build job)"
+run = ["go build ./...", "go build -race ./..."]
+
+[tasks.test]
+description = "Race tests with coverage (mirrors CI test job)"
+run = "go test -race -coverprofile=coverage.out -covermode=atomic ./..."
+
+[tasks.lint]
+description = "golangci-lint, go vet and gofmt at the pinned toolchain (scripts/lint.sh)"
+run = "scripts/lint.sh"
+
+[tasks.generate]
+description = "Regenerate stringer output"
+run = "go generate ./..."
+
+[tasks.check]
+description = "Everything CI checks, locally"
+depends = ["build", "test", "lint"]
