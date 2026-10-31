@@ -34,9 +34,12 @@ import (
 // A File also keeps the underlying file handle open for lazy artwork
 // extraction, so call [File.Close] when done with it.
 //
-// [File.ExtractArtwork] and [File.ExtractArtworkContext] are safe for
-// concurrent use. The exported fields are not synchronized; treat them as
-// read-only while other goroutines use the File.
+// Tags and artwork can be edited in memory and saved with [File.WriteTo] or
+// [Write]; see [Tags.Set] and [File.AddArtwork].
+//
+// [File.ExtractArtwork], [File.ExtractArtworkContext] and the artwork edit
+// methods are safe for concurrent use. The exported fields are not
+// synchronized; do not modify them while other goroutines use the File.
 type File struct {
 	types.File
 
@@ -49,6 +52,9 @@ type File struct {
 
 	artworkMu     sync.Mutex // guards artwork and artworkLoaded
 	artworkLoaded bool
+
+	editMu     sync.Mutex        // guards artworkOps
+	artworkOps []types.ArtworkOp // pending artwork edits, applied by WriteTo
 }
 
 // Open opens the audio file at path and parses its metadata.
@@ -240,6 +246,7 @@ func openReader(ctx context.Context, r io.ReaderAt, size int64, path string) (*p
 	file.Path = path
 	file.Format = format
 	file.Size = size
+	types.BindFormat(&file.Tags, format)
 
 	return &parsedFile{file: file, parser: parser}, nil
 }
