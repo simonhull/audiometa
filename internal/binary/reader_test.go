@@ -189,7 +189,7 @@ func seqData(n int) []byte {
 
 func TestSafeReader_Window_SequentialReadsOneCall(t *testing.T) {
 	data := seqData(windowSize * 2)
-	cr := &countingReader{mockReader: mockReader{data: data}}
+	cr := &countingReader{data: data}
 	sr := NewSafeReader(cr, int64(len(data)), "w.bin")
 	for i := range 100 {
 		v, err := sr.Read[uint32](int64(i*4), "x")
@@ -207,7 +207,7 @@ func TestSafeReader_Window_SequentialReadsOneCall(t *testing.T) {
 
 func TestSafeReader_Window_MissRefills(t *testing.T) {
 	data := seqData(windowSize * 3)
-	cr := &countingReader{mockReader: mockReader{data: data}}
+	cr := &countingReader{data: data}
 	sr := NewSafeReader(cr, int64(len(data)), "w.bin")
 	buf := make([]byte, 4)
 	if err := sr.ReadAt(buf, 0, "a"); err != nil {
@@ -227,7 +227,7 @@ func TestSafeReader_Window_MissRefills(t *testing.T) {
 
 func TestSafeReader_Window_LargeReadBypasses(t *testing.T) {
 	data := seqData(windowSize * 2)
-	cr := &countingReader{mockReader: mockReader{data: data}}
+	cr := &countingReader{data: data}
 	sr := NewSafeReader(cr, int64(len(data)), "w.bin")
 	small := make([]byte, 4)
 	if err := sr.ReadAt(small, 0, "small"); err != nil {
@@ -306,7 +306,7 @@ func TestSafeReader_ShortRead(t *testing.T) {
 
 func TestSafeReader_Window_NearEOF(t *testing.T) {
 	data := seqData(windowSize + 50)
-	cr := &countingReader{mockReader: mockReader{data: data}}
+	cr := &countingReader{data: data}
 	sr := NewSafeReader(cr, int64(len(data)), "w.bin")
 	buf := make([]byte, 8)
 	off := int64(len(data) - 8)
