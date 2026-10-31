@@ -21,7 +21,6 @@ import (
 	"unicode/utf8"
 
 	binutil "github.com/simonhull/audiometa/internal/binary"
-	"github.com/simonhull/audiometa/internal/parsing"
 	"github.com/simonhull/audiometa/internal/types"
 )
 
@@ -95,9 +94,6 @@ func parseID3v2(ctx context.Context, sr *binutil.SafeReader, file *types.File) (
 		// CHAP frames take precedence over OverDrive MediaMarkers (set by a TXXX handler).
 		file.Chapters = parseChapterFrames(st.chapters, header.Version)
 	}
-
-	// Post-parse fallbacks for audiobook series metadata.
-	parsing.ResolveSeriesFallbacks(&file.Tags, sr.Path(), parsing.SeriesSource{})
 
 	// Total tag size including header (as stored on disk, before any de-unsynchronisation)
 	return tagSize, nil

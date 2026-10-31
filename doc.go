@@ -25,6 +25,9 @@
 //   - Tags: format-agnostic fields such as Title, Artist, Album, Narrator and
 //     Series, plus the multi-value Artists, Genres and Composers.
 //     Tags.Get and Tags.All expose every raw tag under its native key.
+//     Tags are reported as stored: Narrator, Series and SeriesPart come only
+//     from explicit tags and are never inferred from Composers, Grouping, the
+//     title, the album or the file path.
 //   - Audio: an [AudioInfo] with duration, sample rate, bit depth, channels,
 //     bitrate, codec and ReplayGain.
 //   - Chapters: a slice of [Chapter]; each records the [ChapterSource] it was

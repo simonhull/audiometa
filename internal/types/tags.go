@@ -16,6 +16,26 @@ import (
 // Every tag is also stored under its native, format-specific key. Use
 // [Tags.Get], [Tags.GetFirst] or [Tags.GetBest] to look one up and [Tags.All]
 // or [Tags.Filter] to iterate over them.
+//
+// Tags are reported exactly as they appear in the file. No field is inferred
+// from another: Narrator is not derived from Composers, and Series and
+// SeriesPart are not derived from Grouping, the title, the album or the file
+// path. Apps that want such heuristics should derive them from the exposed
+// fields.
+//
+// Audiobook fields are filled only from explicit tags:
+//
+//   - Narrator: ID3 TXXX "NARRATOR"; M4A freeform "Narrator" atom; Vorbis NARRATOR.
+//   - Series: ID3 TXXX "SERIES"/"MVNM"/"MOVEMENT NAME"/"SHOW" and frame MVNM;
+//     M4A freeform "Series"/"MVNM"/"Movement Name" atoms and the ©mvn atom;
+//     Vorbis SERIES, SHOW and MVNM.
+//   - SeriesPart: ID3 TXXX "SERIES PART"/"SERIES-PART"/"SERIESPART"/"SERIES
+//     POSITION"/"PART"/"MVIN"/"EPISODE_ID" and frame MVIN (an "N/total" value
+//     yields "N"); M4A freeform "Series Part"/"Series Position"/"Part"/"Volume"
+//     atoms and the ©mvi atom; Vorbis SERIESPART (also SERIES-PART, SERIES_PART,
+//     SERIES PART, PART), MVIN and EPISODE_ID.
+//   - Grouping: ID3 GRP1 (or TIT1 when GRP1 is absent); M4A ©grp; Vorbis GROUPING.
+//   - Composers: ID3 TCOM; M4A ©wrt; Vorbis COMPOSER.
 type Tags struct {
 	raw                 map[string][]string
 	MusicBrainzAlbumID  string
@@ -37,7 +57,7 @@ type Tags struct {
 	Comment             string
 	Description         string // Longer description text (separate from comment)
 	Series              string
-	Grouping            string // Content grouping (©grp in M4A, TIT1 in ID3v2) - often contains series info
+	Grouping            string // Content grouping (GRP1 or TIT1 in ID3v2, ©grp in M4A), reported as stored; never parsed into Series
 	Publisher           string
 	Lyrics              string
 	SeriesPart          string

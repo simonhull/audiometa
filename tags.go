@@ -12,6 +12,11 @@ import (
 // in the slice fields Artists, Genres, Composers and Performers. Empty or zero
 // fields were not present in the file.
 //
+// Tags are reported exactly as stored; no field is inferred from another.
+// Narrator is not derived from Composers, and Series and SeriesPart are not
+// derived from Grouping, the title, the album or the path. See [types.Tags]
+// for the explicit tags that fill each audiobook field.
+//
 // Every tag is also kept under its native key: use Tags.Get, Tags.GetFirst
 // or Tags.GetBest to look one up and Tags.All to iterate over them. Raw
 // keys are format-specific:

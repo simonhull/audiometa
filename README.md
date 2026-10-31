@@ -164,10 +164,11 @@ file.Audio.Bitrate
 file.Audio.Lossless
 file.Audio.ReplayGain // *ReplayGainInfo, nil if absent
 
-// Audiobook-specific
-file.Tags.Narrator
-file.Tags.Series
-file.Tags.SeriesPart
+// Audiobook-specific (filled only from explicit tags, never inferred)
+file.Tags.Narrator   // NARRATOR (Vorbis), TXXX NARRATOR (ID3), "Narrator" atom (M4A)
+file.Tags.Series     // SERIES / MVNM / SHOW (Vorbis), TXXX SERIES / frame MVNM (ID3), "Series" atom / ©mvn (M4A)
+file.Tags.SeriesPart // SERIESPART / MVIN (Vorbis), TXXX SERIES PART / frame MVIN (ID3), "Series Part" atom / ©mvi (M4A)
+file.Tags.Grouping   // GROUPING / GRP1 / ©grp, as stored
 
 // Cataloging
 file.Tags.MusicBrainzTrackID
@@ -348,8 +349,7 @@ audiometa/
 │   ├── m4a/          # M4A/M4B parser
 │   ├── ogg/          # Ogg Vorbis/Opus parser
 │   ├── vorbis/       # Shared Vorbis comment and chapter parsing
-│   ├── imagemeta/    # Image type and dimension sniffing
-│   └── parsing/      # Series and narrator heuristics
+│   └── imagemeta/    # Image type and dimension sniffing
 ├── cmd/audiometa/    # Command-line tool
 ├── examples/         # Example programs
 ├── testdata/         # Sample files and benchmark fixtures

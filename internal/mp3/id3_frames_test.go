@@ -18,12 +18,12 @@ func TestParse_ITunesTextFrames(t *testing.T) {
 		{"mvin alone", func(v byte) [][]byte {
 			return [][]byte{id3Frame(v, "MVIN", latin1Text("2"))}
 		}, want{"", "2", ""}},
-		{"grp1 fallback to series", func(v byte) [][]byte {
+		{"grp1 is not split into series", func(v byte) [][]byte {
 			return [][]byte{id3Frame(v, "GRP1", latin1Text("The Expanse #4"))}
-		}, want{"The Expanse", "4", "The Expanse #4"}},
+		}, want{"", "", "The Expanse #4"}},
 		{"grp1 wins over tit1", func(v byte) [][]byte {
 			return [][]byte{id3Frame(v, "TIT1", latin1Text("A")), id3Frame(v, "GRP1", latin1Text("B"))}
-		}, want{"B", "", "B"}}, // Series derived from grouping
+		}, want{"", "", "B"}}, // Series is never derived from grouping
 		{"txxx series wins, txxx first", func(v byte) [][]byte {
 			return [][]byte{id3Frame(v, "TXXX", latin1Text("SERIES\x00Real")), id3Frame(v, "MVNM", latin1Text("Other"))}
 		}, want{"Real", "", ""}},

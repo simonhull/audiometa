@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/simonhull/audiometa/internal/binary"
-	"github.com/simonhull/audiometa/internal/parsing"
 	"github.com/simonhull/audiometa/internal/registry"
 	"github.com/simonhull/audiometa/internal/types"
 	"github.com/simonhull/audiometa/internal/vorbis"
@@ -170,10 +169,6 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	file.Audio.Container = codecName
 	file.Audio.Codec = codecName
 	file.Audio.Lossless = true
-
-	// Post-parse fallbacks for audiobook series metadata.
-	// Unlike MP3 and M4A, Narrator is deliberately not derived from Composer here.
-	parsing.ResolveSeriesFallbacks(&file.Tags, path, parsing.SeriesSource{})
 
 	return file, nil
 }

@@ -6,6 +6,7 @@ All notable changes to this project are documented here.
 
 ### Breaking-ish
 
+- Tags are now reported exactly as stored in the file; no field is inferred from another. `Narrator` is no longer derived from the first `Composer` (MP3 and M4A), `Series` is no longer parsed out of `Grouping`, and `SeriesPart` is no longer guessed from `Grouping`, the title, the album or the file path. Apps that want these heuristics should derive them from `Tags.Grouping`, `Tags.Composers`, `Tags.Title`, `Tags.Album` and the path. Explicit tags (`NARRATOR`, `SERIES`, `SERIESPART`, TXXX descriptions, `MVNM`/`MVIN`, M4A freeform atoms) are unchanged.
 - Minimum Go version is now 1.27.
 - `cmd/atom-dump-tool` is replaced by `audiometa atoms`.
 - `audiometa.Version` is now a deprecated variable (was a constant); use `GetVersion()`.

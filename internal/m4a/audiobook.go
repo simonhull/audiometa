@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/simonhull/audiometa/internal/binary"
-	"github.com/simonhull/audiometa/internal/parsing"
 	"github.com/simonhull/audiometa/internal/types"
 )
 
@@ -41,12 +40,8 @@ func parseAudiobookTags(ctx context.Context, sr *binary.SafeReader, ilstAtom *At
 		offset += atom.Size
 	}
 
-	// Apply fallbacks
-	// If no custom Narrator atom, use Composer as fallback
-	parsing.ApplyNarratorFallback(&file.Tags)
-
-	// Grouping -> Series, then the series part from custom atoms, title, album, path.
-	parsing.ResolveSeriesFallbacks(&file.Tags, sr.Path(), seriesSource(file, customTags))
+	// Series part comes only from explicit custom atoms; nothing is inferred.
+	applyExplicitSeriesPart(file, customTags)
 
 	return nil
 }
@@ -136,8 +131,8 @@ func mapAudiobookField(fieldName, value string, file *types.File) {
 		file.Tags.Narrator = value
 	case "series":
 		file.Tags.Series = value
-	// "series part", "seriespart", "part" - intentionally NOT set here
-	// These are collected in customTags and resolved via resolveSeriesPart()
+	// "series part", "series position", "part", "volume" are collected in
+	// customTags and applied by applyExplicitSeriesPart.
 	case "publisher":
 		file.Tags.Publisher = value
 	case "isbn":
@@ -171,17 +166,16 @@ func lookupFold(tags map[string]string, key string) string {
 	return ""
 }
 
-// seriesSource builds the extra series-part candidates M4A consults.
-// Priority: custom atoms > title parsing > album parsing (then path, applied by the helper).
-func seriesSource(file *types.File, customTags map[string]string) parsing.SeriesSource {
-	return parsing.SeriesSource{
-		ExplicitParts: []string{
-			lookupFold(customTags, "Series Part"),
-			lookupFold(customTags, "Series Position"),
-			lookupFold(customTags, "Part"),
-			lookupFold(customTags, "Volume"),
-		},
-		Title: file.Tags.Title,
-		Album: file.Tags.Album,
+// applyExplicitSeriesPart sets SeriesPart from the first explicit custom atom
+// present, in priority order, unless an MVIN atom already filled it.
+func applyExplicitSeriesPart(file *types.File, customTags map[string]string) {
+	if file.Tags.SeriesPart != "" {
+		return
+	}
+	for _, name := range []string{"Series Part", "Series Position", "Part", "Volume"} {
+		if v := lookupFold(customTags, name); v != "" {
+			file.Tags.SeriesPart = v
+			return
+		}
 	}
 }
