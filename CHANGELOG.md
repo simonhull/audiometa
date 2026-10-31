@@ -32,6 +32,7 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- Vorbis (FLAC, Ogg, Opus): a typed field with several candidate keys is now filled from the highest-precedence key present, matching the writers and `Set`/`Delete`, instead of whichever key came first in the file. Affects `TrackTotal` (`TRACKTOTAL` over `TOTALTRACKS`), `DiscTotal` (`DISCTOTAL` over `TOTALDISCS`), `Series` (`SERIES` over `MVNM`), `SeriesPart` (`SERIESPART`, `SERIES-PART`, `SERIES_PART`, `SERIES PART`, then `MVIN`), `ASIN` (`ASIN` over `AUDIBLE_ASIN`) and `Language` (`LANGUAGE` over `LANG`). A file holding both keys no longer reads a stale value after a write. MP3 and M4A already followed the precedence.
 - Vorbis, M4A and MP3: single-valued fields (`Artist`, `Title`, `Album`, ...) take the first occurrence of a repeated tag instead of the last, so `Artist` is the first value and `Artists` lists all values in file order in every format.
 - MP3: decode ID3 text correctly and prefer the real COMM frame; route GRP1/MVNM/MVIN frames; read CHAP titles with version-aware sizes.
 - MP3: decode MPEG-2 frames with version-correct tables; probe the Xing header at the correct offset.

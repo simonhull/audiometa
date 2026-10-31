@@ -225,7 +225,25 @@ func (t *Tags) Delete(keys ...string) {
 // BindFormat records the format whose parser produced t, enabling Set and
 // Delete to keep typed fields in sync with raw keys. Called by the root
 // package after parsing.
-func BindFormat(t *Tags, format Format) { t.format = format }
+//
+// It also resolves every field that has several candidate keys from the
+// highest-precedence key present, as FieldBindings orders them, so a parser that
+// filled the field from whichever key came first in the file cannot disagree
+// with Set, Delete and the writers. A field none of whose keys decodes keeps the
+// parser's value, and no key fills a field it is not bound to.
+func BindFormat(t *Tags, format Format) {
+	t.format = format
+	for _, b := range bindingsFor(format) {
+		if len(b.Keys) < 2 {
+			continue
+		}
+		for _, k := range b.Keys {
+			if decodeField(t, format, b.Field, k, t.raw[k]) {
+				break
+			}
+		}
+	}
+}
 
 // syncKey recomputes every typed field bound to key on a bound Tags: each
 // such field is decoded from the highest-precedence bound key still present

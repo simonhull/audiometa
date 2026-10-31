@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -718,4 +719,122 @@ func TestWriteRoundTrip_M4ADeleteAllKeys(t *testing.T) {
 			}
 		})
 	}
+}
+
+// precedenceValue returns the test value for the i-th candidate key of a
+// field: a year for Year, a number for int fields, else a distinct string.
+func precedenceValue(field string, i int) string {
+	switch field {
+	case "Year":
+		return strconv.Itoa(2000 + i)
+	case "TrackTotal", "DiscTotal", "SeriesPart":
+		return strconv.Itoa(10 + i)
+	default:
+		return "v" + strconv.Itoa(i)
+	}
+}
+
+// fieldString reads the typed field name of tags as a string ("" when zero).
+func fieldString(tags *audiometa.Tags, name string) string {
+	v := reflect.ValueOf(tags).Elem().FieldByName(name)
+	if v.Kind() == reflect.Int {
+		if v.Int() == 0 {
+			return ""
+		}
+		return strconv.FormatInt(v.Int(), 10)
+	}
+	return v.String()
+}
+
+// TestReadPrecedence_MatchesBindings writes every candidate key of each
+// multi-key field in REVERSE precedence order (lowest first, so it precedes
+// the higher keys in the file) and checks the parsed field equals the highest
+// precedence key's value, whatever the tag order.
+func TestReadPrecedence_MatchesBindings(t *testing.T) {
+	for _, path := range []string{
+		"testdata/sample.flac", "testdata/sample_upper.flac",
+		"testdata/sample.mp3", "testdata/sample_v24.mp3",
+		"testdata/sample.m4a", "testdata/sample.m4b",
+	} {
+		format := openFile(t, path).Format
+		for _, b := range types.FieldBindings(format) {
+			if len(b.Keys) < 2 {
+				continue
+			}
+			field := b.Field.String()
+			t.Run(filepath.Base(path)+"/"+field, func(t *testing.T) {
+				file := writeTempCopy(t, path)
+				// Clear every candidate key first so the file starts clean.
+				if err := audiometa.Write(file, func(f *audiometa.File) error {
+					f.Tags.Delete(b.Keys...)
+					return nil
+				}); err != nil {
+					t.Fatal(err)
+				}
+				top := -1 // index of the highest-precedence key the writer accepted
+				written := 0
+				for i, key := range slices.Backward(b.Keys) {
+					err := audiometa.Write(file, func(f *audiometa.File) error {
+						f.Tags.Set(key, precedenceValue(field, i))
+						return nil
+					})
+					if errors.Is(err, audiometa.ErrUnsupportedWrite) {
+						continue // e.g. TDRC on an ID3v2.3 tag
+					}
+					if err != nil {
+						t.Fatalf("write %q: %v", key, err)
+					}
+					top = i
+					written++
+				}
+				if written < 2 {
+					t.Skipf("the writer accepts only %d candidate key(s) for %s", written, field)
+				}
+				got := openFile(t, file)
+				if want := precedenceValue(field, top); fieldString(&got.Tags, field) != want {
+					t.Errorf("%s = %q, want %q (from %q)", field, fieldString(&got.Tags, field), want, b.Keys[top])
+				}
+			})
+		}
+	}
+}
+
+// TestWrite_FLACTotalTracksFirst round-trips a FLAC whose lower-precedence
+// TOTALTRACKS precedes TRACKTOTAL: setting TrackTotal must read back.
+func TestWrite_FLACTotalTracksFirst(t *testing.T) {
+	file := writeTempCopy(t, "testdata/sample.flac")
+	for _, step := range [][2]string{{"TOTALTRACKS", "5"}, {"TRACKTOTAL", "7"}} {
+		if err := audiometa.Write(file, func(f *audiometa.File) error {
+			f.Tags.Set(step[0], step[1])
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := openFile(t, file).Tags.TrackTotal; got != 7 {
+		t.Fatalf("TrackTotal = %d, want 7 (TRACKTOTAL outranks TOTALTRACKS)", got)
+	}
+	if err := audiometa.Write(file, func(f *audiometa.File) error {
+		f.Tags.TrackTotal = 12
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := openFile(t, file).Tags.TrackTotal; got != 12 {
+		t.Errorf("TrackTotal after Set = %d, want 12", got)
+	}
+}
+
+// writeTempCopy copies a corpus file into a temp dir and returns the copy's path.
+func writeTempCopy(t *testing.T, src string) string {
+	t.Helper()
+	data, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dst := filepath.Join(t.TempDir(), filepath.Base(src))
+	if err := os.WriteFile(dst, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return dst
 }

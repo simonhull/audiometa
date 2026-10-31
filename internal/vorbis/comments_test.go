@@ -3,6 +3,7 @@ package vorbis
 import (
 	"math"
 	"slices"
+	"strconv"
 	"testing"
 
 	"github.com/simonhull/audiometa/internal/types"
@@ -466,5 +467,40 @@ func TestParseComment_NonSeriesTagsStayRaw(t *testing.T) {
 				t.Errorf("raw %s = %q, want [Foo]", key, got)
 			}
 		})
+	}
+}
+
+// TestPrecedence_BeatsFileOrder feeds every candidate key of each multi-key
+// field in reverse precedence order and checks that, once the format is bound,
+// the field holds the highest-precedence key's value (Ogg Vorbis and Opus).
+func TestPrecedence_BeatsFileOrder(t *testing.T) {
+	for _, format := range []types.Format{types.FormatOgg, types.FormatOpus, types.FormatFLAC} {
+		for _, b := range types.FieldBindings(format) {
+			if len(b.Keys) < 2 {
+				continue
+			}
+			t.Run(format.String()+"/"+b.Field.String(), func(t *testing.T) {
+				var file types.File
+				value := func(i int) string {
+					if slices.Contains([]types.Field{types.FieldYear, types.FieldTrackTotal, types.FieldDiscTotal, types.FieldSeriesPart}, b.Field) {
+						return strconv.Itoa(2000 + i) // a valid year and number alike
+					}
+					return "v" + strconv.Itoa(i)
+				}
+				for i, key := range slices.Backward(b.Keys) {
+					if err := ParseComment(key+"="+value(i), &file); err != nil {
+						t.Fatal(err)
+					}
+				}
+				types.BindFormat(&file.Tags, format)
+				// Re-setting the top key to its own value is a no-op on a
+				// correctly resolved Tags, and Equal catches any drift.
+				want := file.Tags.Clone()
+				want.Set(b.Keys[0], value(0))
+				if !file.Tags.Equal(want) {
+					t.Errorf("%s resolved differently from key %q:\n got  %+v\n want %+v", b.Field, b.Keys[0], file.Tags, *want)
+				}
+			})
+		}
 	}
 }
