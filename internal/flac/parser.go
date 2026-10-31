@@ -63,6 +63,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 
 	// Parse metadata blocks
 	var vorbisComments []string
+	audioStart := int64(-1)
 	offset := int64(4) // After "fLaC"
 	for offset < size {
 		// Read metadata block header (4 bytes)
@@ -140,6 +141,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 
 		// If this was the last metadata block, we're done
 		if isLast {
+			audioStart = offset // first byte after the metadata blocks = first audio frame
 			break
 		}
 	}
@@ -149,6 +151,12 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	// and STREAMINFO's duration is known.
 	if chapters := vorbis.ParseChapters(vorbisComments, file.Audio.Duration); len(chapters) > 0 {
 		file.Chapters = chapters
+	}
+
+	// Approximate bitrate from audio frames only (metadata such as cover art excluded).
+	// Unknown when the metadata chain never reached its last block.
+	if audioStart > 0 && audioStart < size && file.Audio.Duration > 0 {
+		file.Audio.Bitrate = int(float64(size-audioStart) * 8 / file.Audio.Duration.Seconds())
 	}
 
 	// Set container and codec
@@ -258,14 +266,6 @@ func parseStreamInfo(sr *binary.SafeReader, offset, blockLength int64, file *typ
 	file.Audio.SampleRate = int(sampleRate)
 	file.Audio.Channels = int(channels)
 	file.Audio.BitDepth = int(bitsPerSample)
-
-	// Calculate approximate bitrate (FLAC is variable bitrate)
-	// Use file size and duration for a rough estimate
-	if file.Audio.Duration > 0 {
-		durationSeconds := file.Audio.Duration.Seconds()
-		bitsPerSecond := (float64(file.Size) * 8) / durationSeconds
-		file.Audio.Bitrate = int(bitsPerSecond)
-	}
 
 	return nil
 }
