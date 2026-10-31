@@ -85,8 +85,7 @@ func TestDetectFormat_TooSmall(t *testing.T) {
 		t.Fatal("expected error for file too small")
 	}
 
-	var unsupportedFormatError *UnsupportedFormatError
-	if !errors.As(err, &unsupportedFormatError) {
+	if _, ok := errors.AsType[*UnsupportedFormatError](err); !ok {
 		t.Errorf("expected UnsupportedFormatError, got %T", err)
 	}
 }
@@ -99,8 +98,7 @@ func TestDetectFormat_InvalidFtyp(t *testing.T) {
 		t.Fatal("expected error for invalid ftyp")
 	}
 
-	var unsupportedFormatError *UnsupportedFormatError
-	if !errors.As(err, &unsupportedFormatError) {
+	if _, ok := errors.AsType[*UnsupportedFormatError](err); !ok {
 		t.Errorf("expected UnsupportedFormatError, got %T", err)
 	}
 }
@@ -114,8 +112,7 @@ func TestDetectFormat_UnsupportedBrand(t *testing.T) {
 		t.Fatal("expected error for unsupported brand")
 	}
 
-	var unsupportedFormatError *UnsupportedFormatError
-	if !errors.As(err, &unsupportedFormatError) {
+	if _, ok := errors.AsType[*UnsupportedFormatError](err); !ok {
 		t.Errorf("expected UnsupportedFormatError, got %T", err)
 	}
 }

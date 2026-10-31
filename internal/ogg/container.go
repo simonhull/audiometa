@@ -145,10 +145,7 @@ func extractPackets(pages []*Page) [][]byte {
 // This is used to calculate the duration of the audio stream.
 func findLastGranulePosition(sr *binary.SafeReader, fileSize int64) (int64, error) {
 	// Search last 64KB for final page (typical max page size)
-	searchStart := fileSize - 65536
-	if searchStart < 0 {
-		searchStart = 0
-	}
+	searchStart := max(fileSize-65536, 0)
 
 	searchSize := fileSize - searchStart
 	buf := make([]byte, searchSize)

@@ -12,7 +12,6 @@ import (
 	_ "github.com/simonhull/audiometa/internal/m4a"  // Register M4A/M4B parser
 	_ "github.com/simonhull/audiometa/internal/mp3"  // Register MP3 parser
 	_ "github.com/simonhull/audiometa/internal/ogg"  // Register Ogg Vorbis parser
-	"github.com/simonhull/audiometa/internal/types"
 )
 
 // createBenchmarkM4B creates a minimal but valid M4B file for benchmarking.
@@ -190,21 +189,19 @@ func BenchmarkFileAllocation(b *testing.B) {
 
 	for range b.N {
 		_ = &audiometa.File{
-			File: types.File{
-				Path:   "/test/path.m4b",
-				Format: audiometa.FormatM4B,
-				Size:   1024,
-				Tags: audiometa.Tags{
-					Title:  "Test Title",
-					Artist: "Test Artist",
-					Album:  "Test Album",
-				},
-				Audio: audiometa.AudioInfo{
-					Duration:   3600000000000, // 1 hour in nanoseconds
-					Bitrate:    128000,
-					SampleRate: 44100,
-					Channels:   2,
-				},
+			Path:   "/test/path.m4b",
+			Format: audiometa.FormatM4B,
+			Size:   1024,
+			Tags: audiometa.Tags{
+				Title:  "Test Title",
+				Artist: "Test Artist",
+				Album:  "Test Album",
+			},
+			Audio: audiometa.AudioInfo{
+				Duration:   3600000000000, // 1 hour in nanoseconds
+				Bitrate:    128000,
+				SampleRate: 44100,
+				Channels:   2,
 			},
 		}
 	}

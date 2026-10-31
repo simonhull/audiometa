@@ -364,8 +364,7 @@ func TestParse_InvalidMagic(t *testing.T) {
 	}
 
 	// Should be a CorruptedFileError (invalid Ogg page)
-	var corruptedErr *types.CorruptedFileError
-	if !errors.As(err, &corruptedErr) {
+	if _, ok := errors.AsType[*types.CorruptedFileError](err); !ok {
 		t.Errorf("expected CorruptedFileError, got %T: %v", err, err)
 	}
 }

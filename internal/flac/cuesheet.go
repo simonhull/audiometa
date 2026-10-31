@@ -84,7 +84,7 @@ func parseCueSheet(sr *binary.SafeReader, offset int64, length uint32, file *typ
 
 	// Parse tracks
 	tracks := make([]CueTrack, 0, trackCount)
-	for i := byte(0); i < trackCount; i++ {
+	for i := range trackCount {
 		track, nextOffset, err := parseCueTrack(sr, offset, startOffset+int64(length))
 		if err != nil {
 			return fmt.Errorf("parse track %d: %w", i, err)
@@ -155,7 +155,7 @@ func parseCueTrack(sr *binary.SafeReader, offset, maxOffset int64) (*CueTrack, i
 
 	// Parse indices
 	indices := make([]CueIndex, 0, indexCount)
-	for j := byte(0); j < indexCount; j++ {
+	for j := range indexCount {
 		if offset+12 > maxOffset {
 			return nil, 0, errors.New("index data exceeds block bounds")
 		}

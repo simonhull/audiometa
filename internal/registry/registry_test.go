@@ -78,7 +78,7 @@ func (m *mockArtworkExtractor) ExtractArtwork(ctx context.Context, r io.ReaderAt
 
 func TestArtworkExtractorInterface(t *testing.T) {
 	format := types.Format(996)
-	parser := &mockArtworkExtractor{mockParser: mockParser{name: "artwork"}}
+	parser := &mockArtworkExtractor{name: "artwork"}
 
 	Register(format, parser)
 

@@ -131,8 +131,8 @@ func getExtensionFromMIME(mimeType string) string {
 		return ".tiff"
 	default:
 		// Try to extract from "image/xxx" pattern
-		if strings.HasPrefix(mimeType, "image/") {
-			return "." + strings.TrimPrefix(mimeType, "image/")
+		if after, ok := strings.CutPrefix(mimeType, "image/"); ok {
+			return "." + after
 		}
 		return ""
 	}

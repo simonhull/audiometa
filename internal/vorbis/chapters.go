@@ -39,13 +39,13 @@ func ParseChapters(comments []string, fileDuration time.Duration) []types.Chapte
 	// Scan all comments for CHAPTERxxx tags
 	for _, comment := range comments {
 		// Find '=' separator
-		eq := strings.IndexByte(comment, '=')
-		if eq < 0 {
+		before, after, ok := strings.Cut(comment, "=")
+		if !ok {
 			continue
 		}
 
-		key := strings.ToUpper(strings.TrimSpace(comment[:eq]))
-		value := strings.TrimSpace(comment[eq+1:])
+		key := strings.ToUpper(strings.TrimSpace(before))
+		value := strings.TrimSpace(after)
 
 		if !strings.HasPrefix(key, "CHAPTER") {
 			continue

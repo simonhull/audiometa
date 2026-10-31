@@ -85,8 +85,7 @@ func TestParse_UnsupportedFormat(t *testing.T) {
 		t.Error("expected error for unsupported format")
 	}
 
-	var unsupportedFormatError *audiometa.UnsupportedFormatError
-	if !errors.As(err, &unsupportedFormatError) {
+	if _, ok := errors.AsType[*audiometa.UnsupportedFormatError](err); !ok {
 		t.Errorf("expected UnsupportedFormatError, got %T", err)
 	}
 }
