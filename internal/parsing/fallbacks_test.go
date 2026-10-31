@@ -34,3 +34,23 @@ func TestResolveSeriesFallbacks(t *testing.T) {
 		})
 	}
 }
+
+func TestApplyNarratorFallback(t *testing.T) {
+	tests := []struct {
+		name string
+		tags types.Tags
+		want string
+	}{
+		{"uses first composer", types.Tags{Composers: []string{"A", "B"}}, "A"},
+		{"keeps narrator", types.Tags{Narrator: "N", Composers: []string{"A"}}, "N"},
+		{"no composers", types.Tags{}, ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ApplyNarratorFallback(&tc.tags)
+			if tc.tags.Narrator != tc.want {
+				t.Errorf("Narrator = %q, want %q", tc.tags.Narrator, tc.want)
+			}
+		})
+	}
+}

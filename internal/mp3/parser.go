@@ -6,6 +6,7 @@ import (
 	"io"
 
 	binutil "github.com/simonhull/audiometa/internal/binary"
+	"github.com/simonhull/audiometa/internal/parsing"
 	"github.com/simonhull/audiometa/internal/registry"
 	"github.com/simonhull/audiometa/internal/types"
 )
@@ -71,9 +72,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 
 	// Apply fallbacks
 	// If no narrator from TXXX, use composer
-	if file.Tags.Narrator == "" && len(file.Tags.Composers) > 0 {
-		file.Tags.Narrator = file.Tags.Composers[0]
-	}
+	parsing.ApplyNarratorFallback(&file.Tags)
 
 	return file, nil
 }

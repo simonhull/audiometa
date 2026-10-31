@@ -48,3 +48,11 @@ func ResolveSeriesFallbacks(tags *types.Tags, path string, src SeriesSource) {
 		tags.SeriesPart = part
 	}
 }
+
+// ApplyNarratorFallback sets Narrator to the first Composer when no narrator
+// was tagged. Only MP3 and M4A apply it; FLAC and Ogg deliberately do not.
+func ApplyNarratorFallback(tags *types.Tags) {
+	if tags.Narrator == "" && len(tags.Composers) > 0 {
+		tags.Narrator = tags.Composers[0]
+	}
+}

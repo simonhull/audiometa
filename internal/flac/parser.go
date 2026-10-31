@@ -172,6 +172,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	file.Audio.Lossless = true
 
 	// Post-parse fallbacks for audiobook series metadata.
+	// Unlike MP3 and M4A, Narrator is deliberately not derived from Composer here.
 	parsing.ResolveSeriesFallbacks(&file.Tags, path, parsing.SeriesSource{})
 
 	return file, nil

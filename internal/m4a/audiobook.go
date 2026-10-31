@@ -43,9 +43,7 @@ func parseAudiobookTags(ctx context.Context, sr *binary.SafeReader, ilstAtom *At
 
 	// Apply fallbacks
 	// If no custom Narrator atom, use Composer as fallback
-	if file.Tags.Narrator == "" && len(file.Tags.Composers) > 0 {
-		file.Tags.Narrator = file.Tags.Composers[0]
-	}
+	parsing.ApplyNarratorFallback(&file.Tags)
 
 	// Grouping -> Series, then the series part from custom atoms, title, album, path.
 	parsing.ResolveSeriesFallbacks(&file.Tags, sr.Path(), seriesSource(file, customTags))
