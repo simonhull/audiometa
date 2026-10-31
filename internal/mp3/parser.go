@@ -43,11 +43,20 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 			Message: fmt.Sprintf("ID3v2 parsing failed: %v", err),
 			Err:     err,
 		})
-		tagSize = 0
+	}
+
+	// ID3v1 trailer: a fallback for tags, and never part of the audio.
+	v1, hasV1 := readID3v1(sr, size)
+	if hasV1 && file.Tags.Title == "" && file.Tags.Artist == "" {
+		applyID3v1(file, v1)
+	}
+	audioEnd := size
+	if hasV1 {
+		audioEnd -= id3v1Size
 	}
 
 	// Parse MP3 frame headers for technical info (bitrate, duration, etc.)
-	if err := parseTechnicalInfo(ctx, sr, tagSize, size, file); err != nil {
+	if err := parseTechnicalInfo(ctx, sr, tagSize, audioEnd, file); err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, ctxErr
 		}

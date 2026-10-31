@@ -67,3 +67,27 @@ func parseBytes(t *testing.T, data []byte) *types.File {
 	}
 	return f
 }
+
+// id3v22Frame builds an ID3v2.2 frame: 3-char ID, 3-byte big-endian size, payload.
+func id3v22Frame(id string, payload []byte) []byte {
+	n := len(payload)
+	return append([]byte{id[0], id[1], id[2], byte(n >> 16), byte(n >> 8), byte(n)}, payload...)
+}
+
+// id3v1Trailer builds a 128-byte ID3v1 tag. track == 0 writes the v1.0 30-byte
+// comment; otherwise the v1.1 layout with a track number.
+func id3v1Trailer(title, artist, album, year, comment string, track byte) []byte {
+	b := make([]byte, id3v1Size)
+	copy(b, "TAG")
+	copy(b[3:33], title)
+	copy(b[33:63], artist)
+	copy(b[63:93], album)
+	copy(b[93:97], year)
+	if track == 0 {
+		copy(b[97:127], comment)
+	} else {
+		copy(b[97:125], comment)
+		b[125], b[126] = 0, track
+	}
+	return b
+}

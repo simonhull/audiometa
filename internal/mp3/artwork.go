@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 
 	binutil "github.com/simonhull/audiometa/internal/binary"
 	"github.com/simonhull/audiometa/internal/types"
@@ -35,7 +36,7 @@ func extractArtwork(ctx context.Context, r io.ReaderAt, size int64, path string)
 	}
 
 	frameDataOffset := skipExtendedHeader(sr, header)
-	tagEnd := int64(10 + header.Size)
+	tagEnd := header.totalSize()
 	offset := frameDataOffset
 
 	var artwork []types.Artwork
@@ -51,8 +52,12 @@ func extractArtwork(ctx context.Context, r io.ReaderAt, size int64, path string)
 			break
 		}
 
-		if frame != nil && frame.ID == "APIC" {
-			art, err := parseAPICFrame(frame.Data)
+		if frame != nil && frame.ID == frameIDAPIC {
+			parse := parseAPICFrame
+			if header.Version == 2 {
+				parse = parsePICFrame
+			}
+			art, err := parse(frame.Data)
 			if err == nil {
 				artwork = append(artwork, art)
 			}
@@ -67,19 +72,10 @@ func extractArtwork(ctx context.Context, r io.ReaderAt, size int64, path string)
 // readFrameForArtwork reads a single frame header and data.
 // Similar to readSingleFrame but doesn't need the file parameter.
 func readFrameForArtwork(sr *binutil.SafeReader, header ID3v2Header, offset int64) (*ID3v2Frame, int64, bool) {
-	frameHeaderBuf := make([]byte, 10)
-	if err := sr.ReadAt(frameHeaderBuf, offset, "frame header"); err != nil {
+	frameID, frameSize, _, headerLen, ok := readFrameHeader(sr, header.Version, offset)
+	if !ok {
 		return nil, 0, true
 	}
-
-	// Check for padding (null bytes indicate end of frames)
-	if frameHeaderBuf[0] == 0 {
-		return nil, 0, true
-	}
-
-	// Parse frame header
-	frameID := string(frameHeaderBuf[0:4])
-	frameSize := decodeFrameSize(header.Version, frameHeaderBuf[4:8])
 
 	// Sanity check frame size
 	if frameSize == 0 || frameSize > 100*1024*1024 { // 100MB max
@@ -87,14 +83,14 @@ func readFrameForArtwork(sr *binutil.SafeReader, header ID3v2Header, offset int6
 	}
 
 	// Only read data for APIC frames to save memory
-	if frameID != "APIC" {
-		return nil, 10 + int64(frameSize), false
+	if frameID != frameIDAPIC {
+		return nil, headerLen + int64(frameSize), false
 	}
 
 	// Read frame data
 	frameData := make([]byte, frameSize)
-	if err := sr.ReadAt(frameData, offset+10, "APIC frame data"); err != nil {
-		return nil, 10 + int64(frameSize), false
+	if err := sr.ReadAt(frameData, offset+headerLen, "APIC frame data"); err != nil {
+		return nil, headerLen + int64(frameSize), false
 	}
 
 	frame := &ID3v2Frame{
@@ -103,7 +99,7 @@ func readFrameForArtwork(sr *binutil.SafeReader, header ID3v2Header, offset int6
 		Data: frameData,
 	}
 
-	return frame, 10 + int64(frameSize), false
+	return frame, headerLen + int64(frameSize), false
 }
 
 // parseAPICFrame parses an APIC (Attached Picture) frame.
@@ -141,6 +137,12 @@ func parseAPICFrame(data []byte) (types.Artwork, error) {
 		mimeType = mimeJPEG // Default, will be overridden if PNG detected
 	}
 
+	return parsePictureBody(data, pos, encoding, mimeType)
+}
+
+// parsePictureBody parses the part shared by APIC and PIC after the image
+// format/MIME: [picture type][description\x00][image data], starting at pos.
+func parsePictureBody(data []byte, pos int, encoding byte, mimeType string) (types.Artwork, error) {
 	if pos >= len(data) {
 		return types.Artwork{}, errAPICTruncated
 	}
@@ -182,6 +184,19 @@ func parseAPICFrame(data []byte) (types.Artwork, error) {
 		Width:       width,
 		Height:      height,
 	}, nil
+}
+
+// parsePICFrame parses an ID3v2.2 PIC frame:
+// [encoding][image format(3), e.g. "JPG"][picture type][description\0][data].
+func parsePICFrame(data []byte) (types.Artwork, error) {
+	if len(data) < 6 {
+		return types.Artwork{}, errAPICTooShort
+	}
+	mimeType := mimeJPEG // default; magic-byte sniffing in parsePictureBody overrides it
+	if strings.EqualFold(string(data[1:4]), "PNG") {
+		mimeType = mimePNG
+	}
+	return parsePictureBody(data, 4, data[0], mimeType)
 }
 
 // detectMIMEType detects image MIME type from magic bytes.

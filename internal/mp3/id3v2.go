@@ -35,15 +35,37 @@ type ID3v2Frame struct {
 	Flags uint16
 }
 
-// parseID3v2 parses ID3v2 tags and extracts metadata.
+// totalSize returns the on-disk size of the tag: 10-byte header, body and,
+// for ID3v2.4 with the footer flag (0x10), the 10-byte footer.
+func (h ID3v2Header) totalSize() int64 {
+	n := 10 + int64(h.Size)
+	if h.Version == 4 && h.Flags&0x10 != 0 {
+		n += 10
+	}
+	return n
+}
+
+// parseID3v2 parses ID3v2 tags and extracts metadata. It returns the on-disk
+// size of the tag; for a recognized tag with an unsupported version that is
+// still returned (alongside the error) so the audio scan can skip the tag.
 func parseID3v2(ctx context.Context, sr *binutil.SafeReader, file *types.File) (int64, error) {
 	header, err := parseID3v2Header(sr)
 	if err != nil {
+		if header.Version != 0 {
+			return header.totalSize(), err
+		}
 		return 0, err
 	}
 
-	tagSize := int64(10 + header.Size)
-	if header.Version == 3 && header.Flags&flagUnsync != 0 {
+	tagSize := header.totalSize()
+	if header.Version == 2 && header.Flags&flagV22Compression != 0 {
+		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
+			Stage:   types.StageMetadata,
+			Message: "ID3v2.2 tag is compressed; frames ignored",
+		})
+		return tagSize, nil
+	}
+	if (header.Version == 2 || header.Version == 3) && header.Flags&flagUnsync != 0 {
 		// ID3v2.3 unsynchronises the whole tag body, so undo it before walking frames.
 		var warn *types.Warning
 		sr, header, warn = deunsyncTag(sr, header)
@@ -75,7 +97,9 @@ func parseID3v2(ctx context.Context, sr *binutil.SafeReader, file *types.File) (
 
 // Header and frame flag bits.
 const (
-	flagUnsync = 0x80 // tag header: unsynchronisation (whole tag in v2.3, all frames in v2.4)
+	flagUnsync = 0x80 // tag header: unsynchronisation (whole tag in v2.2/v2.3, all frames in v2.4)
+
+	flagV22Compression = 0x40 // ID3v2.2 tag header: compressed tag (to be ignored)
 
 	// ID3v2.4 frame format flags (low byte).
 	v24FrameGrouping    = 0x0040
@@ -218,9 +242,10 @@ func parseID3v2Header(sr *binutil.SafeReader) (ID3v2Header, error) {
 		Size:    decodeSynchsafe(buf[6:10]),
 	}
 
-	// Only support ID3v2.3 and ID3v2.4
-	if header.Version != 3 && header.Version != 4 {
-		return ID3v2Header{}, &types.UnsupportedFormatError{
+	// Only support ID3v2.2, ID3v2.3 and ID3v2.4. The populated header is returned
+	// with the error so callers can still skip over the tag.
+	if header.Version < 2 || header.Version > 4 {
+		return header, &types.UnsupportedFormatError{
 			Path:   sr.Path(),
 			Reason: fmt.Sprintf("unsupported ID3v2 version: 2.%d", header.Version),
 		}
@@ -233,7 +258,8 @@ func parseID3v2Header(sr *binutil.SafeReader) (ID3v2Header, error) {
 func skipExtendedHeader(sr *binutil.SafeReader, header ID3v2Header) int64 {
 	frameDataOffset := int64(10)
 
-	if header.Flags&0x40 == 0 {
+	// ID3v2.2 has no extended header (bit 0x40 means compression there).
+	if header.Version == 2 || header.Flags&0x40 == 0 {
 		return frameDataOffset // No extended header
 	}
 
@@ -284,33 +310,23 @@ func parseID3v2Frames(ctx context.Context, sr *binutil.SafeReader, file *types.F
 
 // readSingleFrame reads a single ID3v2 frame.
 func readSingleFrame(sr *binutil.SafeReader, file *types.File, header ID3v2Header, offset int64) (*ID3v2Frame, int64, bool) {
-	frameHeaderBuf := make([]byte, 10)
-	if err := sr.ReadAt(frameHeaderBuf, offset, "frame header"); err != nil {
+	frameID, frameSize, frameFlags, headerLen, ok := readFrameHeader(sr, header.Version, offset)
+	if !ok {
 		return nil, 0, true
 	}
-
-	// Check for padding (null bytes indicate end of frames)
-	if frameHeaderBuf[0] == 0 {
-		return nil, 0, true
-	}
-
-	// Parse frame header
-	frameID := string(frameHeaderBuf[0:4])
-	frameSize := decodeFrameSize(header.Version, frameHeaderBuf[4:8])
-	frameFlags := binary.BigEndian.Uint16(frameHeaderBuf[8:10])
 
 	if !isMetadataFrame(frameID) {
 		// processFrame ignores this frame (e.g. APIC artwork, which ExtractArtwork
 		// reads lazily), so skip its payload entirely.
-		return nil, 10 + int64(frameSize), false
+		return nil, headerLen + int64(frameSize), false
 	}
 
 	// Read frame data
 	var frameData []byte
-	err := sr.CheckLen(offset+10, int(frameSize), 1, "ID3 frame")
+	err := sr.CheckLen(offset+headerLen, int(frameSize), 1, "ID3 frame")
 	if err == nil {
 		frameData = make([]byte, frameSize)
-		err = sr.ReadAt(frameData, offset+10, "frame data")
+		err = sr.ReadAt(frameData, offset+headerLen, "frame data")
 	}
 	if err != nil {
 		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
@@ -318,7 +334,7 @@ func readSingleFrame(sr *binutil.SafeReader, file *types.File, header ID3v2Heade
 			Message: fmt.Sprintf("failed to read frame %s: %v", frameID, err),
 			Err:     err,
 		})
-		return nil, 10 + int64(frameSize), false
+		return nil, headerLen + int64(frameSize), false
 	}
 
 	frameData, skip := frameBody(header.Version, header.Flags, frameFlags, frameData)
@@ -328,7 +344,7 @@ func readSingleFrame(sr *binutil.SafeReader, file *types.File, header ID3v2Heade
 			Message: fmt.Sprintf("skipped %s frame %s", skip, frameID),
 			Offset:  offset,
 		})
-		return nil, 10 + int64(frameSize), false
+		return nil, headerLen + int64(frameSize), false
 	}
 
 	frame := &ID3v2Frame{
@@ -338,7 +354,50 @@ func readSingleFrame(sr *binutil.SafeReader, file *types.File, header ID3v2Heade
 		Data:  frameData,
 	}
 
-	return frame, 10 + int64(frameSize), false
+	return frame, headerLen + int64(frameSize), false
+}
+
+// Frame IDs referenced in more than one place.
+const (
+	frameIDTIT2 = "TIT2"
+	frameIDCOMM = "COMM"
+	frameIDAPIC = "APIC"
+	frameIDGRP1 = "GRP1"
+	frameIDMVNM = "MVNM"
+	frameIDMVIN = "MVIN"
+)
+
+// v22FrameIDs maps ID3v2.2 three-character frame IDs to their ID3v2.3 equivalents.
+var v22FrameIDs = map[string]string{
+	"TT1": "TIT1", "TT2": frameIDTIT2, "TT3": "TIT3", "TP1": "TPE1", "TP2": "TPE2",
+	"TAL": "TALB", "TYE": "TYER", "TRK": "TRCK", "TPA": "TPOS", "TCO": "TCON",
+	"TCM": "TCOM", "COM": frameIDCOMM, "TXX": frameIDTXXX, "GP1": frameIDGRP1, "MVN": frameIDMVNM,
+	"MVI": frameIDMVIN, "PIC": frameIDAPIC,
+}
+
+// readFrameHeader reads the frame header at offset for the tag's version and
+// returns the (v2.3-normalised) frame ID, payload size, flags and header length.
+// ok is false at padding or when the header cannot be read.
+func readFrameHeader(sr *binutil.SafeReader, version byte, offset int64) (id string, size uint32, flags uint16, headerLen int64, ok bool) {
+	if version == 2 {
+		var buf [6]byte
+		if err := sr.ReadAt(buf[:], offset, "frame header"); err != nil || buf[0] == 0 {
+			return "", 0, 0, 0, false
+		}
+		raw := string(buf[0:3])
+		id = raw
+		if mapped, found := v22FrameIDs[raw]; found {
+			id = mapped
+		}
+		size = uint32(buf[3])<<16 | uint32(buf[4])<<8 | uint32(buf[5])
+		return id, size, 0, 6, true
+	}
+
+	var buf [10]byte
+	if err := sr.ReadAt(buf[:], offset, "frame header"); err != nil || buf[0] == 0 {
+		return "", 0, 0, 0, false // unreadable, or padding (null bytes end the frames)
+	}
+	return string(buf[0:4]), decodeFrameSize(version, buf[4:8]), binary.BigEndian.Uint16(buf[8:10]), 10, true
 }
 
 // decodeFrameSize decodes frame size based on ID3v2 version.
@@ -359,7 +418,7 @@ func isTextFrameID(id string) bool {
 	switch id {
 	case frameIDTXXX:
 		return false
-	case "GRP1", "MVNM", "MVIN":
+	case frameIDGRP1, frameIDMVNM, frameIDMVIN:
 		return true
 	}
 	return strings.HasPrefix(id, "T")
@@ -368,7 +427,7 @@ func isTextFrameID(id string) bool {
 // isMetadataFrame reports whether processFrame consumes this frame's payload.
 // Keep in sync with processFrame.
 func isMetadataFrame(id string) bool {
-	return isTextFrameID(id) || id == frameIDTXXX || id == "COMM" || id == "CHAP"
+	return isTextFrameID(id) || id == frameIDTXXX || id == frameIDCOMM || id == "CHAP"
 }
 
 // frameState accumulates results that are resolved after the whole tag is walked.
@@ -386,7 +445,7 @@ func processFrame(frame ID3v2Frame, file *types.File, st *frameState) {
 		parseTextFrame(frame, file)
 	case frame.ID == frameIDTXXX:
 		parseTXXXFrame(frame, file)
-	case frame.ID == "COMM":
+	case frame.ID == frameIDCOMM:
 		parseCommentFrame(frame, file, st)
 	case frame.ID == "CHAP":
 		st.chapters = append(st.chapters, frame)
@@ -422,7 +481,7 @@ func parseTextFrame(frame ID3v2Frame, file *types.File) { //nolint:gocyclo // Co
 	}
 
 	switch frame.ID {
-	case "TIT2": // Title
+	case frameIDTIT2: // Title
 		file.Tags.Title = text
 	case "TIT3": // Subtitle/Description refinement
 		file.Tags.Subtitle = text
@@ -644,7 +703,7 @@ func extractChapterTitleFromSubframes(subframeData []byte, version byte, fallbac
 			break
 		}
 		body := subframeData[10 : 10+size]
-		if id == "TIT2" && len(body) > 0 {
+		if id == frameIDTIT2 && len(body) > 0 {
 			if title := decodeText(body[1:], body[0]); title != "" {
 				return title
 			}
