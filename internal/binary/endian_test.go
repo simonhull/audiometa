@@ -70,7 +70,7 @@ func TestReadLE(t *testing.T) {
 	}
 }
 
-func TestReadBE(t *testing.T) {
+func TestRead_BigEndian(t *testing.T) {
 	// Create test data with known big-endian values
 	buf := &bytes.Buffer{}
 
@@ -97,7 +97,7 @@ func TestReadBE(t *testing.T) {
 			offset: 0,
 			want:   258,
 			readFunc: func() (uint64, error) {
-				val, err := ReadBE[uint16](sr, 0, "uint16")
+				val, err := Read[uint16](sr, 0, "uint16")
 				return uint64(val), err
 			},
 		},
@@ -106,7 +106,7 @@ func TestReadBE(t *testing.T) {
 			offset: 2,
 			want:   16909060,
 			readFunc: func() (uint64, error) {
-				val, err := ReadBE[uint32](sr, 2, "uint32")
+				val, err := Read[uint32](sr, 2, "uint32")
 				return uint64(val), err
 			},
 		},
@@ -115,7 +115,7 @@ func TestReadBE(t *testing.T) {
 			offset: 6,
 			want:   72623859790382856,
 			readFunc: func() (uint64, error) {
-				val, err := ReadBE[uint64](sr, 6, "uint64")
+				val, err := Read[uint64](sr, 6, "uint64")
 				return val, err
 			},
 		},
@@ -125,10 +125,10 @@ func TestReadBE(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := tt.readFunc()
 			if err != nil {
-				t.Fatalf("ReadBE failed: %v", err)
+				t.Fatalf("Read failed: %v", err)
 			}
 			if got != tt.want {
-				t.Errorf("ReadBE() = %d, want %d", got, tt.want)
+				t.Errorf("Read() = %d, want %d", got, tt.want)
 			}
 		})
 	}
@@ -187,9 +187,9 @@ func TestEndianness_RealWorldExample(t *testing.T) {
 	})
 
 	t.Run("MP4 atom size (BE)", func(t *testing.T) {
-		size, err := ReadBE[uint32](sr, 4, "atom size")
+		size, err := Read[uint32](sr, 4, "atom size")
 		if err != nil {
-			t.Fatalf("ReadBE failed: %v", err)
+			t.Fatalf("Read failed: %v", err)
 		}
 		if size != 1000 {
 			t.Errorf("MP4 atom size = %d, want 1000", size)
@@ -202,9 +202,9 @@ func TestReadEndian_Uint8(t *testing.T) {
 	data := []byte{0x42}
 	sr := NewSafeReader(bytes.NewReader(data), int64(len(data)), "test")
 
-	beByte, err := ReadBE[uint8](sr, 0, "byte")
+	beByte, err := Read[uint8](sr, 0, "byte")
 	if err != nil {
-		t.Fatalf("ReadBE uint8 failed: %v", err)
+		t.Fatalf("Read uint8 failed: %v", err)
 	}
 
 	leByte, err := ReadLE[uint8](sr, 0, "byte")
@@ -229,16 +229,6 @@ func BenchmarkReadLE_Uint32(b *testing.B) {
 	b.ResetTimer()
 	for range b.N {
 		ReadLE[uint32](sr, 0, "uint32")
-	}
-}
-
-func BenchmarkReadBE_Uint32(b *testing.B) {
-	data := []byte{0x01, 0x02, 0x03, 0x04}
-	sr := NewSafeReader(bytes.NewReader(data), int64(len(data)), "bench")
-
-	b.ResetTimer()
-	for range b.N {
-		ReadBE[uint32](sr, 0, "uint32")
 	}
 }
 

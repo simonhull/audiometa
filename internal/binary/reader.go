@@ -2,7 +2,6 @@
 package binary
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -120,43 +119,8 @@ func (sr *SafeReader) CheckLen(off int64, count, elemSize int, what string) erro
 	return nil
 }
 
-// Read reads a value of type T from the given offset.
-// T must be uint8, uint16, uint32, or uint64.
+// Read reads a big-endian value of type T from the given offset.
+// It is the default for MP4/ID3v2/FLAC-header fields; use ReadLE for little-endian data.
 func Read[T uint8 | uint16 | uint32 | uint64](sr *SafeReader, off int64, what string) (T, error) {
-	var zero T
-	var size int
-
-	// Determine size based on type
-	switch any(zero).(type) {
-	case uint8:
-		size = 1
-	case uint16:
-		size = 2
-	case uint32:
-		size = 4
-	case uint64:
-		size = 8
-	default:
-		return zero, errors.New("unsupported type for Read")
-	}
-
-	buf := sr.scratch[:size]
-	if err := sr.ReadAt(buf, off, what); err != nil {
-		return zero, err
-	}
-
-	// Convert bytes to value (big-endian, MP4 standard)
-	var val T
-	switch any(zero).(type) {
-	case uint8:
-		val = T(buf[0])
-	case uint16:
-		val = T(binary.BigEndian.Uint16(buf))
-	case uint32:
-		val = T(binary.BigEndian.Uint32(buf))
-	case uint64:
-		val = T(binary.BigEndian.Uint64(buf))
-	}
-
-	return val, nil
+	return ReadEndian[T](sr, off, what, BigEndian)
 }

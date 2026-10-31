@@ -27,21 +27,9 @@ func ReadLE[T uint8 | uint16 | uint32 | uint64](sr *SafeReader, off int64, what 
 	return ReadEndian[T](sr, off, what, LittleEndian)
 }
 
-// ReadBE reads a numeric value of type T at the given offset using big-endian byte order.
-//
-// This is a convenience wrapper for ReadEndian with BigEndian.
-// Equivalent to Read() but more explicit about byte order.
-//
-// Example:
-//
-//	atomSize, err := binary.ReadBE[uint32](sr, offset, "atom size")
-func ReadBE[T uint8 | uint16 | uint32 | uint64](sr *SafeReader, off int64, what string) (T, error) {
-	return ReadEndian[T](sr, off, what, BigEndian)
-}
-
 // ReadEndian reads a numeric value of type T at the given offset with specified byte order.
 //
-// This is the low-level function used by Read, ReadLE, and ReadBE.
+// This is the low-level function used by Read and ReadLE.
 // Most code should use the convenience wrappers instead.
 //
 // Example:
