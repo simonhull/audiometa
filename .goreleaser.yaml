@@ -1,0 +1,59 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+project_name: audiometa
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: audiometa
+    main: ./cmd/audiometa
+    binary: audiometa
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/simonhull/audiometa.version={{.Version}}
+      - -X github.com/simonhull/audiometa.gitCommit={{.FullCommit}}
+      - -X github.com/simonhull/audiometa.buildTime={{.Date}}
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  groups:
+    - title: Security
+      regexp: '^.*?(🔒|:lock:|security)'
+      order: 0
+    - title: Added
+      regexp: '^.*?(✨|:sparkles:|feat)'
+      order: 1
+    - title: Fixed
+      regexp: '^.*?(🐛|:bug:|fix)'
+      order: 2
+    - title: Performance
+      regexp: '^.*?(⚡|:zap:|perf)'
+      order: 3
+    - title: Other
+      order: 999
+  filters:
+    exclude:
+      - '^(📝|:memo:|✅|:white_check_mark:|👷|:construction_worker:|🔧|🤖|docs:|test:|ci:|chore:)'

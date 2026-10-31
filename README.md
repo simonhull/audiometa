@@ -193,11 +193,19 @@ BenchmarkOpen/M4A-16     2500    480 µs/op    834 B/op    16 allocs/op
 
 ### audiometa
 
-Install the CLI (requires Go 1.27 or newer):
+#### Installation
+
+With Go 1.27 or newer:
 
 ```bash
 go install github.com/simonhull/audiometa/cmd/audiometa@latest
 ```
+
+Or download a prebuilt binary (linux, macOS, Windows; amd64 and arm64) from the
+[GitHub releases page](https://github.com/simonhull/audiometa/releases), verify it
+against `checksums.txt`, and put `audiometa` on your `PATH`.
+
+#### Usage
 
 ```bash
 audiometa song.flac                      # same as: audiometa inspect song.flac
