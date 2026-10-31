@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"time"
 
 	binutil "github.com/simonhull/audiometa/internal/binary"
@@ -11,7 +12,7 @@ import (
 )
 
 // MPEG audio version bits, (header >> 19) & 3. MPEG-2.5 (0) and reserved (1)
-// are rejected by findMP3FrameAt; supporting 2.5 would need 11025/12000/8000 Hz
+// are rejected by validFrameHeader; supporting 2.5 would need 11025/12000/8000 Hz
 // sample rates and 576 samples per frame.
 const (
 	versionMPEG2 = 2
@@ -41,77 +42,84 @@ func samplesPerFrame(header uint32) int {
 	return 576
 }
 
+// maxFrameSearch bounds how far past the ID3 tag the first frame is searched
+// for. Real frame data begins within a few bytes of the tag; the margin covers
+// padding and slightly wrong tag sizes without letting a crafted file force a
+// scan of the whole input.
+const maxFrameSearch = 1 << 16 // 64 KiB
+
+var errNoMP3Frame = errors.New("no valid MP3 frame found")
+
 // parseTechnicalInfo extracts bitrate, sample rate, codec, and duration from MP3 frames.
+//
+// It reads one bounded window starting at the end of the ID3 tag and scans it
+// in memory for the first valid frame header.
 func parseTechnicalInfo(ctx context.Context, sr *binutil.SafeReader, tagSize int64, fileSize int64, file *types.File) error {
-	// Find first MP3 frame (after ID3 tag)
-	frameOffset := tagSize
+	start := max(tagSize, 0)
+	if start >= fileSize {
+		return errNoMP3Frame
+	}
+
+	window := make([]byte, min(fileSize-start, maxFrameSearch))
+	if err := sr.ReadAt(window, start, "MP3 frame search window"); err != nil {
+		return fmt.Errorf("read frame search window: %w", err)
+	}
 
 	// Search for MP3 frame sync (11 bits set)
-	for i := 0; frameOffset < fileSize-4; i++ {
+	for i := 0; i+4 <= len(window); i++ {
 		if err := binutil.Canceled(ctx, i); err != nil {
 			return err
 		}
 
-		header, err := findMP3FrameAt(sr, frameOffset)
-		if err == nil {
-			// Found valid frame
-			bitrate, sampleRate, channels := parseMP3FrameHeader(header)
-			if bitrate > 0 && sampleRate > 0 {
-				file.Audio.Bitrate = bitrate
-				file.Audio.SampleRate = sampleRate
-				file.Audio.Channels = channels
-				file.Audio.Codec = "MP3"
-
-				// Check for VBR header
-				duration, vbr := parseVBRHeader(sr, frameOffset, header, sampleRate)
-				if vbr {
-					file.Audio.Duration = duration
-					file.Audio.VBR = true
-				} else {
-					// CBR - estimate from bitrate and file size
-					file.Audio.Duration = estimateCBRDuration(bitrate, fileSize, tagSize)
-					file.Audio.VBR = false
-				}
-
-				return nil
-			}
+		header := binary.BigEndian.Uint32(window[i : i+4])
+		if !validFrameHeader(header) {
+			continue
 		}
 
-		frameOffset++
+		bitrate, sampleRate, channels := parseMP3FrameHeader(header)
+		if bitrate <= 0 || sampleRate <= 0 {
+			continue
+		}
+
+		frameOffset := start + int64(i)
+		file.Audio.Bitrate = bitrate
+		file.Audio.SampleRate = sampleRate
+		file.Audio.Channels = channels
+		file.Audio.Codec = "MP3"
+
+		// Check for VBR header
+		duration, vbr := parseVBRHeader(sr, frameOffset, header, sampleRate)
+		if vbr {
+			file.Audio.Duration = duration
+			file.Audio.VBR = true
+		} else {
+			// CBR - estimate from bitrate and file size
+			file.Audio.Duration = estimateCBRDuration(bitrate, fileSize, tagSize)
+			file.Audio.VBR = false
+		}
+
+		return nil
 	}
 
-	return errors.New("no valid MP3 frame found")
+	return errNoMP3Frame
 }
 
-// findMP3FrameAt attempts to read an MP3 frame header at the given offset.
-func findMP3FrameAt(sr *binutil.SafeReader, offset int64) (uint32, error) {
-	buf := make([]byte, 4)
-	if err := sr.ReadAt(buf, offset, "MP3 frame header"); err != nil {
-		return 0, err
-	}
-
-	header := binary.BigEndian.Uint32(buf)
-
+// validFrameHeader reports whether header has the 11-bit frame sync and
+// names an MPEG-1/2 Layer III frame.
+func validFrameHeader(header uint32) bool {
 	// Check frame sync (11 bits set: 0xFFE00000)
 	if header&0xFFE00000 != 0xFFE00000 {
-		return 0, errors.New("invalid frame sync")
+		return false
 	}
 
-	// Validate MPEG version and layer
-	version := mpegVersion(header)
-	layer := (header >> 17) & 0x3
-
 	// MPEG1 (version 11) or MPEG2 (version 10)
+	version := mpegVersion(header)
 	if version != versionMPEG1 && version != versionMPEG2 {
-		return 0, errors.New("unsupported MPEG version")
+		return false
 	}
 
 	// Layer III (01)
-	if layer != 1 {
-		return 0, errors.New("unsupported layer")
-	}
-
-	return header, nil
+	return (header>>17)&0x3 == 1
 }
 
 // parseMP3FrameHeader extracts bitrate, sample rate, and channels from frame header.
