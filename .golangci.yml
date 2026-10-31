@@ -37,6 +37,7 @@ linters:
     - intrange
     - makezero
     - misspell
+    - modernize
     - nakedret
     - nestif
     - nilerr
@@ -74,7 +75,7 @@ linters:
         - G104   # Duplicate of errcheck
         - G304   # File path from variable - this library opens user-provided paths by design
         - G307   # Deferred file close - false positives on best-effort cleanup
-        - G115   # Integer overflow conversion
+        - G115   # Integer overflow conversion; TODO: re-enable outside internal/m4a once the backlog is triaged
     govet:
       enable-all: true
       disable:
