@@ -19,7 +19,7 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-      - -X github.com/simonhull/audiometa.version={{.Version}}
+      - -X github.com/simonhull/audiometa.version={{.Tag}}
       - -X github.com/simonhull/audiometa.gitCommit={{.FullCommit}}
       - -X github.com/simonhull/audiometa.buildTime={{.Date}}
 
