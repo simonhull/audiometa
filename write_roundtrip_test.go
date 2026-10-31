@@ -38,8 +38,12 @@ var roundTripCorpus = []roundTripCase{
 	{"testdata/sample.m4b", true},
 	{"testdata/sample_faststart.m4a", true},
 	{"testdata/sample_faststart.m4b", true},
-	{"testdata/sample.ogg", false},  // deferred format: stays false
-	{"testdata/sample.opus", false}, // deferred format: stays false
+	{"testdata/bench/book.mp3", true}, // 50 chapters, rich tags
+	{"testdata/bench/book.flac", true},
+	{"testdata/bench/book.m4b", true},
+	{"testdata/bench/book.opus", false}, // deferred format: stays false
+	{"testdata/sample.ogg", false},      // deferred format: stays false
+	{"testdata/sample.opus", false},     // deferred format: stays false
 }
 
 // tagEdit is one format-agnostic edit; unsupported lists formats where it must
