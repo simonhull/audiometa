@@ -67,6 +67,8 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		})
 	}
 
+	closeOverDriveChapters(file)
+
 	// Apply fallbacks
 	// If no narrator from TXXX, use composer
 	if file.Tags.Narrator == "" && len(file.Tags.Composers) > 0 {
@@ -74,6 +76,20 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	}
 
 	return file, nil
+}
+
+// closeOverDriveChapters ends the last OverDrive chapter at the file's end:
+// MediaMarkers carry only start times, and the duration is known only after the
+// technical pass.
+func closeOverDriveChapters(file *types.File) {
+	n := len(file.Chapters)
+	if n == 0 {
+		return
+	}
+	last := &file.Chapters[n-1]
+	if last.Source == types.ChapterSourceOverDrive && last.EndTime == 0 && file.Audio.Duration > last.StartTime {
+		last.EndTime = file.Audio.Duration
+	}
 }
 
 // ExtractArtwork extracts embedded artwork from MP3 files.

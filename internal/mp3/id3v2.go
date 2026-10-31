@@ -85,6 +85,7 @@ func parseID3v2(ctx context.Context, sr *binutil.SafeReader, file *types.File) (
 
 	// Process chapters
 	if len(st.chapters) > 0 {
+		// CHAP frames take precedence over OverDrive MediaMarkers (set by a TXXX handler).
 		file.Chapters = parseChapterFrames(st.chapters, header.Version)
 	}
 
@@ -526,32 +527,49 @@ func parseTextFrame(frame ID3v2Frame, file *types.File) { //nolint:gocyclo // Co
 	}
 }
 
+// applyMediaMarkers turns an OverDrive MediaMarkers TXXX value into chapters.
+func applyMediaMarkers(f *types.File, value string) {
+	chapters, err := parseMediaMarkers(value)
+	if err != nil {
+		f.Warnings = types.AppendWarning(f.Warnings, types.Warning{
+			Stage:   types.StageChapters,
+			Message: fmt.Sprintf("ignoring OverDrive MediaMarkers: %v", err),
+			Err:     err,
+		})
+		return
+	}
+	if len(chapters) > 0 {
+		f.Chapters = chapters
+	}
+}
+
 // txxxFieldHandlers maps TXXX description (lowercased) → handler that writes
 // the value into the corresponding tag, optionally with a "first wins" rule.
 var txxxFieldHandlers = map[string]func(*types.File, string){
-	"narrator":        func(f *types.File, v string) { f.Tags.Narrator = v },
-	"series":          func(f *types.File, v string) { f.Tags.Series = v },
-	"series part":     func(f *types.File, v string) { f.Tags.SeriesPart = v },
-	"seriespart":      func(f *types.File, v string) { f.Tags.SeriesPart = v },
-	"part":            func(f *types.File, v string) { f.Tags.SeriesPart = v },
-	"series-part":     func(f *types.File, v string) { f.Tags.SeriesPart = v },
-	"series position": func(f *types.File, v string) { f.Tags.SeriesPart = v },
-	"publisher":       func(f *types.File, v string) { f.Tags.Publisher = v },
-	"isbn":            func(f *types.File, v string) { f.Tags.ISBN = v },
-	"asin":            func(f *types.File, v string) { f.Tags.ASIN = v },
-	"audible_asin":    func(f *types.File, v string) { f.Tags.ASIN = v },
-	"language":        func(f *types.File, v string) { f.Tags.Language = v },
-	"lang":            func(f *types.File, v string) { f.Tags.Language = v },
-	"description":     setIfEmpty(func(t *types.Tags) *string { return &t.Description }),
-	"mvnm":            setIfEmpty(func(t *types.Tags) *string { return &t.Series }),
-	"movement name":   setIfEmpty(func(t *types.Tags) *string { return &t.Series }),
-	"movement":        setIfEmpty(func(t *types.Tags) *string { return &t.Series }),
-	"show":            setIfEmpty(func(t *types.Tags) *string { return &t.Series }),
-	"mvin":            setIfEmpty(func(t *types.Tags) *string { return &t.SeriesPart }),
-	"movement number": setIfEmpty(func(t *types.Tags) *string { return &t.SeriesPart }),
-	"movement index":  setIfEmpty(func(t *types.Tags) *string { return &t.SeriesPart }),
-	"episode_id":      setIfEmpty(func(t *types.Tags) *string { return &t.SeriesPart }),
-	"grouping":        setIfEmpty(func(t *types.Tags) *string { return &t.Grouping }),
+	mediaMarkersDescription: applyMediaMarkers,
+	"narrator":              func(f *types.File, v string) { f.Tags.Narrator = v },
+	"series":                func(f *types.File, v string) { f.Tags.Series = v },
+	"series part":           func(f *types.File, v string) { f.Tags.SeriesPart = v },
+	"seriespart":            func(f *types.File, v string) { f.Tags.SeriesPart = v },
+	"part":                  func(f *types.File, v string) { f.Tags.SeriesPart = v },
+	"series-part":           func(f *types.File, v string) { f.Tags.SeriesPart = v },
+	"series position":       func(f *types.File, v string) { f.Tags.SeriesPart = v },
+	"publisher":             func(f *types.File, v string) { f.Tags.Publisher = v },
+	"isbn":                  func(f *types.File, v string) { f.Tags.ISBN = v },
+	"asin":                  func(f *types.File, v string) { f.Tags.ASIN = v },
+	"audible_asin":          func(f *types.File, v string) { f.Tags.ASIN = v },
+	"language":              func(f *types.File, v string) { f.Tags.Language = v },
+	"lang":                  func(f *types.File, v string) { f.Tags.Language = v },
+	"description":           setIfEmpty(func(t *types.Tags) *string { return &t.Description }),
+	"mvnm":                  setIfEmpty(func(t *types.Tags) *string { return &t.Series }),
+	"movement name":         setIfEmpty(func(t *types.Tags) *string { return &t.Series }),
+	"movement":              setIfEmpty(func(t *types.Tags) *string { return &t.Series }),
+	"show":                  setIfEmpty(func(t *types.Tags) *string { return &t.Series }),
+	"mvin":                  setIfEmpty(func(t *types.Tags) *string { return &t.SeriesPart }),
+	"movement number":       setIfEmpty(func(t *types.Tags) *string { return &t.SeriesPart }),
+	"movement index":        setIfEmpty(func(t *types.Tags) *string { return &t.SeriesPart }),
+	"episode_id":            setIfEmpty(func(t *types.Tags) *string { return &t.SeriesPart }),
+	"grouping":              setIfEmpty(func(t *types.Tags) *string { return &t.Grouping }),
 }
 
 func setIfEmpty(field func(*types.Tags) *string) func(*types.File, string) {

@@ -83,6 +83,12 @@ func TestParseChapters_Success(t *testing.T) {
 		t.Fatalf("expected 3 chapters, got %d", len(chapters))
 	}
 
+	for i, c := range chapters {
+		if c.Source != types.ChapterSourceNero {
+			t.Errorf("chapter %d: source = %q, want %q", i, c.Source, types.ChapterSourceNero)
+		}
+	}
+
 	// Verify chapter 1
 	if chapters[0].Index != 1 {
 		t.Errorf("chapter 0: expected index 1, got %d", chapters[0].Index)

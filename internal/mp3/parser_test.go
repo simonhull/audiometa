@@ -306,6 +306,12 @@ func TestParseChapterFrames(t *testing.T) {
 		t.Fatalf("expected 2 chapters, got %d", len(chapters))
 	}
 
+	for i, c := range chapters {
+		if c.Source != types.ChapterSourceID3CHAP {
+			t.Errorf("chapter %d: source = %q, want %q", i, c.Source, types.ChapterSourceID3CHAP)
+		}
+	}
+
 	// Check first chapter
 	if chapters[0].Index != 1 {
 		t.Errorf("chapter 0: expected index 1, got %d", chapters[0].Index)
