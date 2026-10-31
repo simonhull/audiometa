@@ -41,6 +41,7 @@ type chapterDTO struct {
 	Title   string `json:"title"`
 	StartMs int64  `json:"start_ms"`
 	EndMs   int64  `json:"end_ms"`
+	Source  string `json:"source,omitzero"`
 }
 
 type warningDTO struct {
@@ -168,6 +169,7 @@ func toChapterDTOs(f *audiometa.File) []chapterDTO {
 			Title:   validUTF8(c.Title),
 			StartMs: c.StartTime.Milliseconds(),
 			EndMs:   c.EndTime.Milliseconds(),
+			Source:  string(c.Source),
 		})
 	}
 	return out

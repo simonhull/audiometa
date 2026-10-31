@@ -131,6 +131,7 @@ func parseChplChapters(sr *binary.SafeReader, moovAtom *Atom, fileDuration time.
 			Index:     int(i + 1),
 			Title:     title,
 			StartTime: startTime,
+			Source:    types.ChapterSourceNero,
 		}
 
 		chapters = append(chapters, chapter)
@@ -623,6 +624,7 @@ func buildChaptersFromText(ctx context.Context, sr *binary.SafeReader, chapterTi
 			Index:     i + 1,
 			Title:     title,
 			StartTime: chapterTimes[i],
+			Source:    types.ChapterSourceQuickTime,
 		})
 	}
 

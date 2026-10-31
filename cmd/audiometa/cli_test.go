@@ -145,6 +145,19 @@ func TestChapters(t *testing.T) {
 	if ch, _ := chs[1].(map[string]any); ch["start_ms"] != 1000.0 || ch["end_ms"] != 2000.0 {
 		t.Errorf("chapter = %v", ch)
 	}
+	if ch, _ := chs[0].(map[string]any); ch["source"] != "quicktime" {
+		t.Errorf("chapter source = %v, want quicktime", ch["source"])
+	}
+}
+
+func TestChapterDTOOmitsEmptySource(t *testing.T) {
+	b, err := json.Marshal(chapterDTO{Index: 1, Title: "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "source") {
+		t.Errorf("empty source should be omitted: %s", b)
+	}
 }
 
 func TestChaptersNone(t *testing.T) {

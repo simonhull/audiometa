@@ -114,6 +114,7 @@ func ParseChapters(comments []string, fileDuration time.Duration) []types.Chapte
 			Index:     len(chapters) + 1,
 			Title:     title,
 			StartTime: startTime,
+			Source:    types.ChapterSourceVorbisComment,
 		})
 	}
 	if len(chapters) == 0 {

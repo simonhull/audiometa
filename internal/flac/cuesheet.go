@@ -260,6 +260,7 @@ func cuesheetToChapters(cuesheet *CueSheet, sampleRate int, fileDuration time.Du
 			Index:     len(chapters) + 1,
 			Title:     title,
 			StartTime: samplesToDuration(trackStartSample(track), sampleRate),
+			Source:    types.ChapterSourceCueSheet,
 		})
 	}
 

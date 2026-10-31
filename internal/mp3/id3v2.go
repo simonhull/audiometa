@@ -684,6 +684,7 @@ func parseChapterFrames(frames []ID3v2Frame, version byte) []types.Chapter {
 			Title:     ch.Title,
 			StartTime: time.Duration(ch.StartTime) * time.Millisecond,
 			EndTime:   time.Duration(ch.EndTime) * time.Millisecond,
+			Source:    types.ChapterSourceID3CHAP,
 		}
 	}
 

@@ -96,8 +96,8 @@ func TestParse_CueSheetCD(t *testing.T) {
 	)
 	file := parseTestFLAC(t, data)
 	checkChapters(t, file.Chapters, []types.Chapter{
-		{Index: 1, Title: "Track 01", StartTime: 0, EndTime: sec(62)},
-		{Index: 2, Title: "Track 02", StartTime: sec(62), EndTime: sec(600)},
+		{Index: 1, Title: "Track 01", StartTime: 0, EndTime: sec(62), Source: types.ChapterSourceCueSheet},
+		{Index: 2, Title: "Track 02", StartTime: sec(62), EndTime: sec(600), Source: types.ChapterSourceCueSheet},
 	})
 	if len(file.Warnings) != 0 {
 		t.Errorf("warnings: %+v", file.Warnings)
@@ -116,8 +116,8 @@ func TestParse_CueSheetNonCDLeadOut(t *testing.T) {
 	)
 	file := parseTestFLAC(t, data)
 	checkChapters(t, file.Chapters, []types.Chapter{
-		{Index: 1, Title: "Track 01", StartTime: 0, EndTime: sec(100)},
-		{Index: 2, Title: "Track 02", StartTime: sec(100), EndTime: sec(600)},
+		{Index: 1, Title: "Track 01", StartTime: 0, EndTime: sec(100), Source: types.ChapterSourceCueSheet},
+		{Index: 2, Title: "Track 02", StartTime: sec(100), EndTime: sec(600), Source: types.ChapterSourceCueSheet},
 	})
 }
 
@@ -146,8 +146,8 @@ func TestParse_FLACChapterComments(t *testing.T) {
 	)
 	file := parseTestFLAC(t, data)
 	checkChapters(t, file.Chapters, []types.Chapter{
-		{Index: 1, Title: "Opening", StartTime: 0, EndTime: 5 * time.Minute},
-		{Index: 2, Title: "Middle", StartTime: 5 * time.Minute, EndTime: sec(600)},
+		{Index: 1, Title: "Opening", StartTime: 0, EndTime: 5 * time.Minute, Source: types.ChapterSourceVorbisComment},
+		{Index: 2, Title: "Middle", StartTime: 5 * time.Minute, EndTime: sec(600), Source: types.ChapterSourceVorbisComment},
 	})
 }
 
