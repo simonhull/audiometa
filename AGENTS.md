@@ -15,5 +15,19 @@
 - Every `//nolint` names the linter and gives a reason.
 - Exported identifiers carry godoc comments that start with the identifier name.
 
+## Doc comment conventions
+- Full sentences, starting with the identifier's name. Every package has a `// Package x ...` comment
+  (one file only); the root overview lives in `doc.go`.
+- Say which errors are returned and when (typed errors, sentinels, `ctx.Err()`), and state
+  concurrency safety where it matters.
+- Use doc links: `[File]`, `[OpenContext]`, `[errors.As]`, `[context.Context]`, `[*os.PathError]`.
+  Methods of root type aliases (`Tags`, `AudioInfo`) do not resolve as links; write them as plain
+  `Tags.Get` or link the internal type (`[types.Tags]`).
+- Use `# Heading`, `  - ` lists and tab-indented code blocks; a `Deprecated:` note is its own paragraph.
+- Prefer a runnable `Example*` in `example_test.go` (package `audiometa_test`, testdata corpus,
+  verified `// Output:`) over a code block. Check rendering with `go doc -all .`; `go vet` checks
+  Example names.
+- README claims (formats, options, benchmark numbers) must match the code; paste real benchmark output only.
+
 ## Commits
 Gitmoji prefix, single line, no body.

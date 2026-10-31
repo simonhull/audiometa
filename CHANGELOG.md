@@ -14,6 +14,14 @@ All notable changes to this project are documented here.
 
 - `audiometa` CLI with `inspect`, `chapters`, `artwork`, `atoms` and `version` subcommands.
 - Tagged release binaries for linux, darwin and windows (amd64 and arm64).
+- MP3: read ID3v2.2 tags; fall back to an ID3v1 tag when ID3v2 gives no title or artist.
+- MP3: read chapters from the OverDrive MediaMarkers `TXXX` frame when there are no `CHAP` frames.
+- MP3 and M4A: populate raw tags (`Tags.Get`/`Tags.All`) and `Tags.Artists`.
+- `Chapter.Source` and the `ChapterSource*` constants record which structure each chapter came from (also in the CLI's JSON output).
+- `StageMetadata`, `StageTechnical`, `StageChapters` and `StageArtwork` constants for `Warning.Stage`.
+- Strict-parsing errors unwrap to the underlying errors of every warning, so `errors.Is`/`errors.As` work on them.
+- Reads past the end of a file now surface as a typed `*OutOfBoundsError` that `errors.As` can match.
+- Runnable godoc examples (`example_test.go`) covering `Open`, `OpenContext`, `OpenMany`, artwork, chapters, strict parsing, typed errors and raw tags; rewritten package and API documentation.
 - Real-file corpus, public API integration tests and parser fuzz targets.
 
 ### Fixed
@@ -25,17 +33,32 @@ All notable changes to this project are documented here.
 - FLAC and Ogg: fix chapters (cuesheet lead-out, CHAPTER comments, end times).
 - Vorbis comment keys are matched case-insensitively.
 - Opus: informational warnings no longer trip strict mode.
+- MP3: undo ID3v2 unsynchronisation, honor frame flags, and skip compressed or encrypted frames with a warning.
+- Ogg: validate page headers, split packets on lacing values, and read headers that span several pages.
+- M4A: read technical info from the sound track and honor the sample entry version.
+- `WithMaxArtworkSize` is now enforced: oversized images are dropped from `ExtractArtwork` with a warning.
+- `WithStrictParsing` and `WithIgnoreWarnings` now also apply to warnings from `WithArtworkPreload`.
+- `ExtractArtwork` is safe for concurrent use, and a failed extraction is retried instead of cached.
+- `AudioInfo.ApplyReplayGain`: correct clipping limit, and no limit when the peak is unknown.
 - Library version is derived from build info instead of a stale constant.
 
 ### Changed
 
+- Faster parsing with far fewer syscalls: `SafeReader` buffers small reads, MP3 skips artwork payloads during `Open`, and the MP3 frame-sync scan is bounded.
+- Parse loops check the context, so `OpenContext` and `OpenMany` stop promptly on large files.
 - Series-parsing regexes are precompiled.
 - Batch example handles partial failure correctly.
+- README and godoc corrected to match current behavior (formats, chapter sources, options, errors, measured benchmarks).
 
 ### Security
 
 - MP4 atoms that overrun their container are rejected.
+- Allocations driven by length fields are capped by the file size and a 256 MiB ceiling.
+- Parser panics are recovered and returned as `*CorruptedFileError`; a file records at most 100 warnings.
 
 ### Deprecated
 
 - `audiometa.Version`; use `GetVersion()`.
+- `RawTag`, `RawTagType` and the `RawTag*` constants (never produced); use `Tags.Get` and `Tags.All`.
+- `RegisterParser`; parsers register themselves.
+- `AudioInfo.IsModernAudiobookCodec`; inspect `Codec` and `CodecProfile` instead.
