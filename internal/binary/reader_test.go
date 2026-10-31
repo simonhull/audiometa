@@ -66,7 +66,7 @@ func TestRead_Uint8(t *testing.T) {
 	mock := &mockReader{data: data}
 	sr := NewSafeReader(mock, int64(len(data)), "test.m4b")
 
-	val, err := Read[uint8](sr, 0, "test uint8")
+	val, err := sr.Read[uint8](0, "test uint8")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestRead_Uint16(t *testing.T) {
 	mock := &mockReader{data: data}
 	sr := NewSafeReader(mock, int64(len(data)), "test.m4b")
 
-	val, err := Read[uint16](sr, 0, "test uint16")
+	val, err := sr.Read[uint16](0, "test uint16")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestRead_Uint32(t *testing.T) {
 	mock := &mockReader{data: data}
 	sr := NewSafeReader(mock, int64(len(data)), "test.m4b")
 
-	val, err := Read[uint32](sr, 0, "test uint32")
+	val, err := sr.Read[uint32](0, "test uint32")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -114,7 +114,7 @@ func TestRead_Uint64(t *testing.T) {
 	mock := &mockReader{data: data}
 	sr := NewSafeReader(mock, int64(len(data)), "test.m4b")
 
-	val, err := Read[uint64](sr, 0, "test uint64")
+	val, err := sr.Read[uint64](0, "test uint64")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -135,7 +135,7 @@ func BenchmarkRead_Uint32(b *testing.B) {
 	b.ResetTimer()
 	for i := range b.N {
 		offset := int64((i % (len(data) / 4)) * 4)
-		_, _ = Read[uint32](sr, offset, "benchmark")
+		_, _ = sr.Read[uint32](offset, "benchmark")
 	}
 }
 
@@ -191,7 +191,7 @@ func TestSafeReader_Window_SequentialReadsOneCall(t *testing.T) {
 	cr := &countingReader{mockReader: mockReader{data: data}}
 	sr := NewSafeReader(cr, int64(len(data)), "w.bin")
 	for i := range 100 {
-		v, err := Read[uint32](sr, int64(i*4), "x")
+		v, err := sr.Read[uint32](int64(i*4), "x")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -326,10 +326,10 @@ func TestSafeReader_Window_NearEOF(t *testing.T) {
 func TestRead_ZeroAllocsAfterWarmup(t *testing.T) {
 	data := seqData(64)
 	sr := NewSafeReader(&mockReader{data: data}, int64(len(data)), "w.bin")
-	if _, err := Read[uint32](sr, 0, "warm"); err != nil {
+	if _, err := sr.Read[uint32](0, "warm"); err != nil {
 		t.Fatal(err)
 	}
-	if n := testing.AllocsPerRun(100, func() { _, _ = Read[uint32](sr, 0, "x") }); n != 0 {
+	if n := testing.AllocsPerRun(100, func() { _, _ = sr.Read[uint32](0, "x") }); n != 0 {
 		t.Errorf("allocs = %v, want 0", n)
 	}
 }

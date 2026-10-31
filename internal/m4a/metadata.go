@@ -54,7 +54,7 @@ func parseMetadataTag(sr *binary.SafeReader, tagAtom *Atom) (string, error) {
 	}
 
 	// version (1 byte) + type indicator (3 bytes), then reserved/locale (4 bytes)
-	vf, err := binary.Read[uint32](sr, dataAtom.DataOffset(), "data type indicator")
+	vf, err := sr.Read[uint32](dataAtom.DataOffset(), "data type indicator")
 	if err != nil {
 		return "", err
 	}
@@ -241,14 +241,14 @@ func parseTrackNumber(sr *binary.SafeReader, atom *Atom) (TrackData, error) {
 
 	offset += 2 // skip reserved
 
-	trackNum, err := binary.Read[uint16](sr, offset, "track number")
+	trackNum, err := sr.Read[uint16](offset, "track number")
 	if err != nil {
 		return result, err
 	}
 	result.Number = int(trackNum)
 	offset += 2
 
-	trackTotal, err := binary.Read[uint16](sr, offset, "track total")
+	trackTotal, err := sr.Read[uint16](offset, "track total")
 	if err != nil {
 		return result, err
 	}

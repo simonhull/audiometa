@@ -97,7 +97,7 @@ func parseAACProfile(sr *binary.SafeReader, sampleEntryOffset int64, sampleEntry
 	}
 
 	// Read esds data
-	esdsSize, err := binary.Read[uint32](sr, esdsOffset, "esds size")
+	esdsSize, err := sr.Read[uint32](esdsOffset, "esds size")
 	if err != nil || esdsSize < 12 || esdsSize > 1024 {
 		return "", nil
 	}

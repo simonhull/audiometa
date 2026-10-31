@@ -52,7 +52,7 @@ const atomTrak = "trak"
 // atom.Size always moves strictly forward and never past parentEnd.
 func readAtomHeader(sr *binary.SafeReader, offset, parentEnd int64) (*Atom, error) {
 	// Read size (4 bytes)
-	size32, err := binary.Read[uint32](sr, offset, "atom size")
+	size32, err := sr.Read[uint32](offset, "atom size")
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +71,7 @@ func readAtomHeader(sr *binary.SafeReader, offset, parentEnd int64) (*Atom, erro
 
 	// Handle extended size (size == 1 means 64-bit size follows)
 	if size32 == 1 {
-		size64, err := binary.Read[uint64](sr, offset+8, "extended atom size")
+		size64, err := sr.Read[uint64](offset+8, "extended atom size")
 		if err != nil {
 			return nil, err
 		}

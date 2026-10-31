@@ -131,8 +131,17 @@ func (sr *SafeReader) CheckLen(off int64, count, elemSize int, what string) erro
 	return nil
 }
 
+// Integer is the set of fixed-width unsigned integer types that SafeReader can read.
+type Integer interface {
+	uint8 | uint16 | uint32 | uint64
+}
+
 // Read reads a big-endian value of type T from the given offset.
 // It is the default for MP4/ID3v2/FLAC-header fields; use ReadLE for little-endian data.
-func Read[T uint8 | uint16 | uint32 | uint64](sr *SafeReader, off int64, what string) (T, error) {
-	return ReadEndian[T](sr, off, what, BigEndian)
+//
+// Example:
+//
+//	size, err := sr.Read[uint32](offset, "atom size")
+func (sr *SafeReader) Read[T Integer](off int64, what string) (T, error) {
+	return sr.ReadEndian[T](off, what, BigEndian)
 }

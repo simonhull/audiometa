@@ -82,7 +82,7 @@ func parseCovrData(sr *binary.SafeReader, dataAtom *Atom) (types.Artwork, error)
 	offset := dataAtom.DataOffset()
 
 	// Read version + flags (4 bytes total)
-	versionFlags, err := binary.Read[uint32](sr, offset, "data version+flags")
+	versionFlags, err := sr.Read[uint32](offset, "data version+flags")
 	if err != nil {
 		return types.Artwork{}, err
 	}

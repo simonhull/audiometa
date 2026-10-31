@@ -102,7 +102,7 @@ func TestOutOfBoundsError_ErrorsAs(t *testing.T) {
 	})
 	t.Run("from SafeReader", func(t *testing.T) {
 		sr := binary.NewSafeReader(bytes.NewReader(make([]byte, 4)), 4, "a.m4b")
-		_, err := binary.Read[uint32](sr, 2, "field")
+		_, err := sr.Read[uint32](2, "field")
 		var target *OutOfBoundsError
 		if !errors.As(fmt.Errorf("parse: %w", err), &target) {
 			t.Fatalf("errors.As failed for %v", err)

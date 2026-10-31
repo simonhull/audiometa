@@ -99,7 +99,7 @@ func walkAtoms(sr *binary.SafeReader, offset, end int64, depth int, out *printer
 // readAtomHeader reads the type, total size and header length of the atom at
 // offset. A size field of 0 means the atom extends to end.
 func readAtomHeader(sr *binary.SafeReader, offset, end int64) (atomType string, size uint64, headerSize int64, ok bool) {
-	size32, err := binary.Read[uint32](sr, offset, "atom size")
+	size32, err := sr.Read[uint32](offset, "atom size")
 	if err != nil {
 		return "", 0, 0, false
 	}
@@ -114,7 +114,7 @@ func readAtomHeader(sr *binary.SafeReader, offset, end int64) (atomType string, 
 	case 0:
 		size = uint64(end - offset)
 	case 1:
-		size, err = binary.Read[uint64](sr, offset+8, "extended atom size")
+		size, err = sr.Read[uint64](offset+8, "extended atom size")
 		if err != nil {
 			return "", 0, 0, false
 		}

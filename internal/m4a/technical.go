@@ -127,7 +127,7 @@ func parseMvhd(sr *binary.SafeReader, mvhdAtom *Atom, file *types.File) error {
 	offset := mvhdAtom.DataOffset()
 
 	// Read version (1 byte)
-	version, err := binary.Read[uint8](sr, offset, "mvhd version")
+	version, err := sr.Read[uint8](offset, "mvhd version")
 	if err != nil {
 		return err
 	}
@@ -163,14 +163,14 @@ func parseMvhdVersion0(sr *binary.SafeReader, offset int64) (timescale uint32, d
 	offset += 8
 
 	// Read timescale (4 bytes)
-	timescale, err = binary.Read[uint32](sr, offset, "mvhd timescale")
+	timescale, err = sr.Read[uint32](offset, "mvhd timescale")
 	if err != nil {
 		return 0, 0, err
 	}
 	offset += 4
 
 	// Read duration (4 bytes)
-	duration32, err := binary.Read[uint32](sr, offset, "mvhd duration")
+	duration32, err := sr.Read[uint32](offset, "mvhd duration")
 	if err != nil {
 		return 0, 0, err
 	}
@@ -184,14 +184,14 @@ func parseMvhdVersion1(sr *binary.SafeReader, offset int64) (timescale uint32, d
 	offset += 16
 
 	// Read timescale (4 bytes)
-	timescale, err = binary.Read[uint32](sr, offset, "mvhd timescale")
+	timescale, err = sr.Read[uint32](offset, "mvhd timescale")
 	if err != nil {
 		return 0, 0, err
 	}
 	offset += 4
 
 	// Read duration (8 bytes)
-	duration, err = binary.Read[uint64](sr, offset, "mvhd duration")
+	duration, err = sr.Read[uint64](offset, "mvhd duration")
 	if err != nil {
 		return 0, 0, err
 	}
@@ -212,7 +212,7 @@ func parseStsd(sr *binary.SafeReader, stsdAtom *Atom, file *types.File) error {
 	offset += 4
 
 	// Read number of entries
-	numEntries, err := binary.Read[uint32](sr, offset, "stsd entry count")
+	numEntries, err := sr.Read[uint32](offset, "stsd entry count")
 	if err != nil {
 		return err
 	}
@@ -228,7 +228,7 @@ func parseStsd(sr *binary.SafeReader, stsdAtom *Atom, file *types.File) error {
 	// [4 bytes] format (codec type)
 	// ... more fields ...
 
-	entrySize, err := binary.Read[uint32](sr, offset, "stsd entry size")
+	entrySize, err := sr.Read[uint32](offset, "stsd entry size")
 	if err != nil {
 		return err
 	}
@@ -257,7 +257,7 @@ func parseStsd(sr *binary.SafeReader, stsdAtom *Atom, file *types.File) error {
 // are left unset rather than guessed.
 func parseSoundSampleEntry(sr *binary.SafeReader, entry int64, file *types.File) error {
 	// size(4) format(4) reserved(6) data_reference_index(2) = 16 bytes, then:
-	version, err := binary.Read[uint16](sr, entry+16, "sound sample entry version")
+	version, err := sr.Read[uint16](entry+16, "sound sample entry version")
 	if err != nil {
 		return err
 	}
@@ -265,24 +265,24 @@ func parseSoundSampleEntry(sr *binary.SafeReader, entry int64, file *types.File)
 	switch version {
 	case 0, 1:
 		// version(2) revision(2) vendor(4), then channels(2) samplesize(2) compid(2) packetsize(2) rate(16.16)
-		channels, err := binary.Read[uint16](sr, entry+24, "channels")
+		channels, err := sr.Read[uint16](entry+24, "channels")
 		if err != nil {
 			return err
 		}
 		file.Audio.Channels = int(channels)
 
-		rate, err := binary.Read[uint32](sr, entry+32, "sample rate")
+		rate, err := sr.Read[uint32](entry+32, "sample rate")
 		if err != nil {
 			return err
 		}
 		file.Audio.SampleRate = int(rate >> 16) // integer part of 16.16 fixed point
 	case 2:
 		// Legacy fields hold constants; real values: float64 rate at +40, uint32 channels at +48.
-		bits, err := binary.Read[uint64](sr, entry+40, "sample rate")
+		bits, err := sr.Read[uint64](entry+40, "sample rate")
 		if err != nil {
 			return err
 		}
-		channels, err := binary.Read[uint32](sr, entry+48, "channels")
+		channels, err := sr.Read[uint32](entry+48, "channels")
 		if err != nil {
 			return err
 		}

@@ -69,7 +69,7 @@ func parseChplChapters(sr *binary.SafeReader, moovAtom *Atom, fileDuration time.
 	offset := chplAtom.DataOffset()
 
 	// Read version (1 byte)
-	version, err := binary.Read[uint8](sr, offset, "chpl version")
+	version, err := sr.Read[uint8](offset, "chpl version")
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +85,7 @@ func parseChplChapters(sr *binary.SafeReader, moovAtom *Atom, fileDuration time.
 	}
 
 	// Read chapter count (1 byte)
-	chapterCount, err := binary.Read[uint8](sr, offset, "chapter count")
+	chapterCount, err := sr.Read[uint8](offset, "chapter count")
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +100,7 @@ func parseChplChapters(sr *binary.SafeReader, moovAtom *Atom, fileDuration time.
 	// Read each chapter
 	for i := range chapterCount {
 		// Read start time (8 bytes, in 100-nanosecond units)
-		startTime100ns, err := binary.Read[uint64](sr, offset, "chapter start time")
+		startTime100ns, err := sr.Read[uint64](offset, "chapter start time")
 		if err != nil {
 			return nil, err
 		}
@@ -110,7 +110,7 @@ func parseChplChapters(sr *binary.SafeReader, moovAtom *Atom, fileDuration time.
 		startTime := time.Duration(startTime100ns * 100)
 
 		// Read title length (1 byte)
-		titleLen, err := binary.Read[uint8](sr, offset, "chapter title length")
+		titleLen, err := sr.Read[uint8](offset, "chapter title length")
 		if err != nil {
 			return nil, err
 		}
@@ -200,7 +200,7 @@ func extractChapterTrackID(sr *binary.SafeReader, trakAtom *Atom) uint32 {
 		return 0
 	}
 
-	trackID, err := binary.Read[uint32](sr, chapAtom.DataOffset(), "chapter track ID")
+	trackID, err := sr.Read[uint32](chapAtom.DataOffset(), "chapter track ID")
 	if err != nil {
 		return 0
 	}
@@ -243,7 +243,7 @@ func readTrackID(sr *binary.SafeReader, trakAtom *Atom) uint32 {
 	}
 
 	tkhdOffset := tkhdAtom.DataOffset()
-	version, err := binary.Read[uint8](sr, tkhdOffset, "tkhd version")
+	version, err := sr.Read[uint8](tkhdOffset, "tkhd version")
 	if err != nil {
 		return 0
 	}
@@ -255,7 +255,7 @@ func readTrackID(sr *binary.SafeReader, trakAtom *Atom) uint32 {
 		trackIDOffset = tkhdOffset + 12 // 32-bit version
 	}
 
-	trackID, err := binary.Read[uint32](sr, trackIDOffset, "track ID")
+	trackID, err := sr.Read[uint32](trackIDOffset, "track ID")
 	if err != nil {
 		return 0
 	}
@@ -336,16 +336,16 @@ func parseTrackTimescale(sr *binary.SafeReader, mdiaAtom *Atom) (uint32, error) 
 	}
 
 	mdhdOffset := mdhdAtom.DataOffset()
-	version, err := binary.Read[uint8](sr, mdhdOffset, "mdhd version")
+	version, err := sr.Read[uint8](mdhdOffset, "mdhd version")
 	if err != nil {
 		return 1000, nil
 	}
 
 	var timescale uint32
 	if version == 1 {
-		timescale, err = binary.Read[uint32](sr, mdhdOffset+20, "timescale")
+		timescale, err = sr.Read[uint32](mdhdOffset+20, "timescale")
 	} else {
-		timescale, err = binary.Read[uint32](sr, mdhdOffset+12, "timescale")
+		timescale, err = sr.Read[uint32](mdhdOffset+12, "timescale")
 	}
 
 	if err != nil || timescale == 0 {
@@ -371,7 +371,7 @@ func parseChapterTimings(ctx context.Context, sr *binary.SafeReader, stblAtom *A
 	}
 
 	offset := sttsAtom.DataOffset() + 4 // Skip version + flags
-	entryCount, err := binary.Read[uint32](sr, offset, "stts entry count")
+	entryCount, err := sr.Read[uint32](offset, "stts entry count")
 	if err != nil {
 		return nil, err
 	}
@@ -385,11 +385,11 @@ func parseChapterTimings(ctx context.Context, sr *binary.SafeReader, stblAtom *A
 			return nil, err
 		}
 
-		sampleCount, err := binary.Read[uint32](sr, offset, "sample count")
+		sampleCount, err := sr.Read[uint32](offset, "sample count")
 		if err != nil {
 			break // Return partial results
 		}
-		sampleDuration, err := binary.Read[uint32](sr, offset+4, "sample duration")
+		sampleDuration, err := sr.Read[uint32](offset+4, "sample duration")
 		if err != nil {
 			break // Return partial results
 		}
@@ -419,13 +419,13 @@ func parseSampleSizes(ctx context.Context, sr *binary.SafeReader, stblAtom *Atom
 
 	// Default sample size: if non-zero every sample has this size and no table follows
 	// (ISO/IEC 14496-12 section 8.7.3).
-	defaultSize, err := binary.Read[uint32](sr, offset, "default sample size")
+	defaultSize, err := sr.Read[uint32](offset, "default sample size")
 	if err != nil {
 		return nil, err
 	}
 	offset += 4
 
-	sampleCount, err := binary.Read[uint32](sr, offset, "sample count")
+	sampleCount, err := sr.Read[uint32](offset, "sample count")
 	if err != nil {
 		return nil, err
 	}
@@ -443,7 +443,7 @@ func parseSampleSizes(ctx context.Context, sr *binary.SafeReader, stblAtom *Atom
 			return nil, err
 		}
 
-		size, err := binary.Read[uint32](sr, offset, "sample size")
+		size, err := sr.Read[uint32](offset, "sample size")
 		if err != nil {
 			break // Return partial results
 		}
@@ -471,7 +471,7 @@ func parseSampleToChunk(ctx context.Context, sr *binary.SafeReader, stblAtom *At
 	}
 
 	offset := stscAtom.DataOffset() + 4 // Skip version + flags
-	entryCount, err := binary.Read[uint32](sr, offset, "stsc entry count")
+	entryCount, err := sr.Read[uint32](offset, "stsc entry count")
 	if err != nil {
 		return nil, err
 	}
@@ -483,11 +483,11 @@ func parseSampleToChunk(ctx context.Context, sr *binary.SafeReader, stblAtom *At
 			return nil, err
 		}
 
-		firstChunk, err := binary.Read[uint32](sr, offset, "stsc first chunk")
+		firstChunk, err := sr.Read[uint32](offset, "stsc first chunk")
 		if err != nil {
 			break // Return partial results
 		}
-		perChunk, err := binary.Read[uint32](sr, offset+4, "stsc samples per chunk")
+		perChunk, err := sr.Read[uint32](offset+4, "stsc samples per chunk")
 		if err != nil {
 			break
 		}
@@ -551,7 +551,7 @@ func parseChunkOffsets(ctx context.Context, sr *binary.SafeReader, stblAtom *Ato
 	}
 
 	offset := stcoAtom.DataOffset() + 4 // Skip version + flags
-	chunkCount, err := binary.Read[uint32](sr, offset, "chunk count")
+	chunkCount, err := sr.Read[uint32](offset, "chunk count")
 	if err != nil {
 		return nil, err
 	}
@@ -572,11 +572,11 @@ func parseChunkOffsets(ctx context.Context, sr *binary.SafeReader, stblAtom *Ato
 
 		var readErr error
 		if stcoAtom.Type == "co64" {
-			chunkOffsets[i], readErr = binary.Read[uint64](sr, offset, "chunk offset")
+			chunkOffsets[i], readErr = sr.Read[uint64](offset, "chunk offset")
 			offset += 8
 		} else {
 			var offset32 uint32
-			offset32, readErr = binary.Read[uint32](sr, offset, "chunk offset")
+			offset32, readErr = sr.Read[uint32](offset, "chunk offset")
 			chunkOffsets[i] = uint64(offset32)
 			offset += 4
 		}

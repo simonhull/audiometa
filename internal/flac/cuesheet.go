@@ -52,14 +52,14 @@ func parseCueSheet(sr *binary.SafeReader, offset int64, length uint32, file *typ
 	offset += 128
 
 	// Read lead-in samples (8 bytes, 64-bit big-endian)
-	leadIn, err := binary.Read[uint64](sr, offset, "lead-in samples")
+	leadIn, err := sr.Read[uint64](offset, "lead-in samples")
 	if err != nil {
 		return fmt.Errorf("read lead-in: %w", err)
 	}
 	offset += 8
 
 	// Read flags (1 byte)
-	flags, err := binary.Read[uint8](sr, offset, "cuesheet flags")
+	flags, err := sr.Read[uint8](offset, "cuesheet flags")
 	if err != nil {
 		return fmt.Errorf("read flags: %w", err)
 	}
@@ -70,7 +70,7 @@ func parseCueSheet(sr *binary.SafeReader, offset int64, length uint32, file *typ
 	offset += 258
 
 	// Read track count (1 byte)
-	trackCount, err := binary.Read[uint8](sr, offset, "track count")
+	trackCount, err := sr.Read[uint8](offset, "track count")
 	if err != nil {
 		return fmt.Errorf("read track count: %w", err)
 	}
@@ -113,14 +113,14 @@ func parseCueTrack(sr *binary.SafeReader, offset, maxOffset int64) (*CueTrack, i
 	}
 
 	// Read track offset (8 bytes, 64-bit big-endian, samples from start of audio)
-	trackOffset, err := binary.Read[uint64](sr, offset, "track offset")
+	trackOffset, err := sr.Read[uint64](offset, "track offset")
 	if err != nil {
 		return nil, 0, fmt.Errorf("read track offset: %w", err)
 	}
 	offset += 8
 
 	// Read track number (1 byte, 1-99 for normal tracks, 170 for lead-out)
-	trackNumber, err := binary.Read[uint8](sr, offset, "track number")
+	trackNumber, err := sr.Read[uint8](offset, "track number")
 	if err != nil {
 		return nil, 0, fmt.Errorf("read track number: %w", err)
 	}
@@ -135,7 +135,7 @@ func parseCueTrack(sr *binary.SafeReader, offset, maxOffset int64) (*CueTrack, i
 	offset += 12
 
 	// Read flags (1 byte)
-	flags, err := binary.Read[uint8](sr, offset, "track flags")
+	flags, err := sr.Read[uint8](offset, "track flags")
 	if err != nil {
 		return nil, 0, fmt.Errorf("read track flags: %w", err)
 	}
@@ -147,7 +147,7 @@ func parseCueTrack(sr *binary.SafeReader, offset, maxOffset int64) (*CueTrack, i
 	offset += 13
 
 	// Read index count (1 byte)
-	indexCount, err := binary.Read[uint8](sr, offset, "index count")
+	indexCount, err := sr.Read[uint8](offset, "index count")
 	if err != nil {
 		return nil, 0, fmt.Errorf("read index count: %w", err)
 	}
@@ -183,14 +183,14 @@ func parseCueTrack(sr *binary.SafeReader, offset, maxOffset int64) (*CueTrack, i
 // parseCueIndex parses a single index point from CUESHEET.
 func parseCueIndex(sr *binary.SafeReader, offset int64) (*CueIndex, int64, error) {
 	// Read index offset (8 bytes, 64-bit big-endian, samples relative to track start)
-	indexOffset, err := binary.Read[uint64](sr, offset, "index offset")
+	indexOffset, err := sr.Read[uint64](offset, "index offset")
 	if err != nil {
 		return nil, 0, fmt.Errorf("read index offset: %w", err)
 	}
 	offset += 8
 
 	// Read index number (1 byte)
-	indexNumber, err := binary.Read[uint8](sr, offset, "index number")
+	indexNumber, err := sr.Read[uint8](offset, "index number")
 	if err != nil {
 		return nil, 0, fmt.Errorf("read index number: %w", err)
 	}

@@ -38,7 +38,7 @@ func readPage(sr *binary.SafeReader, offset int64) (*Page, int64, error) {
 	}
 
 	// Read stream structure version (should be 0x00)
-	version, err := binary.Read[uint8](sr, offset+4, "version")
+	version, err := sr.Read[uint8](offset+4, "version")
 	if err != nil {
 		return nil, 0, err
 	}
@@ -47,27 +47,27 @@ func readPage(sr *binary.SafeReader, offset int64) (*Page, int64, error) {
 	}
 
 	// Read header fields
-	headerType, err := binary.Read[uint8](sr, offset+5, "header type")
+	headerType, err := sr.Read[uint8](offset+5, "header type")
 	if err != nil {
 		return nil, 0, err
 	}
 
-	granule, err := binary.ReadLE[uint64](sr, offset+6, "granule position")
+	granule, err := sr.ReadLE[uint64](offset+6, "granule position")
 	if err != nil {
 		return nil, 0, err
 	}
 
-	serial, err := binary.ReadLE[uint32](sr, offset+14, "serial number")
+	serial, err := sr.ReadLE[uint32](offset+14, "serial number")
 	if err != nil {
 		return nil, 0, err
 	}
 
-	sequence, err := binary.ReadLE[uint32](sr, offset+18, "sequence number")
+	sequence, err := sr.ReadLE[uint32](offset+18, "sequence number")
 	if err != nil {
 		return nil, 0, err
 	}
 
-	segmentCount, err := binary.Read[uint8](sr, offset+26, "segment count")
+	segmentCount, err := sr.Read[uint8](offset+26, "segment count")
 	if err != nil {
 		return nil, 0, err
 	}
@@ -208,7 +208,7 @@ func findLastGranulePosition(sr *binary.SafeReader, fileSize int64) (int64, erro
 	}
 
 	// Read granule position from last page (at offset 6 from "OggS")
-	granule, err := binary.ReadLE[uint64](sr, lastOggPos+6, "granule position")
+	granule, err := sr.ReadLE[uint64](lastOggPos+6, "granule position")
 	if err != nil {
 		return 0, err
 	}

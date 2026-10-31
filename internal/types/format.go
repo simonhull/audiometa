@@ -144,13 +144,13 @@ func DetectFormat(r io.ReaderAt, size int64, path string) (Format, error) { //no
 
 	// Check for M4B/M4A ftyp atom
 	// Read ftyp atom size (first 4 bytes)
-	atomSize, err := binary.Read[uint32](sr, 0, "ftyp atom size")
+	atomSize, err := sr.Read[uint32](0, "ftyp atom size")
 	if err != nil {
 		return FormatUnknown, errHeaderUnreadable(path)
 	}
 
 	// Read ftyp atom type (next 4 bytes)
-	atomType, err := binary.Read[uint32](sr, 4, "ftyp atom type")
+	atomType, err := sr.Read[uint32](4, "ftyp atom type")
 	if err != nil {
 		return FormatUnknown, errHeaderUnreadable(path)
 	}

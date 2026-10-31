@@ -17,25 +17,25 @@ const (
 
 // ReadLE reads a numeric value of type T at the given offset using little-endian byte order.
 //
-// This is a convenience wrapper for ReadEndian with LittleEndian.
+// This is a convenience wrapper for SafeReader.ReadEndian with LittleEndian.
 // Use for formats like FLAC Vorbis comments.
 //
 // Example:
 //
-//	length, err := binary.ReadLE[uint32](sr, offset, "vorbis comment length")
-func ReadLE[T uint8 | uint16 | uint32 | uint64](sr *SafeReader, off int64, what string) (T, error) {
-	return ReadEndian[T](sr, off, what, LittleEndian)
+//	length, err := sr.ReadLE[uint32](offset, "vorbis comment length")
+func (sr *SafeReader) ReadLE[T Integer](off int64, what string) (T, error) {
+	return sr.ReadEndian[T](off, what, LittleEndian)
 }
 
 // ReadEndian reads a numeric value of type T at the given offset with specified byte order.
 //
-// This is the low-level function used by Read and ReadLE.
+// This is the low-level method used by Read and ReadLE.
 // Most code should use the convenience wrappers instead.
 //
 // Example:
 //
-//	value, err := binary.ReadEndian[uint32](sr, offset, "field", binary.LittleEndian)
-func ReadEndian[T uint8 | uint16 | uint32 | uint64](sr *SafeReader, off int64, what string, endian Endianness) (T, error) {
+//	value, err := sr.ReadEndian[uint32](offset, "field", binary.LittleEndian)
+func (sr *SafeReader) ReadEndian[T Integer](off int64, what string, endian Endianness) (T, error) {
 	var zero T
 	var size int
 

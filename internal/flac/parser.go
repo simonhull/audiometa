@@ -71,7 +71,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		}
 
 		// Read metadata block header (4 bytes)
-		header, err := binary.Read[uint32](sr, offset, "metadata block header")
+		header, err := sr.Read[uint32](offset, "metadata block header")
 		if err != nil {
 			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 				Stage:   types.StageMetadata,
@@ -197,7 +197,7 @@ func (p *parser) ExtractArtwork(ctx context.Context, r io.ReaderAt, size int64, 
 		}
 
 		// Read metadata block header
-		header, err := binary.Read[uint32](sr, offset, "metadata block header")
+		header, err := sr.Read[uint32](offset, "metadata block header")
 		if err != nil {
 			break
 		}
@@ -283,7 +283,7 @@ func parseVorbisComment(ctx context.Context, sr *binary.SafeReader, offset, _ in
 	currentOffset := offset
 
 	// Read vendor string length (32-bit little-endian)
-	vendorLength, err := binary.ReadLE[uint32](sr, currentOffset, "vendor string length")
+	vendorLength, err := sr.ReadLE[uint32](currentOffset, "vendor string length")
 	if err != nil {
 		return comments, err
 	}
@@ -293,7 +293,7 @@ func parseVorbisComment(ctx context.Context, sr *binary.SafeReader, offset, _ in
 	currentOffset += int64(vendorLength)
 
 	// Read number of comments (32-bit little-endian)
-	numComments, err := binary.ReadLE[uint32](sr, currentOffset, "number of comments")
+	numComments, err := sr.ReadLE[uint32](currentOffset, "number of comments")
 	if err != nil {
 		return comments, err
 	}
@@ -306,7 +306,7 @@ func parseVorbisComment(ctx context.Context, sr *binary.SafeReader, offset, _ in
 		}
 
 		// Read comment length (32-bit little-endian)
-		commentLength, err := binary.ReadLE[uint32](sr, currentOffset, "comment length")
+		commentLength, err := sr.ReadLE[uint32](currentOffset, "comment length")
 		if err != nil {
 			return comments, fmt.Errorf("read comment %d length: %w", i, err)
 		}
@@ -343,14 +343,14 @@ func parsePicture(sr *binary.SafeReader, offset, _ int64) (types.Artwork, error)
 	currentOffset := offset
 
 	// Read picture type (32-bit big-endian)
-	pictureType, err := binary.Read[uint32](sr, currentOffset, "picture type")
+	pictureType, err := sr.Read[uint32](currentOffset, "picture type")
 	if err != nil {
 		return types.Artwork{}, err
 	}
 	currentOffset += 4
 
 	// Read MIME type length (32-bit big-endian)
-	mimeLength, err := binary.Read[uint32](sr, currentOffset, "MIME type length")
+	mimeLength, err := sr.Read[uint32](currentOffset, "MIME type length")
 	if err != nil {
 		return types.Artwork{}, err
 	}
@@ -368,7 +368,7 @@ func parsePicture(sr *binary.SafeReader, offset, _ int64) (types.Artwork, error)
 	currentOffset += int64(mimeLength)
 
 	// Read description length (32-bit big-endian)
-	descLength, err := binary.Read[uint32](sr, currentOffset, "description length")
+	descLength, err := sr.Read[uint32](currentOffset, "description length")
 	if err != nil {
 		return types.Artwork{}, err
 	}
@@ -388,13 +388,13 @@ func parsePicture(sr *binary.SafeReader, offset, _ int64) (types.Artwork, error)
 	currentOffset += int64(descLength)
 
 	// Read width, height, color depth, indexed colors (4 × 32-bit big-endian)
-	width, err := binary.Read[uint32](sr, currentOffset, "width")
+	width, err := sr.Read[uint32](currentOffset, "width")
 	if err != nil {
 		return types.Artwork{}, err
 	}
 	currentOffset += 4
 
-	height, err := binary.Read[uint32](sr, currentOffset, "height")
+	height, err := sr.Read[uint32](currentOffset, "height")
 	if err != nil {
 		return types.Artwork{}, err
 	}
@@ -404,7 +404,7 @@ func parsePicture(sr *binary.SafeReader, offset, _ int64) (types.Artwork, error)
 	currentOffset += 8
 
 	// Read picture data length (32-bit big-endian)
-	dataLength, err := binary.Read[uint32](sr, currentOffset, "picture data length")
+	dataLength, err := sr.Read[uint32](currentOffset, "picture data length")
 	if err != nil {
 		return types.Artwork{}, err
 	}
