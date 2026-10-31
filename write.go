@@ -24,7 +24,7 @@ var lookupWriter = registry.GetWriter
 // to w, and returns the number of bytes written. It implements [io.WriterTo].
 //
 // The pending edits are the changes made to f.Tags since [Open], whether
-// through [Tags.Set], [Tags.Delete] or by assigning typed fields such as
+// through Tags.Set, Tags.Delete or by assigning typed fields such as
 // f.Tags.Title, and the artwork edits recorded by [File.AddArtwork],
 // [File.ReplaceArtwork], [File.RemoveArtwork] and [File.RemoveAllArtwork].
 // Only the tags those edits touch change: every other tag, unknown frames

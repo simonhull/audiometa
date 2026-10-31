@@ -35,7 +35,7 @@ import (
 // extraction, so call [File.Close] when done with it.
 //
 // Tags and artwork can be edited in memory and saved with [File.WriteTo] or
-// [Write]; see [Tags.Set] and [File.AddArtwork].
+// [Write]; see Tags.Set and [File.AddArtwork].
 //
 // [File.ExtractArtwork], [File.ExtractArtworkContext] and the artwork edit
 // methods are safe for concurrent use. The exported fields are not
