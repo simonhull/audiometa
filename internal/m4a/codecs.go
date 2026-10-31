@@ -49,12 +49,12 @@ func mapCodecName(fourCC string) string {
 }
 
 // parseCodecDetails enriches codec information with human-readable names.
-func parseCodecDetails(sr *binary.SafeReader, sampleEntryOffset int64, codec string, file *types.File) error {
+func parseCodecDetails(sr *binary.SafeReader, sampleEntryOffset int64, sampleEntrySize uint32, codec string, file *types.File) error {
 	file.Audio.CodecDescription = mapCodecName(codec)
 
 	// For AAC variants, attempt to parse ESDS for profile
 	if codec == "mp4a" {
-		if profile, err := parseAACProfile(sr, sampleEntryOffset); err == nil && profile != "" {
+		if profile, err := parseAACProfile(sr, sampleEntryOffset, sampleEntrySize); err == nil && profile != "" {
 			file.Audio.CodecProfile = profile
 			if profile != "AAC-LC" {
 				file.Audio.CodecDescription = profile
@@ -71,9 +71,15 @@ func parseCodecDetails(sr *binary.SafeReader, sampleEntryOffset int64, codec str
 }
 
 // parseAACProfile attempts to extract AAC profile from ESDS atom.
-func parseAACProfile(sr *binary.SafeReader, sampleEntryOffset int64) (string, error) {
-	// Search for "esds" within sample entry
-	searchBuf := make([]byte, 256)
+// The search never reads past the sample entry, so a sample entry that sits
+// near end-of-file is still examined.
+func parseAACProfile(sr *binary.SafeReader, sampleEntryOffset int64, sampleEntrySize uint32) (string, error) {
+	// Search for "esds" within the sample entry (first 256 bytes at most)
+	searchLen := min(sampleEntrySize, 256)
+	if searchLen < 12 {
+		return "", nil
+	}
+	searchBuf := make([]byte, searchLen)
 	if err := sr.ReadAt(searchBuf, sampleEntryOffset, "esds search buffer"); err != nil {
 		return "", err
 	}
@@ -94,6 +100,10 @@ func parseAACProfile(sr *binary.SafeReader, sampleEntryOffset int64) (string, er
 	esdsSize, err := binary.Read[uint32](sr, esdsOffset, "esds size")
 	if err != nil || esdsSize < 12 || esdsSize > 1024 {
 		return "", nil
+	}
+
+	if esdsOffset+int64(esdsSize) > sampleEntryOffset+int64(sampleEntrySize) {
+		return "", nil // esds claims to extend past its sample entry
 	}
 
 	esdsDataSize := int(esdsSize) - 12
@@ -118,49 +128,88 @@ func parseAACProfile(sr *binary.SafeReader, sampleEntryOffset int64) (string, er
 	return "", nil
 }
 
-// parseESDescriptors navigates ESDS descriptor hierarchy.
-func parseESDescriptors(data []byte) uint8 {
-	pos := 0
+// MPEG-4 descriptor tags used inside an esds atom (ISO/IEC 14496-1 §7.2.2.1).
+const (
+	tagESDescriptor            = 0x03
+	tagDecoderConfigDescriptor = 0x04
+	tagDecoderSpecificInfo     = 0x05
+)
 
-	readSize := func() int {
+// readDescriptorHeader reads an MPEG-4 descriptor tag at pos and its
+// variable-length size (1-4 bytes, 7 bits each). It returns the payload
+// size and the position of the payload, or ok=false if the tag differs or
+// data runs out.
+func readDescriptorHeader(data []byte, pos int, want byte) (size, payload int, ok bool) {
+	if pos < 0 || pos >= len(data) || data[pos] != want {
+		return 0, 0, false
+	}
+	pos++
+	for range 4 {
 		if pos >= len(data) {
-			return -1
+			return 0, 0, false
 		}
-		size := 0
-		for range 4 {
-			if pos >= len(data) {
-				return -1
-			}
-			b := data[pos]
-			pos++
-			size = (size << 7) | int(b&0x7F)
-			if (b & 0x80) == 0 {
-				break
-			}
-		}
-		return size
-	}
-
-	for pos < len(data) {
-		if data[pos] == 0x03 {
-			pos++
-			size := readSize()
-			if size < 0 {
-				return 0
-			}
-			pos += 3
-
-			if pos < len(data) && data[pos] == 0x04 {
-				pos++
-				dcSize := readSize()
-				if dcSize < 0 || pos >= len(data) {
-					return 0
-				}
-				return data[pos]
-			}
-		}
+		b := data[pos]
 		pos++
+		size = size<<7 | int(b&0x7F)
+		if b&0x80 == 0 {
+			break
+		}
+	}
+	return size, pos, true
+}
+
+// audioObjectType decodes the leading audioObjectType of an
+// AudioSpecificConfig: 5 bits, where 31 escapes to 32 + the next 6 bits.
+func audioObjectType(asc []byte) uint8 {
+	if len(asc) == 0 {
+		return 0
+	}
+	aot := asc[0] >> 3
+	if aot != 31 {
+		return aot
+	}
+	if len(asc) < 2 {
+		return 0
+	}
+	return 32 + ((asc[0]&0x07)<<3 | asc[1]>>5)
+}
+
+// parseESDescriptors walks ES_Descriptor → DecoderConfigDescriptor →
+// DecoderSpecificInfo and returns the audioObjectType from the
+// AudioSpecificConfig (ISO/IEC 14496-3 §1.6.2.1). Returns 0 when the
+// structure is absent or truncated.
+func parseESDescriptors(data []byte) uint8 {
+	// ES_Descriptor payload: ES_ID(2), flags(1), then optional fields.
+	_, pos, ok := readDescriptorHeader(data, 0, tagESDescriptor)
+	if !ok || pos+3 > len(data) {
+		return 0
+	}
+	flags := data[pos+2]
+	pos += 3
+	if flags&0x80 != 0 { // streamDependenceFlag set: skip the 2-byte dependsOn ES ID
+		pos += 2
+	}
+	if flags&0x40 != 0 { // URL_Flag set: skip the length-prefixed URL
+		if pos >= len(data) {
+			return 0
+		}
+		pos += 1 + int(data[pos])
+	}
+	if flags&0x20 != 0 { // OCRstreamFlag set: skip the 2-byte OCR ES ID
+		pos += 2
 	}
 
-	return 0
+	// DecoderConfigDescriptor payload starts with objectTypeIndication(1),
+	// streamType(1), bufferSizeDB(3), maxBitrate(4), avgBitrate(4) = 13 bytes.
+	_, pos, ok = readDescriptorHeader(data, pos, tagDecoderConfigDescriptor)
+	if !ok {
+		return 0
+	}
+
+	// DecoderSpecificInfo payload is the AudioSpecificConfig.
+	size, pos, ok := readDescriptorHeader(data, pos+13, tagDecoderSpecificInfo)
+	if !ok || size == 0 || pos >= len(data) {
+		return 0
+	}
+	return audioObjectType(data[pos:min(pos+size, len(data))])
 }
