@@ -221,17 +221,63 @@ func TestAudioInfo_ApplyReplayGain(t *testing.T) {
 			tolerance: 0.001,
 		},
 		{
-			name: "zero peak returns original",
+			name: "zero peak applies gain unclipped",
 			audio: AudioInfo{
 				ReplayGain: &ReplayGainInfo{
 					TrackGain: 6.0,
 					TrackPeak: 0.0,
 				},
 			},
-			amplitude: 0.8,
+			amplitude: 0.25,
 			mode:      "track",
-			want:      0.8,
-			tolerance: 0.0,
+			want:      0.25 * math.Pow(10, 6.0/20.0),
+			tolerance: 1e-9,
+		},
+		{
+			name: "known peak limits gain not sample",
+			audio: AudioInfo{
+				ReplayGain: &ReplayGainInfo{
+					TrackGain: 12.0, // linear ~3.98
+					TrackPeak: 0.5,  // max gain 2.0
+				},
+			},
+			amplitude: 0.1, // a quiet sample must still get the full permitted gain
+			mode:      "track",
+			want:      0.2,
+			tolerance: 1e-9,
+		},
+		{
+			name: "peak at full scale forbids boost",
+			audio: AudioInfo{
+				ReplayGain: &ReplayGainInfo{
+					TrackGain: 6.0,
+					TrackPeak: 1.0,
+				},
+			},
+			amplitude: 0.5,
+			mode:      "track",
+			want:      0.5,
+			tolerance: 1e-9,
+		},
+		{
+			name: "zero dB is identity",
+			audio: AudioInfo{
+				ReplayGain: &ReplayGainInfo{TrackGain: 0, TrackPeak: 0.8},
+			},
+			amplitude: 0.3,
+			mode:      "track",
+			want:      0.3,
+			tolerance: 1e-12,
+		},
+		{
+			name: "minus 20 dB is one tenth",
+			audio: AudioInfo{
+				ReplayGain: &ReplayGainInfo{TrackGain: -20, TrackPeak: 1.0},
+			},
+			amplitude: 1.0,
+			mode:      "track",
+			want:      0.1,
+			tolerance: 1e-12,
 		},
 	}
 

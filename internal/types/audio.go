@@ -132,10 +132,14 @@ func (a AudioInfo) IsHighRes() bool {
 
 // ApplyReplayGain applies ReplayGain adjustment to an amplitude.
 //
-// Returns the adjusted amplitude. If ReplayGain is not available,
-// returns the original amplitude.
+// The gain (in dB) is converted to a linear factor (10^(dB/20)) and multiplied
+// into amplitude. When the matching peak is known (greater than zero) the
+// linear factor is limited to 1/peak so that the loudest sample of the
+// adjusted stream does not exceed full scale. A zero (unknown) peak applies the
+// gain without a clipping limit. If ReplayGain is not available, returns the
+// original amplitude.
 //
-// mode should be "track" or "album".
+// mode should be "track" or "album"; any other value selects track gain.
 //
 // Example:
 //
@@ -145,33 +149,22 @@ func (a AudioInfo) ApplyReplayGain(amplitude float64, mode string) float64 {
 		return amplitude
 	}
 
-	var gain float64
-	var peak float64
-
+	var gain, peak float64
 	switch mode {
 	case "album":
-		gain = a.ReplayGain.AlbumGain
-		peak = a.ReplayGain.AlbumPeak
+		gain, peak = a.ReplayGain.AlbumGain, a.ReplayGain.AlbumPeak
 	default: // "track" or anything else
-		gain = a.ReplayGain.TrackGain
-		peak = a.ReplayGain.TrackPeak
+		gain, peak = a.ReplayGain.TrackGain, a.ReplayGain.TrackPeak
 	}
 
-	if peak == 0 {
-		return amplitude
-	}
-
-	// Apply gain (dB to linear)
-	// Linear gain = 10^(dB/20)
 	linearGain := pow10(gain / 20.0)
-	adjusted := amplitude * linearGain
 
-	// Prevent clipping
-	if peak > 0 && adjusted > 1.0/peak {
-		adjusted = 1.0 / peak
+	// Limit the gain (not the sample) so the stream's peak cannot clip.
+	if peak > 0 && linearGain*peak > 1.0 {
+		linearGain = 1.0 / peak
 	}
 
-	return adjusted
+	return amplitude * linearGain
 }
 
 // pow10 returns 10^x.
@@ -202,9 +195,15 @@ func (a AudioInfo) FullCodecName() string {
 }
 
 // IsModernAudiobookCodec returns true for modern audiobook codecs.
+//
+// The codec table is an opinionated policy: mhm1/mhm2 (MPEG-H 3D Audio),
+// ec-3 (E-AC-3), ac-4 (AC-4) and mp4a with a HE-AAC/xHE-AAC profile.
+//
+// Deprecated: this encodes an arbitrary notion of "modern"; inspect Codec and
+// CodecProfile directly instead.
 func (a AudioInfo) IsModernAudiobookCodec() bool {
 	switch a.Codec {
-	case "mhm1", "mhm2": // xHE-AAC
+	case "mhm1", "mhm2": // MPEG-H 3D Audio
 		return true
 	case "ec-3": // E-AC-3
 		return true
