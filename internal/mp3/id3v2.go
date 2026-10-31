@@ -531,7 +531,6 @@ var txxxFieldHandlers = map[string]func(*types.File, string){
 	"series":                func(f *types.File, v string) { f.Tags.Series = v },
 	"series part":           func(f *types.File, v string) { f.Tags.SeriesPart = v },
 	"seriespart":            func(f *types.File, v string) { f.Tags.SeriesPart = v },
-	"part":                  func(f *types.File, v string) { f.Tags.SeriesPart = v },
 	"series-part":           func(f *types.File, v string) { f.Tags.SeriesPart = v },
 	"series position":       func(f *types.File, v string) { f.Tags.SeriesPart = v },
 	"publisher":             func(f *types.File, v string) { f.Tags.Publisher = v },
@@ -544,11 +543,9 @@ var txxxFieldHandlers = map[string]func(*types.File, string){
 	"mvnm":                  setIfEmpty(func(t *types.Tags) *string { return &t.Series }),
 	"movement name":         setIfEmpty(func(t *types.Tags) *string { return &t.Series }),
 	"movement":              setIfEmpty(func(t *types.Tags) *string { return &t.Series }),
-	"show":                  setIfEmpty(func(t *types.Tags) *string { return &t.Series }),
 	"mvin":                  setIfEmpty(func(t *types.Tags) *string { return &t.SeriesPart }),
 	"movement number":       setIfEmpty(func(t *types.Tags) *string { return &t.SeriesPart }),
 	"movement index":        setIfEmpty(func(t *types.Tags) *string { return &t.SeriesPart }),
-	"episode_id":            setIfEmpty(func(t *types.Tags) *string { return &t.SeriesPart }),
 	"grouping":              setIfEmpty(func(t *types.Tags) *string { return &t.Grouping }),
 }
 

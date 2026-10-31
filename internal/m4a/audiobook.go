@@ -131,7 +131,7 @@ func mapAudiobookField(fieldName, value string, file *types.File) {
 		file.Tags.Narrator = value
 	case "series":
 		file.Tags.Series = value
-	// "series part", "series position", "part", "volume" are collected in
+	// "series part" and "series position" are collected in
 	// customTags and applied by applyExplicitSeriesPart.
 	case "publisher":
 		file.Tags.Publisher = value
@@ -172,7 +172,7 @@ func applyExplicitSeriesPart(file *types.File, customTags map[string]string) {
 	if file.Tags.SeriesPart != "" {
 		return
 	}
-	for _, name := range []string{"Series Part", "Series Position", "Part", "Volume"} {
+	for _, name := range []string{"Series Part", "Series Position"} {
 		if v := lookupFold(customTags, name); v != "" {
 			file.Tags.SeriesPart = v
 			return

@@ -2,6 +2,7 @@ package mp3
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/simonhull/audiometa/internal/types"
@@ -23,5 +24,20 @@ func TestParseTXXXRecordsUppercasedDescription(t *testing.T) {
 	parseTXXXFrame(ID3v2Frame{ID: "TXXX", Data: append([]byte{3}, "Mood\x00Calm"...)}, &f)
 	if got := f.Tags.Get("MOOD"); !slices.Equal(got, []string{"Calm"}) {
 		t.Errorf("MOOD = %q", got)
+	}
+}
+
+func TestParseTXXXNonSeriesTagsStayRaw(t *testing.T) {
+	for _, desc := range []string{"show", "episode_id", "part"} {
+		t.Run(desc, func(t *testing.T) {
+			var f types.File
+			parseTXXXFrame(ID3v2Frame{ID: "TXXX", Data: append([]byte{3}, desc+"\x00Foo"...)}, &f)
+			if f.Tags.Series != "" || f.Tags.SeriesPart != "" {
+				t.Errorf("Series=%q SeriesPart=%q, want both empty", f.Tags.Series, f.Tags.SeriesPart)
+			}
+			if got := f.Tags.Get(strings.ToUpper(desc)); !slices.Equal(got, []string{"Foo"}) {
+				t.Errorf("raw %s = %q", desc, got)
+			}
+		})
 	}
 }

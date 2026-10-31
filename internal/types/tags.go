@@ -23,17 +23,21 @@ import (
 // path. Apps that want such heuristics should derive them from the exposed
 // fields.
 //
+// A tag fills a typed field only when it means that field: SHOW, EPISODE_ID,
+// and generic PART/Volume tags are not series tags and are left in the raw
+// tags (Get/All) only.
+//
 // Audiobook fields are filled only from explicit tags:
 //
 //   - Narrator: ID3 TXXX "NARRATOR"; M4A freeform "Narrator" atom; Vorbis NARRATOR.
-//   - Series: ID3 TXXX "SERIES"/"MVNM"/"MOVEMENT NAME"/"SHOW" and frame MVNM;
+//   - Series: ID3 TXXX "SERIES"/"MVNM"/"MOVEMENT NAME" and frame MVNM;
 //     M4A freeform "Series"/"MVNM"/"Movement Name" atoms and the ©mvn atom;
-//     Vorbis SERIES, SHOW and MVNM.
+//     Vorbis SERIES and MVNM.
 //   - SeriesPart: ID3 TXXX "SERIES PART"/"SERIES-PART"/"SERIESPART"/"SERIES
-//     POSITION"/"PART"/"MVIN"/"EPISODE_ID" and frame MVIN (an "N/total" value
-//     yields "N"); M4A freeform "Series Part"/"Series Position"/"Part"/"Volume"
+//     POSITION"/"MVIN" and frame MVIN (an "N/total" value
+//     yields "N"); M4A freeform "Series Part"/"Series Position"
 //     atoms and the ©mvi atom; Vorbis SERIESPART (also SERIES-PART, SERIES_PART,
-//     SERIES PART, PART), MVIN and EPISODE_ID.
+//     SERIES PART) and MVIN.
 //   - Grouping: ID3 GRP1 (or TIT1 when GRP1 is absent); M4A ©grp; Vorbis GROUPING.
 //   - Composers: ID3 TCOM; M4A ©wrt; Vorbis COMPOSER.
 type Tags struct {

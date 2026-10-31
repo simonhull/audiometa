@@ -434,3 +434,18 @@ func TestParseComment_MixedCaseSameKey(t *testing.T) {
 		t.Errorf("keys = %v, want [GENRE]", keys)
 	}
 }
+
+func TestParseComment_NonSeriesTagsStayRaw(t *testing.T) {
+	for _, key := range []string{"SHOW", "EPISODE_ID", "PART"} {
+		t.Run(key, func(t *testing.T) {
+			file := &types.File{}
+			_ = ParseComment(key+"=Foo", file)
+			if file.Tags.Series != "" || file.Tags.SeriesPart != "" {
+				t.Errorf("Series=%q SeriesPart=%q, want both empty", file.Tags.Series, file.Tags.SeriesPart)
+			}
+			if got := file.Tags.Get(key); len(got) != 1 || got[0] != "Foo" {
+				t.Errorf("raw %s = %q, want [Foo]", key, got)
+			}
+		})
+	}
+}

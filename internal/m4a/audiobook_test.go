@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"strings"
 	"testing"
 
 	audiobinary "github.com/simonhull/audiometa/internal/binary"
@@ -160,16 +161,16 @@ func TestApplyExplicitSeriesPart(t *testing.T) {
 			expected:   "3",
 		},
 		{
-			name:       "Part custom atom",
+			name:       "Part custom atom is not a series part",
 			customTags: map[string]string{"Part": "4"},
 			file:       &types.File{},
-			expected:   "4",
+			expected:   "",
 		},
 		{
-			name:       "Volume custom atom",
+			name:       "Volume custom atom is not a series part",
 			customTags: map[string]string{"Volume": "5"},
 			file:       &types.File{},
-			expected:   "5",
+			expected:   "",
 		},
 		{
 			name:       "Priority: Series Part wins",
@@ -227,5 +228,28 @@ func TestParseAudiobookTags_NoInference(t *testing.T) {
 	}
 	if file.Tags.Grouping != "Foo, Book 3" {
 		t.Errorf("Grouping = %q, want preserved", file.Tags.Grouping)
+	}
+}
+
+// TestParseAudiobookTags_NonSeriesFreeformStaysRaw verifies the generic Part
+// and Volume atoms do not fill SeriesPart but remain in the raw tags.
+func TestParseAudiobookTags_NonSeriesFreeformStaysRaw(t *testing.T) {
+	for _, name := range []string{"Part", "Volume"} {
+		t.Run(name, func(t *testing.T) {
+			ilst := createMockAtom("ilst", createCustomAtom("com.apple.iTunes", name, "5"))
+			sr := audiobinary.NewSafeReader(bytes.NewReader(ilst), int64(len(ilst)), "")
+			ilstAtom, _ := readAtomHeader(sr, 0, int64(len(ilst)))
+
+			file := &types.File{}
+			if err := parseAudiobookTags(context.Background(), sr, ilstAtom, file); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if file.Tags.SeriesPart != "" {
+				t.Errorf("SeriesPart = %q, want empty", file.Tags.SeriesPart)
+			}
+			if got := file.Tags.Get(strings.ToUpper(name)); len(got) != 1 || got[0] != "5" {
+				t.Errorf("raw %s = %q, want [5]", name, got)
+			}
+		})
 	}
 }

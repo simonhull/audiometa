@@ -87,17 +87,17 @@ func ParseComment(comment string, file *types.File) error { //nolint:gocyclo // 
 		tags.Publisher = value
 	case "SERIES":
 		tags.Series = value
-	case "SERIESPART", "SERIES-PART", "SERIES_PART", "SERIES PART", "PART":
+	case "SERIESPART", "SERIES-PART", "SERIES_PART", "SERIES PART":
 		if tags.SeriesPart == "" {
 			tags.SeriesPart = value
 		}
 	case "GROUPING":
 		tags.Grouping = value
-	case "SHOW", "MVNM":
+	case "MVNM":
 		if tags.Series == "" {
 			tags.Series = value
 		}
-	case "EPISODE_ID", "MVIN":
+	case "MVIN":
 		if tags.SeriesPart == "" {
 			tags.SeriesPart = value
 		}
