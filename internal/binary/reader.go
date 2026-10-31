@@ -8,11 +8,23 @@ import (
 	"io"
 )
 
+// windowSize is the read-through cache size. Small reads are served from one
+// cached window of the file; reads larger than windowSize/4 go straight to the
+// underlying reader and leave the window untouched.
+const windowSize = 16 << 10
+
 // SafeReader wraps io.ReaderAt with bounds checking and helpful error messages.
+//
+// A SafeReader caches one window of the file to turn many small reads into one
+// underlying ReadAt. It is not safe for concurrent use; create one per parse.
 type SafeReader struct {
-	r    io.ReaderAt
-	path string
-	size int64
+	r       io.ReaderAt
+	path    string
+	size    int64
+	win     []byte  // allocated on first small read
+	winOff  int64   // file offset of win[0]
+	winLen  int     // valid bytes in win (0 = empty)
+	scratch [8]byte // backing store for Read/ReadEndian, avoids per-call allocation
 }
 
 // NewSafeReader creates a new SafeReader.
@@ -42,6 +54,18 @@ func (sr *SafeReader) ReadAt(b []byte, off int64, what string) error {
 			sr.path, len(b), off, sr.size, what)
 	}
 
+	if len(b) <= windowSize/4 {
+		if sr.winLen > 0 && off >= sr.winOff && off+int64(len(b)) <= sr.winOff+int64(sr.winLen) {
+			copy(b, sr.win[off-sr.winOff:])
+			return nil
+		}
+		if sr.fill(off) {
+			copy(b, sr.win[:len(b)])
+			return nil
+		}
+		// fill failed: fall through to the direct read so errors are reported exactly as before
+	}
+
 	n, err := sr.r.ReadAt(b, off)
 	if err != nil && err != io.EOF {
 		return fmt.Errorf("%s: failed to read %s at offset %d: %w", sr.path, what, off, err)
@@ -53,6 +77,25 @@ func (sr *SafeReader) ReadAt(b []byte, off int64, what string) error {
 	}
 
 	return nil
+}
+
+// fill loads the window starting at off. It reports false (and leaves the window
+// empty) on any error or short read, so the caller can fall back to a direct read.
+func (sr *SafeReader) fill(off int64) bool {
+	if sr.win == nil {
+		sr.win = make([]byte, windowSize)
+	}
+	n := int64(windowSize)
+	if rest := sr.size - off; rest < n {
+		n = rest
+	}
+	got, err := sr.r.ReadAt(sr.win[:n], off)
+	if (err != nil && !errors.Is(err, io.EOF)) || int64(got) < n {
+		sr.winLen = 0
+		return false
+	}
+	sr.winOff, sr.winLen = off, got
+	return true
 }
 
 // MaxAllocBytes is the absolute ceiling on any single length/count-driven
@@ -97,7 +140,7 @@ func Read[T uint8 | uint16 | uint32 | uint64](sr *SafeReader, off int64, what st
 		return zero, errors.New("unsupported type for Read")
 	}
 
-	buf := make([]byte, size)
+	buf := sr.scratch[:size]
 	if err := sr.ReadAt(buf, off, what); err != nil {
 		return zero, err
 	}

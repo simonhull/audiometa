@@ -2,6 +2,7 @@ package binary
 
 import (
 	"encoding/binary"
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -286,5 +287,172 @@ func TestSafeReader_CheckLen(t *testing.T) {
 				t.Errorf("err = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+// countingReader counts calls to ReadAt on the wrapped mockReader.
+type countingReader struct {
+	mockReader
+	calls int
+}
+
+func (c *countingReader) ReadAt(p []byte, off int64) (int, error) {
+	c.calls++
+	return c.mockReader.ReadAt(p, off)
+}
+
+func seqData(n int) []byte {
+	d := make([]byte, n)
+	for i := range d {
+		d[i] = byte(i * 7)
+	}
+	return d
+}
+
+func TestSafeReader_Window_SequentialReadsOneCall(t *testing.T) {
+	data := seqData(windowSize * 2)
+	cr := &countingReader{mockReader: mockReader{data: data}}
+	sr := NewSafeReader(cr, int64(len(data)), "w.bin")
+	for i := range 100 {
+		v, err := Read[uint32](sr, int64(i*4), "x")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := binary.BigEndian.Uint32(data[i*4:]); v != want {
+			t.Fatalf("read %d = %x, want %x", i, v, want)
+		}
+	}
+	if cr.calls != 1 {
+		t.Errorf("underlying calls = %d, want 1", cr.calls)
+	}
+}
+
+func TestSafeReader_Window_MissRefills(t *testing.T) {
+	data := seqData(windowSize * 3)
+	cr := &countingReader{mockReader: mockReader{data: data}}
+	sr := NewSafeReader(cr, int64(len(data)), "w.bin")
+	buf := make([]byte, 4)
+	if err := sr.ReadAt(buf, 0, "a"); err != nil {
+		t.Fatal(err)
+	}
+	off := int64(windowSize + 100)
+	if err := sr.ReadAt(buf, off, "b"); err != nil {
+		t.Fatal(err)
+	}
+	if cr.calls != 2 {
+		t.Errorf("calls = %d, want 2", cr.calls)
+	}
+	if string(buf) != string(data[off:off+4]) {
+		t.Errorf("wrong bytes after refill")
+	}
+}
+
+func TestSafeReader_Window_LargeReadBypasses(t *testing.T) {
+	data := seqData(windowSize * 2)
+	cr := &countingReader{mockReader: mockReader{data: data}}
+	sr := NewSafeReader(cr, int64(len(data)), "w.bin")
+	small := make([]byte, 4)
+	if err := sr.ReadAt(small, 0, "small"); err != nil {
+		t.Fatal(err)
+	}
+	big := make([]byte, windowSize/4+1)
+	if err := sr.ReadAt(big, 10, "big"); err != nil {
+		t.Fatal(err)
+	}
+	if cr.calls != 2 {
+		t.Fatalf("calls after big read = %d, want 2", cr.calls)
+	}
+	if string(big) != string(data[10:10+len(big)]) {
+		t.Error("big read returned wrong bytes")
+	}
+	if err := sr.ReadAt(small, 100, "small again"); err != nil {
+		t.Fatal(err)
+	}
+	if cr.calls != 2 {
+		t.Errorf("window was evicted by big read: calls = %d, want 2", cr.calls)
+	}
+}
+
+func TestSafeReader_ErrorMessagesUnchanged(t *testing.T) {
+	data := seqData(10)
+	sr := NewSafeReader(&mockReader{data: data}, 10, "p.bin")
+	buf := make([]byte, 4)
+	tests := []struct {
+		off  int64
+		n    int
+		want string
+	}{
+		{-1, 4, "p.bin: offset -1 out of bounds (file size: 10) while reading w"},
+		{10, 4, "p.bin: offset 10 out of bounds (file size: 10) while reading w"},
+		{8, 4, "p.bin: read of 4 bytes at offset 8 would exceed file size 10 while reading w"},
+	}
+	for _, tt := range tests {
+		err := sr.ReadAt(buf[:tt.n], tt.off, "w")
+		if err == nil || err.Error() != tt.want {
+			t.Errorf("off %d: err = %v, want %q", tt.off, err, tt.want)
+		}
+	}
+}
+
+type failingReader struct {
+	err   error
+	short int // bytes to return with nil error when err == nil
+}
+
+func (f failingReader) ReadAt(p []byte, _ int64) (int, error) {
+	if f.err != nil {
+		return 0, f.err
+	}
+	return f.short, nil
+}
+
+func TestSafeReader_UnderlyingError(t *testing.T) {
+	boom := errors.New("boom")
+	sr := NewSafeReader(failingReader{err: boom}, 100, "p.bin")
+	err := sr.ReadAt(make([]byte, 4), 8, "thing")
+	if err == nil || err.Error() != "p.bin: failed to read thing at offset 8: boom" {
+		t.Errorf("err = %v", err)
+	}
+	if !errors.Is(err, boom) {
+		t.Error("errors.Is(err, boom) = false")
+	}
+}
+
+func TestSafeReader_ShortRead(t *testing.T) {
+	sr := NewSafeReader(failingReader{short: 2}, 100, "p.bin")
+	err := sr.ReadAt(make([]byte, 4), 8, "thing")
+	if err == nil || err.Error() != "p.bin: short read for thing at offset 8: got 2 bytes, expected 4" {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestSafeReader_Window_NearEOF(t *testing.T) {
+	data := seqData(windowSize + 50)
+	cr := &countingReader{mockReader: mockReader{data: data}}
+	sr := NewSafeReader(cr, int64(len(data)), "w.bin")
+	buf := make([]byte, 8)
+	off := int64(len(data) - 8)
+	if err := sr.ReadAt(buf, off, "tail"); err != nil {
+		t.Fatal(err)
+	}
+	if string(buf) != string(data[off:]) {
+		t.Error("tail bytes wrong")
+	}
+	if err := sr.ReadAt(buf[:4], off+2, "tail2"); err != nil {
+		t.Fatal(err)
+	}
+	if cr.calls != 1 {
+		t.Errorf("calls = %d, want 1", cr.calls)
+	}
+}
+
+func TestRead_ZeroAllocsAfterWarmup(t *testing.T) {
+	data := seqData(64)
+	sr := NewSafeReader(&mockReader{data: data}, int64(len(data)), "w.bin")
+	if _, err := Read[uint32](sr, 0, "warm"); err != nil {
+		t.Fatal(err)
+	}
+	if n := testing.AllocsPerRun(100, func() { _, _ = Read[uint32](sr, 0, "x") }); n != 0 {
+		t.Errorf("allocs = %v, want 0", n)
 	}
 }

@@ -63,7 +63,7 @@ func ReadEndian[T uint8 | uint16 | uint32 | uint64](sr *SafeReader, off int64, w
 		size = 8
 	}
 
-	buf := make([]byte, size)
+	buf := sr.scratch[:size]
 	if err := sr.ReadAt(buf, off, what); err != nil {
 		return zero, err
 	}
