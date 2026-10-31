@@ -22,10 +22,10 @@ func parseTechnicalInfo(sr *binary.SafeReader, moovAtom *Atom, file *types.File)
 		return nil
 	}
 
-	// Find trak atom for audio format info
-	// Path: moov -> trak
-	trakAtom, err := findAtom(sr, moovAtom.DataOffset(), moovAtom.DataOffset()+int64(moovAtom.DataSize()), atomTrak)
-	if err != nil {
+	// Find the audio trak for format info
+	// Path: moov -> trak (handler type "soun")
+	trakAtom := selectAudioTrak(sr, moovAtom)
+	if trakAtom == nil {
 		return nil
 	}
 
@@ -71,6 +71,55 @@ func parseTechnicalInfo(sr *binary.SafeReader, moovAtom *Atom, file *types.File)
 	}
 
 	return nil
+}
+
+// handlerSound is the hdlr handler type of an audio track.
+const handlerSound = "soun"
+
+// selectAudioTrak returns the first trak under moov whose handler type is
+// "soun". Files whose first track is something else (a chapter text track, say)
+// would otherwise yield channels and sample rate from the wrong track. If no
+// track declares a sound handler, it falls back to the first trak.
+func selectAudioTrak(sr *binary.SafeReader, moovAtom *Atom) *Atom {
+	offset := moovAtom.DataOffset()
+	end := offset + int64(moovAtom.DataSize())
+
+	var first *Atom
+	for offset < end {
+		atom, err := readAtomHeader(sr, offset, end)
+		if err != nil {
+			break
+		}
+		offset += int64(atom.Size)
+		if atom.Type != atomTrak {
+			continue
+		}
+		if first == nil {
+			first = atom
+		}
+		if trakHandlerType(sr, atom) == handlerSound {
+			return atom
+		}
+	}
+	return first
+}
+
+// trakHandlerType returns the trak's mdia/hdlr handler type, or "" if absent.
+func trakHandlerType(sr *binary.SafeReader, trak *Atom) string {
+	mdia, err := findAtom(sr, trak.DataOffset(), trak.DataOffset()+int64(trak.DataSize()), "mdia")
+	if err != nil {
+		return ""
+	}
+	hdlr, err := findAtom(sr, mdia.DataOffset(), mdia.DataOffset()+int64(mdia.DataSize()), "hdlr")
+	if err != nil || hdlr.DataSize() < 12 {
+		return ""
+	}
+	// hdlr: version/flags(4) pre_defined(4) handler_type(4)
+	buf := make([]byte, 4)
+	if err := sr.ReadAt(buf, hdlr.DataOffset()+8, "hdlr handler type"); err != nil {
+		return ""
+	}
+	return string(buf)
 }
 
 // parseMvhd parses the movie header atom for duration.
@@ -198,37 +247,51 @@ func parseStsd(sr *binary.SafeReader, stsdAtom *Atom, file *types.File) error {
 	// Parse enhanced codec details (non-fatal if it fails)
 	_ = parseCodecDetails(sr, offset-8, entrySize, codec, file)
 
-	// Skip reserved (6 bytes) and data reference index (2 bytes)
-	offset += 8
+	return parseSoundSampleEntry(sr, offset-8, file)
+}
 
-	// Audio sample entry specific fields:
-	// Skip version (2 bytes), revision level (2 bytes), and vendor (4 bytes)
-	offset += 8
-
-	// [2 bytes] number of channels
-	channels, err := binary.Read[uint16](sr, offset, "channels")
-	if err != nil {
-		return err
-	}
-	file.Audio.Channels = int(channels)
-	offset += 2
-
-	// Skip sample size (2 bytes - bits per sample)
-	offset += 2
-
-	// Skip compression ID (2 bytes) and packet size (2 bytes)
-	offset += 4
-
-	// [4 bytes] sample rate (16.16 fixed point)
-	sampleRateFixed, err := binary.Read[uint32](sr, offset, "sample rate")
+// parseSoundSampleEntry reads channels and sample rate from an audio sample
+// entry starting at entry (the offset of its size field). Versions 0 and 1 share
+// the legacy layout (v1's extra fields follow the sample rate); version 2
+// stores a float64 rate and a uint32 channel count further in. Other versions
+// are left unset rather than guessed.
+func parseSoundSampleEntry(sr *binary.SafeReader, entry int64, file *types.File) error {
+	// size(4) format(4) reserved(6) data_reference_index(2) = 16 bytes, then:
+	version, err := binary.Read[uint16](sr, entry+16, "sound sample entry version")
 	if err != nil {
 		return err
 	}
 
-	// Convert 16.16 fixed point to integer
-	// High 16 bits = integer part, low 16 bits = fractional part
-	file.Audio.SampleRate = int(sampleRateFixed >> 16)
+	switch version {
+	case 0, 1:
+		// version(2) revision(2) vendor(4), then channels(2) samplesize(2) compid(2) packetsize(2) rate(16.16)
+		channels, err := binary.Read[uint16](sr, entry+24, "channels")
+		if err != nil {
+			return err
+		}
+		file.Audio.Channels = int(channels)
 
+		rate, err := binary.Read[uint32](sr, entry+32, "sample rate")
+		if err != nil {
+			return err
+		}
+		file.Audio.SampleRate = int(rate >> 16) // integer part of 16.16 fixed point
+	case 2:
+		// Legacy fields hold constants; real values: float64 rate at +40, uint32 channels at +48.
+		bits, err := binary.Read[uint64](sr, entry+40, "sample rate")
+		if err != nil {
+			return err
+		}
+		channels, err := binary.Read[uint32](sr, entry+48, "channels")
+		if err != nil {
+			return err
+		}
+		rate := math.Float64frombits(bits)
+		if rate > 0 && rate <= math.MaxInt32 {
+			file.Audio.SampleRate = int(rate)
+		}
+		file.Audio.Channels = int(min(channels, math.MaxUint16))
+	}
 	return nil
 }
 
