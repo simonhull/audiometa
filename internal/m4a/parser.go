@@ -2,6 +2,7 @@ package m4a
 
 import (
 	"context"
+	"errors"
 	"io"
 
 	"github.com/simonhull/audiometa/internal/binary"
@@ -81,38 +82,26 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		return file, nil
 	}
 
-	// Find udta atom (user data) inside moov
-	udtaAtom, err := findAtom(sr, moovAtom.DataOffset(), moovAtom.DataOffset()+int64(moovAtom.DataSize()), "udta")
-	if err != nil {
-		// No udta - return basic file info
-		return file, nil
-	}
-
-	// Find meta atom inside udta
-	metaAtom, err := findAtom(sr, udtaAtom.DataOffset(), udtaAtom.DataOffset()+int64(udtaAtom.DataSize()), "meta")
-	if err != nil {
-		// No meta - return basic file info
-		return file, nil
-	}
-
-	// meta atom has 4 bytes of version+flags before the data
-	metaDataOffset := metaAtom.DataOffset() + 4
-	metaDataEnd := metaAtom.DataOffset() + int64(metaAtom.DataSize())
-
-	// Find ilst atom (iTunes metadata list) inside meta
-	ilstAtom, err := findAtom(sr, metaDataOffset, metaDataEnd, "ilst")
-	if err != nil {
-		// No ilst - return basic file info
-		return file, nil
-	}
-
-	// Extract metadata from ilst
-	if err := extractIlstMetadata(sr, ilstAtom, file); err != nil {
+	// Locate the iTunes metadata list. Its absence is normal (untagged file)
+	// and must not stop technical info or chapters from being parsed.
+	ilstAtom, err := findIlst(sr, moovAtom)
+	if err != nil && !errors.Is(err, errAtomNotFound) {
 		file.Warnings = append(file.Warnings, types.Warning{
 			Stage:   types.StageMetadata,
 			Message: err.Error(),
 			Err:     err,
 		})
+	}
+
+	// Extract metadata from ilst
+	if ilstAtom != nil {
+		if err := extractIlstMetadata(sr, ilstAtom, file); err != nil {
+			file.Warnings = append(file.Warnings, types.Warning{
+				Stage:   types.StageMetadata,
+				Message: err.Error(),
+				Err:     err,
+			})
+		}
 	}
 
 	// Parse technical info (duration, bitrate, codec, sample rate, channels)
@@ -148,6 +137,26 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	}
 
 	return file, nil
+}
+
+// findIlst navigates moov → udta → meta → ilst and returns the ilst atom.
+// The returned error wraps errAtomNotFound when any level is simply absent.
+func findIlst(sr *binary.SafeReader, moovAtom *Atom) (*Atom, error) {
+	udtaAtom, err := findAtom(sr, moovAtom.DataOffset(), moovAtom.DataOffset()+int64(moovAtom.DataSize()), "udta")
+	if err != nil {
+		return nil, err
+	}
+
+	metaAtom, err := findAtom(sr, udtaAtom.DataOffset(), udtaAtom.DataOffset()+int64(udtaAtom.DataSize()), "meta")
+	if err != nil {
+		return nil, err
+	}
+
+	// meta is a full atom: 4 bytes of version+flags precede its children.
+	metaDataOffset := metaAtom.DataOffset() + 4
+	metaDataEnd := metaAtom.DataOffset() + int64(metaAtom.DataSize())
+
+	return findAtom(sr, metaDataOffset, metaDataEnd, "ilst")
 }
 
 // ExtractArtwork extracts embedded artwork from M4A/M4B files.

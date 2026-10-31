@@ -2,11 +2,16 @@
 package m4a
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/simonhull/audiometa/internal/binary"
 	"github.com/simonhull/audiometa/internal/types"
 )
+
+// errAtomNotFound is wrapped by findAtom when the container holds no atom of
+// the requested type. Callers use errors.Is to tell "absent" from "corrupt".
+var errAtomNotFound = errors.New("atom not found")
 
 // Atom represents an MP4/M4A/M4B atom (box).
 type Atom struct {
@@ -130,5 +135,5 @@ func findAtom(sr *binary.SafeReader, start, end int64, atomType string) (*Atom, 
 		offset += int64(atom.Size)
 	}
 
-	return nil, fmt.Errorf("atom '%s' not found", atomType)
+	return nil, fmt.Errorf("atom '%s': %w", atomType, errAtomNotFound)
 }

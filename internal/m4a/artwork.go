@@ -25,24 +25,7 @@ func extractArtwork(sr *binary.SafeReader, size int64) ([]types.Artwork, error) 
 		return nil, nil
 	}
 
-	// Find udta atom (user data) inside moov
-	udtaAtom, err := findAtom(sr, moovAtom.DataOffset(), moovAtom.DataOffset()+int64(moovAtom.DataSize()), "udta")
-	if err != nil {
-		return nil, nil
-	}
-
-	// Find meta atom inside udta
-	metaAtom, err := findAtom(sr, udtaAtom.DataOffset(), udtaAtom.DataOffset()+int64(udtaAtom.DataSize()), "meta")
-	if err != nil {
-		return nil, nil
-	}
-
-	// meta atom has 4 bytes of version+flags before the data
-	metaDataOffset := metaAtom.DataOffset() + 4
-	metaDataEnd := metaAtom.DataOffset() + int64(metaAtom.DataSize())
-
-	// Find ilst atom (iTunes metadata list) inside meta
-	ilstAtom, err := findAtom(sr, metaDataOffset, metaDataEnd, "ilst")
+	ilstAtom, err := findIlst(sr, moovAtom)
 	if err != nil {
 		return nil, nil
 	}
