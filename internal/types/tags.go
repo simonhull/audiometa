@@ -140,13 +140,12 @@ func (t *Tags) GetBest(candidates ...string) string {
 	return ""
 }
 
-// Set sets a tag value (for future write support).
+// Set sets a tag value (in-memory only).
 //
 // If values is empty, the tag is removed.
 // Multiple values can be provided for multi-value tags.
 //
 // Note: This only modifies the in-memory representation.
-// Write support is planned for a future release.
 //
 // Example:
 //
