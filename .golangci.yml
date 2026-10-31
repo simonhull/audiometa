@@ -96,6 +96,7 @@ linters:
         - name: error-return
         - name: error-strings
         - name: error-naming
+        # Requires doc comments on every exported identifier (staticcheck ST1020-22 checks their form).
         - name: exported
         - name: increment-decrement
         - name: var-naming
