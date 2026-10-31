@@ -1,6 +1,7 @@
 package mp3
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"time"
@@ -41,12 +42,16 @@ func samplesPerFrame(header uint32) int {
 }
 
 // parseTechnicalInfo extracts bitrate, sample rate, codec, and duration from MP3 frames.
-func parseTechnicalInfo(sr *binutil.SafeReader, tagSize int64, fileSize int64, file *types.File) error {
+func parseTechnicalInfo(ctx context.Context, sr *binutil.SafeReader, tagSize int64, fileSize int64, file *types.File) error {
 	// Find first MP3 frame (after ID3 tag)
 	frameOffset := tagSize
 
 	// Search for MP3 frame sync (11 bits set)
-	for frameOffset < fileSize-4 {
+	for i := 0; frameOffset < fileSize-4; i++ {
+		if err := binutil.Canceled(ctx, i); err != nil {
+			return err
+		}
+
 		header, err := findMP3FrameAt(sr, frameOffset)
 		if err == nil {
 			// Found valid frame

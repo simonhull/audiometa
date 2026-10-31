@@ -1,6 +1,7 @@
 package m4a
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/simonhull/audiometa/internal/binary"
@@ -15,17 +16,17 @@ const (
 
 // extractArtwork extracts embedded cover art from M4A/M4B files.
 // Navigates: moov → udta → meta → ilst → covr → data atoms.
-func extractArtwork(sr *binary.SafeReader, size int64) ([]types.Artwork, error) {
+func extractArtwork(ctx context.Context, sr *binary.SafeReader, size int64) ([]types.Artwork, error) {
 	var artwork []types.Artwork
 
 	// Find moov atom (movie container)
-	moovAtom, err := findAtom(sr, 0, size, "moov")
+	moovAtom, err := findAtomContext(ctx, sr, 0, size, "moov")
 	if err != nil {
 		// No moov = no metadata = no artwork
 		return nil, nil
 	}
 
-	ilstAtom, err := findIlst(sr, moovAtom)
+	ilstAtom, err := findIlst(ctx, sr, moovAtom)
 	if err != nil {
 		return nil, nil
 	}
@@ -41,7 +42,11 @@ func extractArtwork(sr *binary.SafeReader, size int64) ([]types.Artwork, error) 
 	offset := covrAtom.DataOffset()
 	end := offset + int64(covrAtom.DataSize())
 
-	for offset < end {
+	for i := 0; offset < end; i++ {
+		if err := binary.Canceled(ctx, i); err != nil {
+			return nil, err
+		}
+
 		dataAtom, err := readAtomHeader(sr, offset, end)
 		if err != nil {
 			break

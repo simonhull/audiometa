@@ -45,15 +45,18 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	}
 
 	// Find moov atom (movie container)
-	moovAtom, err := findAtom(sr, 0, size, "moov")
+	moovAtom, err := findAtomContext(ctx, sr, 0, size, "moov")
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
 		// No moov atom - return basic file info
 		return file, nil
 	}
 
 	// Locate the iTunes metadata list. Its absence is normal (untagged file)
 	// and must not stop technical info or chapters from being parsed.
-	ilstAtom, err := findIlst(sr, moovAtom)
+	ilstAtom, err := findIlst(ctx, sr, moovAtom)
 	if err != nil && !errors.Is(err, errAtomNotFound) {
 		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 			Stage:   types.StageMetadata,
@@ -64,7 +67,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 
 	// Extract metadata from ilst
 	if ilstAtom != nil {
-		if err := extractIlstMetadata(sr, ilstAtom, file); err != nil {
+		if err := extractIlstMetadata(ctx, sr, ilstAtom, file); err != nil {
 			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 				Stage:   types.StageMetadata,
 				Message: err.Error(),
@@ -83,7 +86,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	}
 
 	// Parse chapters
-	chapters, err := parseChapters(sr, moovAtom, file.Audio.Duration)
+	chapters, err := parseChapters(ctx, sr, moovAtom, file.Audio.Duration)
 	if err != nil {
 		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 			Stage:   types.StageChapters,
@@ -96,7 +99,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 
 	// Parse audiobook-specific tags (narrator, series, publisher, etc.)
 	if ilstAtom != nil {
-		if err := parseAudiobookTags(sr, ilstAtom, file); err != nil {
+		if err := parseAudiobookTags(ctx, sr, ilstAtom, file); err != nil {
 			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 				Stage:   types.StageMetadata,
 				Message: err.Error(),
@@ -105,18 +108,23 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		}
 	}
 
+	// Stages that observed cancellation record it as a warning; report it as the result.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	return file, nil
 }
 
 // findIlst navigates moov → udta → meta → ilst and returns the ilst atom.
 // The returned error wraps errAtomNotFound when any level is simply absent.
-func findIlst(sr *binary.SafeReader, moovAtom *Atom) (*Atom, error) {
-	udtaAtom, err := findAtom(sr, moovAtom.DataOffset(), moovAtom.DataOffset()+int64(moovAtom.DataSize()), "udta")
+func findIlst(ctx context.Context, sr *binary.SafeReader, moovAtom *Atom) (*Atom, error) {
+	udtaAtom, err := findAtomContext(ctx, sr, moovAtom.DataOffset(), moovAtom.DataOffset()+int64(moovAtom.DataSize()), "udta")
 	if err != nil {
 		return nil, err
 	}
 
-	metaAtom, err := findAtom(sr, udtaAtom.DataOffset(), udtaAtom.DataOffset()+int64(udtaAtom.DataSize()), "meta")
+	metaAtom, err := findAtomContext(ctx, sr, udtaAtom.DataOffset(), udtaAtom.DataOffset()+int64(udtaAtom.DataSize()), "meta")
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +133,7 @@ func findIlst(sr *binary.SafeReader, moovAtom *Atom) (*Atom, error) {
 	metaDataOffset := metaAtom.DataOffset() + 4
 	metaDataEnd := metaAtom.DataOffset() + int64(metaAtom.DataSize())
 
-	return findAtom(sr, metaDataOffset, metaDataEnd, "ilst")
+	return findAtomContext(ctx, sr, metaDataOffset, metaDataEnd, "ilst")
 }
 
 // ExtractArtwork extracts embedded artwork from M4A/M4B files.
@@ -134,7 +142,7 @@ func (p *parser) ExtractArtwork(ctx context.Context, r io.ReaderAt, size int64, 
 		return nil, err
 	}
 	sr := binary.NewSafeReader(r, size, path)
-	return extractArtwork(sr, size)
+	return extractArtwork(ctx, sr, size)
 }
 
 // init registers the M4A/M4B parser.

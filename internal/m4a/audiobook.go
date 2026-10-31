@@ -1,6 +1,7 @@
 package m4a
 
 import (
+	"context"
 	"strings"
 
 	"github.com/simonhull/audiometa/internal/binary"
@@ -9,7 +10,7 @@ import (
 )
 
 // parseAudiobookTags extracts narrator, series, publisher, etc. from custom atoms.
-func parseAudiobookTags(sr *binary.SafeReader, ilstAtom *Atom, file *types.File) error {
+func parseAudiobookTags(ctx context.Context, sr *binary.SafeReader, ilstAtom *Atom, file *types.File) error {
 	offset := ilstAtom.DataOffset()
 	end := offset + int64(ilstAtom.DataSize())
 
@@ -17,7 +18,11 @@ func parseAudiobookTags(sr *binary.SafeReader, ilstAtom *Atom, file *types.File)
 	customTags := make(map[string]string)
 
 	// Scan through ilst for custom atoms (----)
-	for offset < end {
+	for i := 0; offset < end; i++ {
+		if err := binary.Canceled(ctx, i); err != nil {
+			return err
+		}
+
 		atom, err := readAtomHeader(sr, offset, end)
 		if err != nil {
 			// Skip corrupted atoms

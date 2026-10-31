@@ -58,6 +58,10 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 
 	// Read up to 3 pages (identification, comment, setup headers)
 	for i := 0; i < 3 && offset < size; i++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
 		page, nextOffset, err := readPage(sr, offset)
 		if err != nil {
 			if i == 0 {

@@ -2,6 +2,7 @@ package mp3
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 
@@ -23,7 +24,7 @@ const (
 
 // extractArtwork extracts embedded artwork from MP3 files.
 // Parses ID3v2 APIC (Attached Picture) frames.
-func extractArtwork(r io.ReaderAt, size int64, path string) ([]types.Artwork, error) {
+func extractArtwork(ctx context.Context, r io.ReaderAt, size int64, path string) ([]types.Artwork, error) {
 	sr := binutil.NewSafeReader(r, size, path)
 
 	// Parse ID3v2 header
@@ -40,7 +41,11 @@ func extractArtwork(r io.ReaderAt, size int64, path string) ([]types.Artwork, er
 	var artwork []types.Artwork
 
 	// Scan through frames looking for APIC
-	for offset < tagEnd {
+	for i := 0; offset < tagEnd; i++ {
+		if err := binutil.Canceled(ctx, i); err != nil {
+			return nil, err
+		}
+
 		frame, bytesRead, stop := readFrameForArtwork(sr, header, offset)
 		if stop {
 			break

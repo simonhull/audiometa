@@ -2,6 +2,7 @@
 package m4a
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -119,9 +120,19 @@ func readAtomHeader(sr *binary.SafeReader, offset, parentEnd int64) (*Atom, erro
 
 // Returns the first matching atom or an error if not found.
 func findAtom(sr *binary.SafeReader, start, end int64, atomType string) (*Atom, error) {
+	return findAtomContext(context.Background(), sr, start, end, atomType)
+}
+
+// findAtomContext is findAtom with periodic cancellation checks, for scans over
+// atom lists that can be arbitrarily long (the top level of a file).
+func findAtomContext(ctx context.Context, sr *binary.SafeReader, start, end int64, atomType string) (*Atom, error) {
 	offset := start
 
-	for offset < end {
+	for i := 0; offset < end; i++ {
+		if err := binary.Canceled(ctx, i); err != nil {
+			return nil, err
+		}
+
 		atom, err := readAtomHeader(sr, offset, end)
 		if err != nil {
 			return nil, err

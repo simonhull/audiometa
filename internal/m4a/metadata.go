@@ -1,6 +1,7 @@
 package m4a
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -101,11 +102,15 @@ func parseMetadataTag(sr *binary.SafeReader, tagAtom *Atom) (string, error) {
 }
 
 // extractIlstMetadata parses all metadata items from the ilst atom.
-func extractIlstMetadata(sr *binary.SafeReader, ilstAtom *Atom, file *types.File) error {
+func extractIlstMetadata(ctx context.Context, sr *binary.SafeReader, ilstAtom *Atom, file *types.File) error {
 	offset := ilstAtom.DataOffset()
 	end := offset + int64(ilstAtom.DataSize())
 
-	for offset < end {
+	for i := 0; offset < end; i++ {
+		if err := binary.Canceled(ctx, i); err != nil {
+			return err
+		}
+
 		// Read tag atom
 		tagAtom, err := readAtomHeader(sr, offset, end)
 		if err != nil {

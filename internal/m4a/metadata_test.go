@@ -2,6 +2,7 @@ package m4a
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"io"
 	"testing"
@@ -114,7 +115,7 @@ func TestExtractIlstMetadata(t *testing.T) {
 	ilstAtom, _ := readAtomHeader(sr, 0, int64(len(ilst)))
 
 	file := &types.File{}
-	err := extractIlstMetadata(sr, ilstAtom, file)
+	err := extractIlstMetadata(context.Background(), sr, ilstAtom, file)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -277,7 +278,7 @@ func runIlst(t *testing.T, items ...[]byte) *types.File {
 		t.Fatalf("readAtomHeader: %v", err)
 	}
 	file := &types.File{}
-	if err := extractIlstMetadata(sr, ilstAtom, file); err != nil {
+	if err := extractIlstMetadata(context.Background(), sr, ilstAtom, file); err != nil {
 		t.Fatalf("extractIlstMetadata: %v", err)
 	}
 	return file
@@ -411,7 +412,7 @@ func TestIlstSkipsCoverData(t *testing.T) {
 	}
 	rr.max = 0
 	file := &types.File{}
-	if err := extractIlstMetadata(sr, ilstAtom, file); err != nil {
+	if err := extractIlstMetadata(context.Background(), sr, ilstAtom, file); err != nil {
 		t.Fatal(err)
 	}
 	if file.Tags.Title != "Title" || file.Tags.AlbumArtist != "AA" {

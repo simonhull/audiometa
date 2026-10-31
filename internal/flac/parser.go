@@ -65,7 +65,11 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	var vorbisComments []string
 	audioStart := int64(-1)
 	offset := int64(4) // After "fLaC"
-	for offset < size {
+	for i := 0; offset < size; i++ {
+		if err := binary.Canceled(ctx, i); err != nil {
+			return nil, err
+		}
+
 		// Read metadata block header (4 bytes)
 		header, err := binary.Read[uint32](sr, offset, "metadata block header")
 		if err != nil {
@@ -98,9 +102,12 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 			}
 
 		case blockTypeVorbisComment:
-			comments, err := parseVorbisComment(sr, offset, blockLength, file)
+			comments, err := parseVorbisComment(ctx, sr, offset, blockLength, file)
 			vorbisComments = append(vorbisComments, comments...)
 			if err != nil {
+				if ctxErr := ctx.Err(); ctxErr != nil {
+					return nil, ctxErr
+				}
 				file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 					Stage:   types.StageMetadata,
 					Message: fmt.Sprintf("failed to parse Vorbis comments: %v", err),
@@ -196,7 +203,11 @@ func (p *parser) ExtractArtwork(ctx context.Context, r io.ReaderAt, size int64, 
 	offset := int64(4)
 
 	// Scan for PICTURE blocks
-	for offset < size {
+	for i := 0; offset < size; i++ {
+		if err := binary.Canceled(ctx, i); err != nil {
+			return nil, err
+		}
+
 		// Read metadata block header
 		header, err := binary.Read[uint32](sr, offset, "metadata block header")
 		if err != nil {
@@ -279,7 +290,7 @@ func parseStreamInfo(sr *binary.SafeReader, offset, blockLength int64, file *typ
 }
 
 // parseVorbisComment extracts tags from VORBIS_COMMENT block.
-func parseVorbisComment(sr *binary.SafeReader, offset, _ int64, file *types.File) ([]string, error) {
+func parseVorbisComment(ctx context.Context, sr *binary.SafeReader, offset, _ int64, file *types.File) ([]string, error) {
 	var comments []string
 	currentOffset := offset
 
@@ -302,6 +313,10 @@ func parseVorbisComment(sr *binary.SafeReader, offset, _ int64, file *types.File
 
 	// Parse each comment
 	for i := range numComments {
+		if err := binary.Canceled(ctx, int(i)); err != nil {
+			return comments, err
+		}
+
 		// Read comment length (32-bit little-endian)
 		commentLength, err := binary.ReadLE[uint32](sr, currentOffset, "comment length")
 		if err != nil {

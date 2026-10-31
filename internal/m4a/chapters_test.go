@@ -2,6 +2,7 @@ package m4a
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"slices"
 	"testing"
@@ -73,7 +74,7 @@ func TestParseChapters_Success(t *testing.T) {
 	// File duration: 180 seconds
 	fileDuration := 180 * time.Second
 
-	chapters, err := parseChapters(sr, moovAtom, fileDuration)
+	chapters, err := parseChapters(context.Background(), sr, moovAtom, fileDuration)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -129,7 +130,7 @@ func TestParseChapters_EmptyTitles(t *testing.T) {
 	sr := audiobinary.NewSafeReader(bytes.NewReader(moov), int64(len(moov)), "test.m4b")
 	moovAtom, _ := readAtomHeader(sr, 0, int64(len(moov)))
 
-	chapters, err := parseChapters(sr, moovAtom, 100*time.Second)
+	chapters, err := parseChapters(context.Background(), sr, moovAtom, 100*time.Second)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -159,7 +160,7 @@ func TestParseChapters_SingleChapter(t *testing.T) {
 	sr := audiobinary.NewSafeReader(bytes.NewReader(moov), int64(len(moov)), "test.m4b")
 	moovAtom, _ := readAtomHeader(sr, 0, int64(len(moov)))
 
-	chapters, err := parseChapters(sr, moovAtom, 3600*time.Second)
+	chapters, err := parseChapters(context.Background(), sr, moovAtom, 3600*time.Second)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -185,7 +186,7 @@ func TestParseChapters_NoChpl(t *testing.T) {
 	sr := audiobinary.NewSafeReader(bytes.NewReader(moov), int64(len(moov)), "test.m4b")
 	moovAtom, _ := readAtomHeader(sr, 0, int64(len(moov)))
 
-	chapters, err := parseChapters(sr, moovAtom, 100*time.Second)
+	chapters, err := parseChapters(context.Background(), sr, moovAtom, 100*time.Second)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -203,7 +204,7 @@ func TestParseChapters_NoUdta(t *testing.T) {
 	sr := audiobinary.NewSafeReader(bytes.NewReader(moov), int64(len(moov)), "test.m4b")
 	moovAtom, _ := readAtomHeader(sr, 0, int64(len(moov)))
 
-	chapters, err := parseChapters(sr, moovAtom, 100*time.Second)
+	chapters, err := parseChapters(context.Background(), sr, moovAtom, 100*time.Second)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -281,7 +282,7 @@ func parseQTChapters(t *testing.T, data []byte, moovOffset int64, dur time.Durat
 	if err != nil {
 		t.Fatalf("readAtomHeader: %v", err)
 	}
-	chapters, err := parseChapters(sr, moov, dur)
+	chapters, err := parseChapters(context.Background(), sr, moov, dur)
 	if err != nil {
 		t.Fatalf("parseChapters: %v", err)
 	}
@@ -401,7 +402,7 @@ func TestParseChapterTimings_CapsAccumulation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	times, err := parseChapterTimings(sr, atom, 1000)
+	times, err := parseChapterTimings(context.Background(), sr, atom, 1000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -418,7 +419,7 @@ func TestParseChunkOffsets_CountPastFile(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := parseChunkOffsets(sr, atom); err == nil {
+		if _, err := parseChunkOffsets(context.Background(), sr, atom); err == nil {
 			t.Errorf("%s: expected error for count past end of file", typ)
 		}
 	}

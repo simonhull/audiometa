@@ -2,6 +2,7 @@ package m4a
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"testing"
 
@@ -63,7 +64,7 @@ func TestParseAudiobookTags_Narrator(t *testing.T) {
 	ilstAtom, _ := readAtomHeader(sr, 0, int64(len(ilst)))
 
 	file := &types.File{}
-	err := parseAudiobookTags(sr, ilstAtom, file)
+	err := parseAudiobookTags(context.Background(), sr, ilstAtom, file)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -81,7 +82,7 @@ func TestParseAudiobookTags_Series(t *testing.T) {
 	ilstAtom, _ := readAtomHeader(sr, 0, int64(len(ilst)))
 
 	file := &types.File{}
-	err := parseAudiobookTags(sr, ilstAtom, file)
+	err := parseAudiobookTags(context.Background(), sr, ilstAtom, file)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -105,7 +106,7 @@ func TestParseAudiobookTags_MultipleFields(t *testing.T) {
 	ilstAtom, _ := readAtomHeader(sr, 0, int64(len(ilst)))
 
 	file := &types.File{}
-	err := parseAudiobookTags(sr, ilstAtom, file)
+	err := parseAudiobookTags(context.Background(), sr, ilstAtom, file)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -138,7 +139,7 @@ func TestParseAudiobookTags_NarratorFallback(t *testing.T) {
 		},
 	}
 
-	err := parseAudiobookTags(sr, ilstAtom, file)
+	err := parseAudiobookTags(context.Background(), sr, ilstAtom, file)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -160,7 +161,7 @@ func TestParseAudiobookTags_NoCustomAtoms(t *testing.T) {
 	ilstAtom, _ := readAtomHeader(sr, 0, int64(len(ilst)))
 
 	file := &types.File{}
-	err := parseAudiobookTags(sr, ilstAtom, file)
+	err := parseAudiobookTags(context.Background(), sr, ilstAtom, file)
 
 	// Should not error, just no audiobook tags extracted
 	if err != nil {
@@ -465,7 +466,7 @@ func TestParseAudiobookTags_SeriesPartCaseInsensitive(t *testing.T) {
 	ilstAtom, _ := readAtomHeader(sr, 0, int64(len(ilst)))
 
 	file := &types.File{}
-	if err := parseAudiobookTags(sr, ilstAtom, file); err != nil {
+	if err := parseAudiobookTags(context.Background(), sr, ilstAtom, file); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if file.Tags.SeriesPart != "3" {

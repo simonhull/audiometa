@@ -1,6 +1,7 @@
 package m4a
 
 import (
+	"context"
 	"errors"
 	"slices"
 	"time"
@@ -10,15 +11,21 @@ import (
 )
 
 // Tries in order: QuickTime chapter tracks (tref) -> Nero chapters (chpl).
-func parseChapters(sr *binary.SafeReader, moovAtom *Atom, fileDuration time.Duration) ([]types.Chapter, error) {
+func parseChapters(ctx context.Context, sr *binary.SafeReader, moovAtom *Atom, fileDuration time.Duration) ([]types.Chapter, error) {
 	// Try QuickTime chapter tracks first (most common in professional audiobooks)
-	qtChapters, qtErr := parseQuickTimeChapters(sr, moovAtom, fileDuration)
+	qtChapters, qtErr := parseQuickTimeChapters(ctx, sr, moovAtom, fileDuration)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if qtErr == nil && len(qtChapters) > 0 {
 		return qtChapters, nil
 	}
 
 	// Fall back to Nero chpl format
 	chplChapters, chplErr := parseChplChapters(sr, moovAtom, fileDuration)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if chplErr == nil && len(chplChapters) > 0 {
 		return chplChapters, nil
 	}
@@ -147,29 +154,32 @@ func parseChplChapters(sr *binary.SafeReader, moovAtom *Atom, fileDuration time.
 }
 
 // Format: trak -> tref -> chap references a text track with chapter names.
-func parseQuickTimeChapters(sr *binary.SafeReader, moovAtom *Atom, fileDuration time.Duration) ([]types.Chapter, error) {
+func parseQuickTimeChapters(ctx context.Context, sr *binary.SafeReader, moovAtom *Atom, fileDuration time.Duration) ([]types.Chapter, error) {
 	// Step 1: Find the chapter track reference
-	chapterTrackID := findChapterTrackReference(sr, moovAtom)
+	chapterTrackID := findChapterTrackReference(ctx, sr, moovAtom)
 	if chapterTrackID == 0 {
 		return nil, nil
 	}
 
 	// Step 2: Find the chapter track by ID
-	chapterTrak := findTrackByID(sr, moovAtom, chapterTrackID)
+	chapterTrak := findTrackByID(ctx, sr, moovAtom, chapterTrackID)
 	if chapterTrak == nil {
 		return nil, nil
 	}
 
 	// Step 3: Parse the text track
-	return parseTextTrackChapters(sr, chapterTrak, fileDuration)
+	return parseTextTrackChapters(ctx, sr, chapterTrak, fileDuration)
 }
 
 // findChapterTrackReference finds the tref->chap atom and returns the chapter track ID.
-func findChapterTrackReference(sr *binary.SafeReader, moovAtom *Atom) uint32 {
+func findChapterTrackReference(ctx context.Context, sr *binary.SafeReader, moovAtom *Atom) uint32 {
 	offset := moovAtom.DataOffset()
 	end := offset + int64(moovAtom.DataSize())
 
-	for offset < end {
+	for i := 0; offset < end; i++ {
+		if err := binary.Canceled(ctx, i); err != nil {
+			return 0
+		}
 		trakAtom, err := readAtomHeader(sr, offset, end)
 		if err != nil {
 			break
@@ -209,11 +219,14 @@ func extractChapterTrackID(sr *binary.SafeReader, trakAtom *Atom) uint32 {
 }
 
 // findTrackByID finds a trak atom with the specified track ID.
-func findTrackByID(sr *binary.SafeReader, moovAtom *Atom, targetID uint32) *Atom {
+func findTrackByID(ctx context.Context, sr *binary.SafeReader, moovAtom *Atom, targetID uint32) *Atom {
 	offset := moovAtom.DataOffset()
 	end := offset + int64(moovAtom.DataSize())
 
-	for offset < end {
+	for i := 0; offset < end; i++ {
+		if err := binary.Canceled(ctx, i); err != nil {
+			return nil
+		}
 		trakAtom, err := readAtomHeader(sr, offset, end)
 		if err != nil {
 			break
@@ -261,7 +274,7 @@ func readTrackID(sr *binary.SafeReader, trakAtom *Atom) uint32 {
 }
 
 // parseTextTrackChapters extracts chapter information from a text track.
-func parseTextTrackChapters(sr *binary.SafeReader, trakAtom *Atom, fileDuration time.Duration) ([]types.Chapter, error) {
+func parseTextTrackChapters(ctx context.Context, sr *binary.SafeReader, trakAtom *Atom, fileDuration time.Duration) ([]types.Chapter, error) {
 	// Find mdia -> minf -> stbl (sample table)
 	mdiaAtom, err := findAtom(sr, trakAtom.DataOffset(), trakAtom.DataOffset()+int64(trakAtom.DataSize()), "mdia")
 	if err != nil {
@@ -285,19 +298,19 @@ func parseTextTrackChapters(sr *binary.SafeReader, trakAtom *Atom, fileDuration 
 	}
 
 	// Parse chapter timings
-	chapterTimes, err := parseChapterTimings(sr, stblAtom, timescale)
+	chapterTimes, err := parseChapterTimings(ctx, sr, stblAtom, timescale)
 	if err != nil {
 		return nil, err
 	}
 
 	// Parse sample sizes
-	sampleSizes, err := parseSampleSizes(sr, stblAtom, len(chapterTimes))
+	sampleSizes, err := parseSampleSizes(ctx, sr, stblAtom, len(chapterTimes))
 	if err != nil {
 		return nil, err
 	}
 
 	// Parse chunk offsets
-	chunkOffsets, err := parseChunkOffsets(sr, stblAtom)
+	chunkOffsets, err := parseChunkOffsets(ctx, sr, stblAtom)
 	if err != nil {
 		return nil, err
 	}
@@ -307,14 +320,17 @@ func parseTextTrackChapters(sr *binary.SafeReader, trakAtom *Atom, fileDuration 
 	}
 
 	// Map samples to chunks (non-fatal if stsc is unreadable: legacy layout is used)
-	stsc, err := parseSampleToChunk(sr, stblAtom)
+	stsc, err := parseSampleToChunk(ctx, sr, stblAtom)
 	if err != nil {
 		stsc = nil
 	}
 	sampleOffsets := computeSampleOffsets(sampleSizes, chunkOffsets, stsc)
 
 	// Build chapters from text samples
-	chapters := buildChaptersFromText(sr, chapterTimes, sampleSizes, sampleOffsets)
+	chapters := buildChaptersFromText(ctx, sr, chapterTimes, sampleSizes, sampleOffsets)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	// Calculate end times
 	calculateChapterEndTimes(chapters, fileDuration)
@@ -354,7 +370,7 @@ func parseTrackTimescale(sr *binary.SafeReader, mdiaAtom *Atom) (uint32, error) 
 const maxChapterSamples = 1 << 20
 
 // parseChapterTimings extracts chapter start times from the stts atom.
-func parseChapterTimings(sr *binary.SafeReader, stblAtom *Atom, timescale uint32) ([]time.Duration, error) {
+func parseChapterTimings(ctx context.Context, sr *binary.SafeReader, stblAtom *Atom, timescale uint32) ([]time.Duration, error) {
 	sttsAtom, err := findAtom(sr, stblAtom.DataOffset(), stblAtom.DataOffset()+int64(stblAtom.DataSize()), "stts")
 	if err != nil {
 		return nil, err
@@ -374,7 +390,11 @@ func parseChapterTimings(sr *binary.SafeReader, stblAtom *Atom, timescale uint32
 	var currentTime uint64
 	chapterTimes := []time.Duration{}
 
-	for range entryCount {
+	for i := range entryCount {
+		if err := binary.Canceled(ctx, int(i)); err != nil {
+			return nil, err
+		}
+
 		sampleCount, err := binary.Read[uint32](sr, offset, "sample count")
 		if err != nil {
 			break // Return partial results
@@ -399,7 +419,7 @@ func parseChapterTimings(sr *binary.SafeReader, stblAtom *Atom, timescale uint32
 }
 
 // parseSampleSizes extracts sample sizes from the stsz atom.
-func parseSampleSizes(sr *binary.SafeReader, stblAtom *Atom, maxSamples int) ([]uint32, error) {
+func parseSampleSizes(ctx context.Context, sr *binary.SafeReader, stblAtom *Atom, maxSamples int) ([]uint32, error) {
 	stszAtom, err := findAtom(sr, stblAtom.DataOffset(), stblAtom.DataOffset()+int64(stblAtom.DataSize()), "stsz")
 	if err != nil {
 		return nil, err
@@ -429,6 +449,10 @@ func parseSampleSizes(sr *binary.SafeReader, stblAtom *Atom, maxSamples int) ([]
 
 	sampleSizes := make([]uint32, n)
 	for i := range sampleSizes {
+		if err := binary.Canceled(ctx, i); err != nil {
+			return nil, err
+		}
+
 		size, err := binary.Read[uint32](sr, offset, "sample size")
 		if err != nil {
 			break // Return partial results
@@ -447,7 +471,7 @@ type stscEntry struct {
 }
 
 // parseSampleToChunk reads stsc; returns nil, nil when the atom is absent.
-func parseSampleToChunk(sr *binary.SafeReader, stblAtom *Atom) ([]stscEntry, error) {
+func parseSampleToChunk(ctx context.Context, sr *binary.SafeReader, stblAtom *Atom) ([]stscEntry, error) {
 	stscAtom, err := findAtom(sr, stblAtom.DataOffset(), stblAtom.DataOffset()+int64(stblAtom.DataSize()), "stsc")
 	if err != nil {
 		if errors.Is(err, errAtomNotFound) {
@@ -464,7 +488,11 @@ func parseSampleToChunk(sr *binary.SafeReader, stblAtom *Atom) ([]stscEntry, err
 	offset += 4
 
 	var entries []stscEntry
-	for range entryCount {
+	for i := range entryCount {
+		if err := binary.Canceled(ctx, int(i)); err != nil {
+			return nil, err
+		}
+
 		firstChunk, err := binary.Read[uint32](sr, offset, "stsc first chunk")
 		if err != nil {
 			break // Return partial results
@@ -522,7 +550,7 @@ func computeSampleOffsets(sampleSizes []uint32, chunkOffsets []uint64, stsc []st
 }
 
 // parseChunkOffsets extracts chunk offsets from stco or co64 atom.
-func parseChunkOffsets(sr *binary.SafeReader, stblAtom *Atom) ([]uint64, error) {
+func parseChunkOffsets(ctx context.Context, sr *binary.SafeReader, stblAtom *Atom) ([]uint64, error) {
 	stcoAtom, err := findAtom(sr, stblAtom.DataOffset(), stblAtom.DataOffset()+int64(stblAtom.DataSize()), "stco")
 	if err != nil {
 		// Try co64 for 64-bit offsets
@@ -548,6 +576,10 @@ func parseChunkOffsets(sr *binary.SafeReader, stblAtom *Atom) ([]uint64, error) 
 	}
 	chunkOffsets := make([]uint64, chunkCount)
 	for i := range chunkCount {
+		if err := binary.Canceled(ctx, int(i)); err != nil {
+			return nil, err
+		}
+
 		var readErr error
 		if stcoAtom.Type == "co64" {
 			chunkOffsets[i], readErr = binary.Read[uint64](sr, offset, "chunk offset")
@@ -569,10 +601,14 @@ func parseChunkOffsets(sr *binary.SafeReader, stblAtom *Atom) ([]uint64, error) 
 // buildChaptersFromText reads text samples and builds chapter list.
 // sampleOffsets[i] is the file offset of sample i (see computeSampleOffsets); samples
 // without an offset yield a chapter with an empty title.
-func buildChaptersFromText(sr *binary.SafeReader, chapterTimes []time.Duration, sampleSizes []uint32, sampleOffsets []uint64) []types.Chapter {
+func buildChaptersFromText(ctx context.Context, sr *binary.SafeReader, chapterTimes []time.Duration, sampleSizes []uint32, sampleOffsets []uint64) []types.Chapter {
 	chapters := make([]types.Chapter, 0, len(chapterTimes))
 
 	for i := range min(len(sampleSizes), len(chapterTimes)) {
+		if binary.Canceled(ctx, i) != nil {
+			return chapters // Partial; the caller observes ctx.Err().
+		}
+
 		sampleSize := sampleSizes[i]
 		if sampleSize == 0 || sampleSize >= 10000 {
 			continue // Skip invalid sizes

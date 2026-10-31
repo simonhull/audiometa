@@ -32,8 +32,11 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	}
 
 	// Parse ID3v2 tag (if present)
-	tagSize, err := parseID3v2(sr, file)
+	tagSize, err := parseID3v2(ctx, sr, file)
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
 		// Not an ID3v2 file or parse error - try to find MP3 frames anyway
 		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 			Stage:   types.StageMetadata,
@@ -44,7 +47,10 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	}
 
 	// Parse MP3 frame headers for technical info (bitrate, duration, etc.)
-	if err := parseTechnicalInfo(sr, tagSize, size, file); err != nil {
+	if err := parseTechnicalInfo(ctx, sr, tagSize, size, file); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
 		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 			Stage:   types.StageTechnical,
 			Message: fmt.Sprintf("failed to parse MP3 technical info: %v", err),
@@ -66,7 +72,7 @@ func (p *parser) ExtractArtwork(ctx context.Context, r io.ReaderAt, size int64, 
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return extractArtwork(r, size, path)
+	return extractArtwork(ctx, r, size, path)
 }
 
 // init registers the MP3 parser.

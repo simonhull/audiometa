@@ -4,6 +4,7 @@ package mp3
 import (
 	"bytes"
 	"cmp"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"slices"
@@ -35,14 +36,17 @@ type ID3v2Frame struct {
 }
 
 // parseID3v2 parses ID3v2 tags and extracts metadata.
-func parseID3v2(sr *binutil.SafeReader, file *types.File) (int64, error) {
+func parseID3v2(ctx context.Context, sr *binutil.SafeReader, file *types.File) (int64, error) {
 	header, err := parseID3v2Header(sr)
 	if err != nil {
 		return 0, err
 	}
 
 	frameDataOffset := skipExtendedHeader(sr, header)
-	st := parseID3v2Frames(sr, file, header, frameDataOffset)
+	st, err := parseID3v2Frames(ctx, sr, file, header, frameDataOffset)
+	if err != nil {
+		return 0, err
+	}
 	if file.Tags.Comment == "" {
 		file.Tags.Comment = st.describedComment
 	}
@@ -144,12 +148,17 @@ func skipExtendedHeader(sr *binutil.SafeReader, header ID3v2Header) int64 {
 }
 
 // parseID3v2Frames parses all frames in the ID3v2 tag.
-func parseID3v2Frames(sr *binutil.SafeReader, file *types.File, header ID3v2Header, startOffset int64) *frameState {
+// It returns ctx.Err() if the context is canceled mid-walk.
+func parseID3v2Frames(ctx context.Context, sr *binutil.SafeReader, file *types.File, header ID3v2Header, startOffset int64) (*frameState, error) {
 	tagEnd := int64(10 + header.Size)
 	offset := startOffset
 	st := &frameState{}
 
-	for offset < tagEnd {
+	for i := 0; offset < tagEnd; i++ {
+		if err := binutil.Canceled(ctx, i); err != nil {
+			return nil, err
+		}
+
 		frame, bytesRead, stop := readSingleFrame(sr, file, header, offset)
 		if stop {
 			break
@@ -162,7 +171,7 @@ func parseID3v2Frames(sr *binutil.SafeReader, file *types.File, header ID3v2Head
 		offset += bytesRead
 	}
 
-	return st
+	return st, nil
 }
 
 // readSingleFrame reads a single ID3v2 frame.
