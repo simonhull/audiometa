@@ -21,11 +21,22 @@ import (
 	_ "github.com/simonhull/audiometa/internal/ogg"
 )
 
-// File represents an opened audio file with parsed metadata.
+// File is an opened audio file with its parsed metadata.
 //
-// Embeds types.File for the data payload (Path, Tags, Audio, Chapters, ...)
-// and adds runtime state (the underlying file handle, parser reference, and
-// artwork cache) used by methods like Close and ExtractArtwork.
+// The parsed data lives in the promoted fields of the embedded data payload:
+//
+//   - Path, Format and Size describe the file.
+//   - Tags holds the format-agnostic tags ([Tags]).
+//   - Audio holds the technical properties ([AudioInfo]).
+//   - Chapters lists the chapter markers ([Chapter]), in playback order.
+//   - Warnings lists non-fatal problems found while parsing ([Warning]).
+//
+// A File also keeps the underlying file handle open for lazy artwork
+// extraction, so call [File.Close] when done with it.
+//
+// [File.ExtractArtwork] and [File.ExtractArtworkContext] are safe for
+// concurrent use. The exported fields are not synchronized; treat them as
+// read-only while other goroutines use the File.
 type File struct {
 	types.File
 
@@ -40,31 +51,29 @@ type File struct {
 	artworkLoaded bool
 }
 
-// Open opens an audio file and reads its metadata.
+// Open opens the audio file at path and parses its metadata.
 //
-// Supported formats: FLAC, MP3, M4A, M4B
+// The format is detected from the file's contents. Supported formats are FLAC,
+// MP3, M4A, M4B, Ogg Vorbis and Opus. Only metadata is read: audio data is
+// never loaded, and artwork is read later by [File.ExtractArtwork]. The
+// caller must [File.Close] the returned File.
 //
-// Open performs lazy loading - audio content is not read into memory,
-// only metadata is parsed. Use ExtractArtwork() to retrieve embedded images.
+// Damaged but readable metadata does not make Open fail: it returns the data
+// it could parse and records the problems in File.Warnings. Pass options such
+// as [WithStrictParsing] or [WithIgnoreWarnings] to change that policy.
 //
-// If the file is corrupted or has invalid tags, Open may return a partial
-// File with warnings instead of an error. Check File.Warnings for details.
+// # Errors
 //
-// Options can be provided to customize parsing behavior:
+// Open returns an error, and no File, when:
 //
-//	file, err := audiometa.Open("song.flac",
-//	    audiometa.WithStrictParsing(),
-//	    audiometa.WithArtworkPreload(),
-//	)
+//   - the file cannot be opened or stat'ed: the error wraps the [*os.PathError];
+//   - the format is unknown or has no parser: [*UnsupportedFormatError];
+//   - the container structure is unusable: often a [*CorruptedFileError],
+//     or an [*OutOfBoundsError] for a required read past the end of the file;
+//   - [WithStrictParsing] is set and parsing produced a warning.
 //
-// Example:
-//
-//	file, err := audiometa.Open("song.flac")
-//	if err != nil {
-//		return err
-//	}
-//	defer file.Close()
-//	fmt.Printf("%s - %s\n", file.Tags.Artist, file.Tags.Title)
+// Errors are wrapped; use [errors.Is] and [errors.As] to inspect them.
+// Use [OpenContext] to bound or cancel the parse.
 func Open(path string, opts ...Option) (*File, error) {
 	return openWithContext(context.Background(), path, opts...)
 }
@@ -235,9 +244,11 @@ func openReader(ctx context.Context, r io.ReaderAt, size int64, path string) (*p
 	return &parsedFile{file: file, parser: parser}, nil
 }
 
-// Close releases resources held by the file.
+// Close closes the underlying file handle.
 //
-// After Close is called, the File should not be used.
+// The parsed fields stay readable after Close, but artwork that has not been
+// extracted yet can no longer be read. Close returns the error from closing
+// the handle, if any.
 func (f *File) Close() error {
 	if closer, ok := f.reader.(io.Closer); ok {
 		return closer.Close()
@@ -245,34 +256,32 @@ func (f *File) Close() error {
 	return nil
 }
 
-// ExtractArtwork extracts embedded artwork from the file.
+// ExtractArtwork returns the images embedded in the file, in file order.
 //
-// Artwork is lazily loaded - it is not parsed during Open(). The first
-// call to ExtractArtwork() reads and caches the artwork. Subsequent
-// calls return the cached data.
+// Artwork is not read by [Open]. The first successful call reads it and
+// caches the result; later calls return the cached slice, which callers must
+// not modify. A file without artwork yields an empty, non-nil slice. Each
+// [Artwork] carries its MIME type, picture type and, when known, its pixel
+// dimensions.
 //
-// Returns an empty slice if the file contains no artwork. Safe for concurrent
-// use; extraction runs at most once per File (failed attempts are retried on
-// the next call).
+// Images larger than the [WithMaxArtworkSize] limit are left out, and each
+// one adds a StageArtwork [Warning] to File.Warnings unless
+// [WithIgnoreWarnings] is set.
 //
-// Example:
-//
-//	artwork, err := file.ExtractArtwork()
-//	if err != nil {
-//		return err
-//	}
-//	if len(artwork) > 0 {
-//		cover := artwork[0] // First image (usually front cover)
-//		os.WriteFile("cover.jpg", cover.Data, 0644)
-//	}
+// ExtractArtwork is safe for concurrent use. A failed extraction is not
+// cached, so a later call retries it. The error wraps the parser's error,
+// for example an [*OutOfBoundsError] when a picture runs past the end of the
+// file, or a [*CorruptedFileError] if the parser panicked. Use
+// [File.ExtractArtworkContext] to make extraction cancellable.
 func (f *File) ExtractArtwork() ([]Artwork, error) {
 	return f.ExtractArtworkContext(context.Background())
 }
 
-// ExtractArtworkContext is the cancellable form of ExtractArtwork.
+// ExtractArtworkContext is like [File.ExtractArtwork] but stops early when
+// ctx is done, returning an error that wraps ctx.Err().
 //
-// Use this when you want to bound how long artwork extraction can take,
-// for example when scanning many files in a worker pool.
+// Use it to bound how long artwork extraction can take, for example when
+// scanning many files in a worker pool. It is safe for concurrent use.
 func (f *File) ExtractArtworkContext(ctx context.Context) ([]Artwork, error) {
 	f.artworkMu.Lock()
 	defer f.artworkMu.Unlock()
@@ -322,25 +331,16 @@ func (f *File) filterOversized(artwork []Artwork) []Artwork {
 	return kept
 }
 
-// OpenContext opens a file with context-aware cancellation.
+// OpenContext is like [Open] but stops early when ctx is done.
 //
-// The context is checked before opening the file and is threaded into each
-// parser, which yields to cancellation at major parse boundaries (block
-// headers, atom boundaries, frame walks). Cancellation between files in a
-// batch is therefore observed promptly even on large inputs.
+// The context is checked before the file is opened and is passed to the
+// parser, which checks it at major parse boundaries (metadata blocks, atoms,
+// frames) and periodically inside long loops, so cancellation is observed
+// promptly even on large or hostile inputs.
 //
-// Options can be provided just like with Open():
-//
-//	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-//	defer cancel()
-//
-//	file, err := audiometa.OpenContext(ctx, "song.flac",
-//	    audiometa.WithStrictParsing(),
-//	)
-//	if err != nil {
-//		return err
-//	}
-//	defer file.Close()
+// If ctx is done, OpenContext returns an error that wraps ctx.Err(), so
+// [errors.Is] reports [context.Canceled] or [context.DeadlineExceeded]. Other
+// errors are as for [Open].
 func OpenContext(ctx context.Context, path string, opts ...Option) (*File, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -348,50 +348,19 @@ func OpenContext(ctx context.Context, path string, opts ...Option) (*File, error
 	return openWithContext(ctx, path, opts...)
 }
 
-// OpenMany opens multiple audio files concurrently.
+// OpenMany opens and parses several audio files concurrently, using up to
+// [runtime.NumCPU] goroutines and the default options.
 //
-// Files are parsed in parallel using up to runtime.NumCPU() goroutines.
-// The returned slice is parallel to the input paths: results[i] is either
-// the parsed file for paths[i] or nil if that file failed to parse.
+// The returned slice is parallel to paths: element i is the File for paths[i],
+// or nil if that file failed. One bad file does not stop the others. The
+// caller must [File.Close] every non-nil element.
 //
-// One bad file does not abort the others. The returned error is non-nil if
-// any file failed; it is the errors.Join of every individual failure, so
-// callers can use errors.Is/As against it. The caller owns Close()ing any
-// non-nil entries.
+// The error is nil when every file opened. Otherwise it is the [errors.Join]
+// of the individual failures, each prefixed with its path and wrapping the
+// same errors [Open] would return, so [errors.Is] and [errors.As] work on it.
 //
-// Example:
-//
-//	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-//	defer cancel()
-//
-//	files, err := audiometa.OpenMany(ctx, paths...)
-//	if err != nil {
-//		// One or more files failed; successful files are still returned.
-//		// Use errors.Is/As against the joined error to inspect individual failures.
-//		log.Printf("partial failure: %v", err)
-//	}
-//	defer func() {
-//		for _, f := range files {
-//			if f != nil {
-//				f.Close()
-//			}
-//		}
-//	}()
-//
-//	for i, f := range files {
-//		if f == nil {
-//			continue // failed; see joined error
-//		}
-//		fmt.Printf("%s: %s - %s\n", f.Format, f.Tags.Artist, f.Tags.Title)
-//	}
-//
-// The returned slice is parallel to the input paths: results[i] is either
-// the parsed file for paths[i] or nil if that file failed to parse. The
-// returned error is non-nil if any file failed; use errors.Is/As against
-// the joined error to inspect individual failures.
-//
-// If the context is canceled, any in-flight parses observe the cancellation
-// at their next checkpoint; already-parsed files are still returned.
+// When ctx is done, files still being parsed fail with an error wrapping
+// ctx.Err(); files that had already been parsed are still returned.
 func OpenMany(ctx context.Context, paths ...string) ([]*File, error) {
 	if len(paths) == 0 {
 		return nil, nil
@@ -424,12 +393,16 @@ func OpenMany(ctx context.Context, paths ...string) ([]*File, error) {
 	return results, errors.Join(errs...)
 }
 
-// FormatParser is an alias to registry.FormatParser for backwards compatibility.
-// Re-exporting from internal/registry to maintain public API.
+// FormatParser is the interface the built-in format parsers implement.
+//
+// It is exported only for backwards compatibility: it refers to internal
+// types, so code outside this module cannot implement it usefully.
 type FormatParser = registry.FormatParser
 
-// ArtworkExtractor is an alias to registry.ArtworkExtractor for backwards compatibility.
-// Re-exporting from internal/registry to maintain public API.
+// ArtworkExtractor is the optional interface of format parsers that can read
+// embedded artwork.
+//
+// It is exported only for backwards compatibility; see [FormatParser].
 type ArtworkExtractor = registry.ArtworkExtractor
 
 // findParser returns the parser for a given format.
@@ -439,11 +412,11 @@ func findParser(format types.Format) FormatParser {
 	return registry.Get(format)
 }
 
-// RegisterParser registers a parser for a format.
-// This is called by format packages during initialization (init functions).
+// RegisterParser registers parser as the parser for format, replacing any
+// parser already registered for it.
 //
-// This function is public to allow internal format packages to register themselves,
-// but it's not intended for external use. Do not call this function.
+// All built-in parsers are registered automatically when this package is
+// imported. RegisterParser is not intended for external use.
 //
 // Deprecated: parsers register themselves via internal/registry; external
 // callers cannot supply a usable FormatParser.

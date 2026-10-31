@@ -1,12 +1,14 @@
-// Package audiometa provides format-agnostic audio metadata extraction.
+// Package audiometa reads metadata from audio files through one
+// format-agnostic API.
 //
-// audiometa is designed to be the inevitable choice for audio metadata reading
-// in Go. It supports multiple formats (FLAC, MP3, M4A/M4B) with a unified API
-// that makes simple things simple and complex things possible.
+// It parses tags, technical audio properties, chapters and embedded artwork
+// from FLAC, MP3, M4A/M4B, Ogg Vorbis and Opus files. The format is detected
+// from the file's contents, so callers never pick a parser. audiometa only
+// reads; it never modifies files.
 //
 // # Quick Start
 //
-// Reading metadata from an audio file:
+// [Open] detects the format, parses the metadata and returns a [File]:
 //
 //	file, err := audiometa.Open("song.flac")
 //	if err != nil {
@@ -15,122 +17,87 @@
 //	defer file.Close()
 //
 //	fmt.Printf("%s - %s\n", file.Tags.Artist, file.Tags.Title)
-//	fmt.Printf("Duration: %s\n", file.Audio.Duration)
+//	fmt.Println(file.Audio.Duration) // e.g. 3m25s
+//	fmt.Println(file.Audio)          // e.g. FLAC 44.1kHz 16-bit stereo lossless
+//
+// A [File] carries the parsed data in its embedded fields:
+//
+//   - Tags: format-agnostic fields such as Title, Artist, Album, Narrator and
+//     Series, plus the multi-value Artists, Genres and Composers.
+//     Tags.Get and Tags.All expose every raw tag under its native key.
+//   - Audio: an [AudioInfo] with duration, sample rate, bit depth, channels,
+//     bitrate, codec and ReplayGain.
+//   - Chapters: a slice of [Chapter]; each records the [ChapterSource] it was
+//     read from.
+//   - Warnings: non-fatal problems found while parsing, as [Warning] values.
+//   - Format, Path and Size.
 //
 // # Supported Formats
 //
-//   - FLAC: Lossless audio with Vorbis comments and embedded pictures
-//   - MP3: ID3v2.3 and ID3v2.4 tags with full frame support
-//   - M4A/M4B: iTunes metadata atoms, audiobook tags, and chapters
+//   - FLAC: Vorbis comments, PICTURE blocks, and chapters from CHAPTER
+//     comments or the CUESHEET block.
+//   - MP3: ID3v2.2, ID3v2.3 and ID3v2.4 tags with an ID3v1 fallback, APIC
+//     artwork, chapters from CHAP frames or OverDrive MediaMarkers, and
+//     Xing/VBRI-aware duration.
+//   - M4A/M4B: iTunes ilst atoms including freeform (----) atoms, covr
+//     artwork, and QuickTime or Nero chapters.
+//   - Ogg Vorbis and Opus: Vorbis comments, METADATA_BLOCK_PICTURE artwork
+//     and CHAPTER comments.
 //
-// # Philosophy
+// WAV and AIFF are recognized by [DetectFormat] but have no parser, so [Open]
+// returns an [*UnsupportedFormatError] for them.
 //
-// audiometa embodies three core principles:
+// # Artwork
 //
-// 1. Performance: Every operation should feel instant. We optimize for
-// correctness first, but we don't write slow code.
+// Artwork is not read during [Open]. [File.ExtractArtwork] reads it on first
+// use and caches the result. [WithArtworkPreload] loads it during Open instead,
+// and [WithMaxArtworkSize] drops oversized images.
 //
-// 2. Graceful Degradation: Corrupted files return partial data + warnings,
-// not errors. Missing optional fields don't stop parsing.
+// # Warnings and Errors
 //
-// 3. Zero Surprises: Behavior is predictable and well-documented. The API
-// guides you toward correct usage.
+// audiometa degrades gracefully. Damaged but readable data, such as a bad tag
+// frame or an unreadable chapter table, becomes a [Warning] in File.Warnings
+// and parsing continues. Open returns an error only when no useful result is
+// possible:
 //
-// # Architecture
+//   - the file cannot be opened (an [*os.PathError] wrapping, for example,
+//     [io/fs.ErrNotExist]);
+//   - the format is not recognized or has no parser ([*UnsupportedFormatError]);
+//   - the container is structurally broken (often a [*CorruptedFileError], or
+//     an [*OutOfBoundsError] when a required read runs past the end of the
+//     file);
+//   - the context is done ([context.Canceled] or [context.DeadlineExceeded],
+//     from [OpenContext] and [OpenMany]).
 //
-// The library uses a layered architecture:
+// Errors are wrapped, so match them with [errors.Is] and [errors.As] (or
+// [errors.AsType]).
+// [WithStrictParsing] turns any warning into an error that unwraps to the
+// warnings' underlying errors; [WithIgnoreWarnings] discards warnings.
 //
-//	[File]           - Entry point with Open()
-//	  ├─ [Tags]      - Format-agnostic metadata
-//	  ├─ [AudioInfo] - Technical properties
-//	  └─ [Artwork]   - Embedded images (lazy loaded)
+// # Robustness
 //
-// Format-specific parsers implement a common interface, making it easy
-// to add new formats without changing the public API.
+// The parsers are written for untrusted input and are fuzzed:
 //
-// # Advanced Usage
+//   - every read is bounds-checked against the file size;
+//   - length fields read from the file cannot trigger allocations larger than
+//     the file itself or a fixed ceiling;
+//   - a file accumulates at most 100 warnings;
+//   - a panic inside a parser is recovered and returned as a
+//     [*CorruptedFileError] instead of crashing the program;
+//   - parse loops check the context, so [OpenContext] and [OpenMany] stop
+//     promptly when it is canceled.
 //
-// Extract artwork:
+// # Concurrency
 //
-//	artwork, err := file.ExtractArtwork()
-//	if err == nil && len(artwork) > 0 {
-//		os.WriteFile("cover.jpg", artwork[0].Data, 0644)
-//	}
+// Distinct [File] values are independent, and [OpenMany] parses files in
+// parallel. [File.ExtractArtwork] is safe for concurrent use. The exported
+// fields are plain data and are not synchronized: do not modify a File while
+// other goroutines read it.
 //
-// Parse multiple files concurrently:
+// # Command-Line Tool
 //
-//	ctx := context.Background()
-//	files, err := audiometa.OpenMany(ctx, paths...)
-//	if err != nil {
-//		log.Fatal(err)
-//	}
-//	defer func() {
-//		for _, f := range files {
-//			f.Close()
-//		}
-//	}()
+// The audiometa command (cmd/audiometa) is built on this package. It prints
+// metadata and chapters, extracts artwork and dumps MP4 atom trees:
 //
-// Iterate over raw tags:
-//
-//	for key, values := range file.Tags.All() {
-//		fmt.Printf("%s: %v\n", key, values)
-//	}
-//
-// # Error Handling
-//
-// audiometa distinguishes between fatal errors and warnings:
-//
-//   - Fatal errors prevent parsing entirely (file not found, unsupported format)
-//   - Warnings indicate non-fatal issues (corrupted tags, missing optional fields)
-//
-// Always check file.Warnings for issues encountered during parsing:
-//
-//	if len(file.Warnings) > 0 {
-//		for _, w := range file.Warnings {
-//			log.Printf("Warning: %s", w)
-//		}
-//	}
-//
-// # Performance
-//
-// audiometa is designed for speed:
-//
-//   - Lazy loading: Artwork not loaded until ExtractArtwork() is called
-//   - Zero-copy: Minimal memory allocation during parsing
-//   - Concurrent: OpenMany() parses files in parallel
-//   - Streaming: Reads only necessary portions of files
-//
-// Typical performance on modern hardware:
-//   - File open + tag parsing: <1ms per file
-//   - Artwork extraction: <5ms (depends on image size)
-//   - Memory: <1MB per File object (excluding artwork)
-//
-// # Go 1.25 Features
-//
-// audiometa showcases modern Go patterns:
-//
-//   - Iterators: Range over tags with iter.Seq
-//   - Generics: Type-safe binary reading
-//   - Structured concurrency: Context-aware operations
-//   - New stdlib: slices, maps, cmp packages
-//   - slog: Structured logging support
-//
-// # Reference Implementation
-//
-// This library serves as a reference implementation for:
-//   - Clean API design
-//   - Modern Go patterns
-//   - Performance optimization
-//   - Comprehensive testing
-//   - Living documentation
-//
-// See MODERN_GO_PATTERNS.md for details on the patterns used.
-//
-// # Contributing
-//
-// See CONTRIBUTING.md for guidelines.
-//
-// # License
-//
-// See LICENSE file.
+//	go install github.com/simonhull/audiometa/cmd/audiometa@latest
 package audiometa

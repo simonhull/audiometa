@@ -67,20 +67,21 @@ func moduleVersion(bi *debug.BuildInfo) string {
 
 // VersionInfo contains detailed version information.
 type VersionInfo struct {
-	// Version is the semantic version (e.g., "v0.10.0")
+	// Version is the library version, as reported by GetVersion (e.g. "v0.10.0").
 	Version string
-	// GitCommit is the git commit hash (set via ldflags at build time)
+	// GitCommit is the git commit hash, set via -ldflags at build time.
 	GitCommit string
-	// BuildTime is the build timestamp (set via ldflags at build time)
+	// BuildTime is the build timestamp, set via -ldflags at build time.
 	BuildTime string
-	// GoVersion is the Go version used to build
+	// GoVersion is the Go version used to build.
 	GoVersion string
 }
 
-// GetVersionInfo returns detailed version information
+// GetVersionInfo returns detailed version information.
 //
-// GitCommit, BuildTime, and GoVersion are populated at build time via -ldflags.
-// If not set, they will show as "unknown".
+// Version comes from [GetVersion]. GitCommit and BuildTime are set at build
+// time via -ldflags and are "unknown" otherwise. GoVersion is set the same
+// way and falls back to [runtime.Version].
 //
 // Example build command:
 //

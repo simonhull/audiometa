@@ -1,10 +1,9 @@
 package audiometa
 
-// Option configures behavior when opening audio files.
+// Option configures how [Open] and [OpenContext] read a file.
 //
-// Options use the functional options pattern for clean, extensible APIs.
-//
-// Example:
+// Options are applied in order; the With functions in this package create
+// them. Example:
 //
 //	file, err := audiometa.Open("song.flac",
 //	    audiometa.WithStrictParsing(),
@@ -30,72 +29,62 @@ func defaultOptions() *openOptions {
 	}
 }
 
-// WithStrictParsing treats any warning as a fatal error.
+// WithStrictParsing makes any parse warning fatal.
 //
-// By default, audiometa continues parsing when it encounters issues
-// like invalid tag encodings or corrupted artwork, returning warnings
-// alongside the parsed data.
+// By default, audiometa keeps going when it meets damaged data, such as an
+// undecodable tag frame, and reports the problem in File.Warnings. With strict
+// parsing, Open fails instead if any warning was recorded, and returns no File.
+// Warnings produced by [WithArtworkPreload] count too. Strict parsing takes
+// precedence over [WithIgnoreWarnings].
 //
-// With strict parsing enabled, any warning becomes a fatal error. Warnings
-// from WithArtworkPreload count too. Strict parsing takes precedence over
-// WithIgnoreWarnings.
+// The error's message names the first warning. It unwraps (as a multi-error)
+// to the underlying errors of all the warnings that have one, so [errors.As]
+// and [errors.AsType] can find, for example, an [*OutOfBoundsError] behind a
+// truncated block:
 //
-// Example:
-//
-//	file, err := audiometa.Open("song.flac", audiometa.WithStrictParsing())
-//	// err != nil if ANY issue is encountered
+//	_, err := audiometa.Open("song.flac", audiometa.WithStrictParsing())
+//	if oob, ok := errors.AsType[*audiometa.OutOfBoundsError](err); ok {
+//		fmt.Println("truncated while reading", oob.What)
+//	}
 func WithStrictParsing() Option {
 	return func(o *openOptions) {
 		o.strictParsing = true
 	}
 }
 
-// WithArtworkPreload loads artwork immediately instead of lazily.
+// WithArtworkPreload reads the artwork during Open instead of on the first
+// [File.ExtractArtwork] call.
 //
-// By default, artwork is only loaded when ExtractArtwork() is called.
-// This option loads it during Open() for convenience.
-//
-// Use this when you know you'll need the artwork and want to fail fast
-// if artwork extraction has issues.
-//
-// Example:
-//
-//	file, err := audiometa.Open("song.flac", audiometa.WithArtworkPreload())
-//	// file.ExtractArtwork() will return cached data
+// Use it when you know you will need the artwork. A failed extraction does
+// not make Open fail; it is recorded as a StageArtwork [Warning] (and so does
+// fail Open under [WithStrictParsing]). After a successful preload,
+// [File.ExtractArtwork] returns the cached images without reading the file.
 func WithArtworkPreload() Option {
 	return func(o *openOptions) {
 		o.preloadArtwork = true
 	}
 }
 
-// WithIgnoreWarnings suppresses all warnings.
+// WithIgnoreWarnings discards warnings, leaving File.Warnings empty.
 //
-// By default, warnings about non-fatal issues (invalid encodings, etc.)
-// are collected in File.Warnings. This option discards them.
-//
-// Use this for performance-critical code where you don't care about
-// data quality issues. If WithStrictParsing is also set, a file with warnings
-// still fails to open.
-//
-// Example:
-//
-//	file, err := audiometa.Open("song.flac", audiometa.WithIgnoreWarnings())
-//	// file.Warnings will always be empty
+// It covers warnings from parsing and from later [File.ExtractArtwork] calls.
+// Parsing itself is unchanged, so it does not make Open faster. If
+// [WithStrictParsing] is also set, a file with warnings still fails to open.
 func WithIgnoreWarnings() Option {
 	return func(o *openOptions) {
 		o.ignoreWarnings = true
 	}
 }
 
-// WithMaxArtworkSize sets a maximum size limit for artwork extraction.
+// WithMaxArtworkSize sets the largest image, in bytes, that
+// [File.ExtractArtwork] returns.
 //
-// Each image larger than this size (in bytes) is omitted from the slice
-// returned by ExtractArtwork and a StageArtwork warning is appended to
-// File.Warnings (unless WithIgnoreWarnings is set). The limit applies per
-// image and is enforced after extraction; a hard cap on individual parse
-// allocations applies regardless of this option.
-//
-// Default is 0 (no limit).
+// Each larger image is left out of the result and a StageArtwork [Warning]
+// is appended to File.Warnings (unless [WithIgnoreWarnings] is set). The
+// limit applies per image and is checked after the image is read, so it
+// bounds what the caller keeps, not what is read; a fixed internal cap on
+// single allocations applies regardless. Zero or a negative value, the
+// default, means no limit.
 //
 // Example:
 //
