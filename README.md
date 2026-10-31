@@ -4,21 +4,23 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/simonhull/audiometa)](https://goreportcard.com/report/github.com/simonhull/audiometa)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-audiometa is a high-performance, format-agnostic audio metadata library showcasing modern Go 1.26 patterns. When you need to read audio tags, this is the library you reach for.
+audiometa is a fast, format-agnostic audio metadata reader for Go. One call reads tags,
+technical audio properties, chapters and embedded artwork from FLAC, MP3, M4A/M4B,
+Ogg Vorbis and Opus files, with first-class support for audiobooks.
 
 ## Why audiometa?
 There are several really great tagging libraries for Go. With special thanks to David Howden and his excellent [Tag](https://github.com/dhowden/tag) Library.
-Initially this project began as a fork of that repository designed to add Audiobook tag support for another application I was writing. 
+Initially this project began as a fork of that repository designed to add Audiobook tag support for another application I was writing.
 As work continued I wanted to add some more modern language features that had been introduced in the later versions of Go which turned a simple project
 into something far more complicated.  Eventually culminating in a full rewrite.
 
 AudioMeta includes the following:
-- **🚀 Instant**: <1ms avg per file, lazy loading, zero-copy where possible
-- **🎯 Simple API**: `audiometa.Open()` just works - no format detection needed
-- **🎨 Modern Go**: Iterators, generics, structured concurrency - taking advantage of the latest language features.
-- **💪 Robust**: Graceful degradation with warnings, not crashes
+- **🚀 Fast**: tens of microseconds to open a typical file ([measured](#performance)); artwork is read only on request
+- **🎯 Simple API**: `audiometa.Open()` just works - the format is detected from the file's contents
+- **🎨 Modern Go**: iterators, generics, `context` cancellation throughout
+- **💪 Robust**: graceful degradation with warnings; bounds-checked reads, allocation caps and panic recovery for hostile files
 - **📦 Format Support**: FLAC, MP3, M4A/M4B, Ogg Vorbis, Opus
-- **🔍 Complete Metadata**: Tags, technical info, artwork, chapters (all formats)
+- **🔍 Complete Metadata**: tags, raw tags, technical info, artwork and chapters in every supported format
 
 ## Quick Start
 
@@ -52,47 +54,92 @@ func main() {
 }
 ```
 
+Runnable versions of this and the snippets below are on
+[pkg.go.dev](https://pkg.go.dev/github.com/simonhull/audiometa#pkg-examples).
+
 ## Features
 
 ### Format-Agnostic API
 
-All formats get called using the same API. 
+All formats are read through the same API. The format is detected from the file's
+signature bytes, not its extension.
 
 ```go
 file, _ := audiometa.Open("mystery_file")
-// Works for FLAC, MP3, M4A, M4B, Ogg Vorbis, Opus automatically
+// Works for FLAC, MP3, M4A, M4B, Ogg Vorbis and Opus
+fmt.Println(file.Format) // e.g. "Opus"
 ```
 
-### Lazy Loading
+### Lazy Artwork
 
-Large data assets (like artwork) are lazy-loaded on request:
+`Open` reads metadata only. Artwork is read on the first `ExtractArtwork` call and
+cached; `ExtractArtwork` is safe for concurrent use.
 
 ```go
-file, _ := audiometa.Open("album.flac")  // Fast - only reads metadata
+file, _ := audiometa.Open("album.flac") // reads metadata only
 
-// Later, if needed:
-artwork, _ := file.ExtractArtwork()       // Now load images
-if len(artwork) > 0 {
-    os.WriteFile("cover.jpg", artwork[0].Data, 0644)
+artwork, err := file.ExtractArtwork() // now reads the images
+if err == nil && len(artwork) > 0 {
+    os.WriteFile("cover.jpg", artwork[0].Data, 0o644)
 }
 ```
 
 ### Graceful Error Handling
 
-Corrupted tags won't get in the way of scanning.
+Damaged tags don't stop a scan. What could be parsed is returned, and the problems are
+listed in `file.Warnings`.
 
 ```go
-file, _ := audiometa.Open("partially_corrupted.mp3")
-
-// Got what we could parse
-fmt.Println(file.Tags.Title)
-
-// Check for issues
-if len(file.Warnings) > 0 {
-    for _, w := range file.Warnings {
-        fmt.Printf("Warning: %s\n", w)
-    }
+file, err := audiometa.Open("partially_corrupted.mp3")
+if err != nil {
+    log.Fatal(err) // unreadable, unsupported or structurally broken
 }
+
+fmt.Println(file.Tags.Title) // got what we could parse
+
+for _, w := range file.Warnings {
+    fmt.Printf("Warning: %s\n", w) // e.g. "metadata: failed to read frame TPE1: ..."
+}
+```
+
+`Open` fails only when there is nothing useful to return. Errors are wrapped; match them
+with `errors.Is` / `errors.As` (or `errors.AsType`):
+
+| Error | When |
+|-------|------|
+| `*os.PathError` (e.g. `fs.ErrNotExist`) | the file cannot be opened |
+| `*audiometa.UnsupportedFormatError` | unknown format, unreadable header, or a detected format without a parser (WAV, AIFF) |
+| `*audiometa.CorruptedFileError` | invalid container structure, or a recovered parser panic |
+| `*audiometa.OutOfBoundsError` | a required read runs past the end of the file (truncation, corrupt length) |
+| `context.Canceled` / `context.DeadlineExceeded` | the context passed to `OpenContext` / `OpenMany` is done |
+
+### Options
+
+```go
+file, err := audiometa.Open("song.flac",
+    audiometa.WithStrictParsing(),
+    audiometa.WithMaxArtworkSize(10<<20),
+)
+```
+
+| Option | Effect |
+|--------|--------|
+| `WithStrictParsing()` | any warning makes `Open` fail; the error unwraps to the warnings' causes (e.g. `*OutOfBoundsError`) |
+| `WithIgnoreWarnings()` | discard warnings (`file.Warnings` stays empty) |
+| `WithArtworkPreload()` | read artwork during `Open` instead of on first `ExtractArtwork` |
+| `WithMaxArtworkSize(n)` | drop images larger than `n` bytes from `ExtractArtwork`, with a warning |
+
+### Cancellation and Batches
+
+```go
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
+
+file, err := audiometa.OpenContext(ctx, "huge.m4b") // parse loops check ctx
+
+// Parse many files in parallel; files[i] is nil if paths[i] failed,
+// and err joins the individual failures.
+files, err := audiometa.OpenMany(ctx, paths...)
 ```
 
 ### Complete Metadata Access
@@ -115,6 +162,7 @@ file.Audio.SampleRate
 file.Audio.BitDepth
 file.Audio.Bitrate
 file.Audio.Lossless
+file.Audio.ReplayGain // *ReplayGainInfo, nil if absent
 
 // Audiobook-specific
 file.Tags.Narrator
@@ -125,48 +173,95 @@ file.Tags.SeriesPart
 file.Tags.MusicBrainzTrackID
 file.Tags.ISRC
 file.Tags.Barcode
+```
 
-// Raw format-specific tags
-for key, values := range file.Tags.All() {
-    // Access any tag, even unknown ones
+### Raw Tags
+
+Every tag is also kept under its native key, including ones audiometa has no field for:
+
+```go
+encoder := file.Tags.GetFirst("ENCODER") // first value, or ""
+artists := file.Tags.Get("ARTIST")       // all values (a copy), or nil
+
+for key, values := range file.Tags.All() { // iter.Seq2, unspecified order
+    fmt.Println(key, values)
 }
 ```
 
+Raw keys are format-specific:
+
+| Format | Raw key |
+|--------|---------|
+| FLAC, Ogg Vorbis, Opus | Vorbis comment name, upper-cased (`TITLE`, `ENCODER`) |
+| MP3 | ID3v2 frame ID (`TIT2`, `TSSE`); TXXX frames under their upper-cased description |
+| M4A/M4B | ilst atom name (`"\xa9nam"` for ©nam, `aART`); freeform `----` atoms under their upper-cased name |
+
 ## Supported Formats
 
-| Format      | Read | Write | Artwork | Chapters | Technical Info |
-|-------------|------|-------|---------|----------|----------------|
-| FLAC        | ✓    | 🚧    | ✓       | ✓        | ✓              |
-| MP3         | ✓    | 🚧    | ✓       | ✓        | ✓              |
-| M4A         | ✓    | 🚧    | ✓       | ✓        | ✓              |
-| M4B         | ✓    | 🚧    | ✓       | ✓        | ✓              |
-| Ogg Vorbis  | ✓    | 🚧    | -       | ✓        | ✓              |
-| Opus        | ✓    | 🚧    | -       | ✓        | ✓              |
+| Format      | Read | Write   | Artwork | Chapters | Technical Info |
+|-------------|------|---------|---------|----------|----------------|
+| FLAC        | ✓    | planned | ✓       | ✓        | ✓              |
+| MP3         | ✓    | planned | ✓       | ✓        | ✓              |
+| M4A         | ✓    | planned | ✓       | ✓        | ✓              |
+| M4B         | ✓    | planned | ✓       | ✓        | ✓              |
+| Ogg Vorbis  | ✓    | planned | ✓       | ✓        | ✓              |
+| Opus        | ✓    | planned | ✓       | ✓        | ✓              |
 
-🚧 = Under design (see docs/design/020-write-support-design.md); not available yet.
+audiometa is read-only today. Write support is planned and designed
+([docs/design/020-write-support-design.md](docs/design/020-write-support-design.md)) but not
+implemented. WAV and AIFF are detected but not parsed.
+
+Tag formats:
+
+- **FLAC**: Vorbis comments, PICTURE blocks
+- **MP3**: ID3v2.2, ID3v2.3 and ID3v2.4 (unsynchronisation undone; compressed or encrypted
+  frames skipped with a warning), falling back to an ID3v1 tag when ID3v2 gives no title
+  or artist
+- **M4A/M4B**: iTunes `ilst` atoms, including freeform `----` atoms
+- **Ogg Vorbis/Opus**: Vorbis comments, `METADATA_BLOCK_PICTURE` artwork
 
 ### Chapter Support
 
-All formats support chapter markers for audiobooks and podcasts:
-- **MP3**: ID3v2 CHAP frames
-- **M4A/M4B**: QuickTime chapter tracks, Nero CHPL format
-- **FLAC**: CUESHEET metadata block (CD-style track markers)
-- **Ogg Vorbis/Opus**: CHAPTER Vorbis comments
+Every format supports chapter markers for audiobooks and podcasts. Each chapter's
+`Source` records where it came from:
+
+| Format | Chapter source (in order of preference) | `Chapter.Source` |
+|--------|------------------------------------------|------------------|
+| M4A/M4B | QuickTime chapter text track, else Nero `chpl` atom | `quicktime`, `nero` |
+| MP3 | ID3v2 `CHAP` frames, else the OverDrive MediaMarkers `TXXX` frame | `id3_chap`, `overdrive` |
+| FLAC | `CHAPTERxxx` Vorbis comments, else the `CUESHEET` block | `vorbis_comment`, `flac_cuesheet` |
+| Ogg Vorbis/Opus | `CHAPTERxxx` Vorbis comments | `vorbis_comment` |
 
 ```go
 file, _ := audiometa.Open("audiobook.m4b")
 for _, chapter := range file.Chapters {
-    fmt.Printf("[%d] %s: %s → %s\n",
+    fmt.Printf("[%d] %s: %s → %s (%s)\n",
         chapter.Index,
         chapter.Title,
         chapter.StartTime,
-        chapter.EndTime)
+        chapter.EndTime,
+        chapter.Source) // e.g. audiometa.ChapterSourceQuickTime
 }
 ```
 
+## Robustness
+
+The parsers are written to read untrusted files:
+
+- every read is bounds-checked against the file size;
+- length fields from the file cannot drive allocations past the file size or a fixed
+  256 MiB ceiling;
+- a file records at most 100 warnings;
+- a panic inside a parser is recovered and returned as a `*CorruptedFileError`;
+- parse loops check the `context`, so `OpenContext` and `OpenMany` stop promptly;
+- each parser has a fuzz target (`FuzzParseMP3`, `FuzzParseFLAC`, `FuzzParseM4A`, `FuzzParseOgg`).
+
 ## Examples
 
-See the [`examples/`](examples/) directory for complete, runnable examples:
+Runnable examples with verified output are rendered on
+[pkg.go.dev](https://pkg.go.dev/github.com/simonhull/audiometa#pkg-examples) (source in
+[`example_test.go`](example_test.go)). The [`examples/`](examples/) directory has complete
+programs:
 
 - **[basic](examples/basic/)**: Simple metadata reading
 - **[batch](examples/batch/)**: Process multiple files concurrently
@@ -175,21 +270,22 @@ See the [`examples/`](examples/) directory for complete, runnable examples:
 
 ## Performance
 
-audiometa is designed for speed:
+Measured with `go test -run '^$' -bench 'BenchmarkParse|BenchmarkOpenFile' -benchmem -count 3 .`
+on an AMD Ryzen 9 5950X (Linux, Go 1.27.3). The fixtures in `testdata/bench/` are
+10-second audiobook files with a full tag set and 50 chapters. Medians of three runs:
 
-- **File open + metadata**: <1ms per file
-- **Artwork extraction**: <5ms (depends on size)
-- **Memory**: <1MB per File object (excluding artwork)
-- **Concurrent**: Safe for parallel parsing
+| Fixture | `Open` (real file) | Parse only (in memory) | `ReadAt` calls | Memory / allocs per open |
+|---------|-------------------:|-----------------------:|---------------:|-------------------------:|
+| `book.flac` | 21 µs | 13 µs | 2 | 41 KB / 158 |
+| `book.m4b`  | 29 µs | 19 µs | 3 | 68 KB / 542 |
+| `book.mp3`  | 38 µs | 26 µs | 5 | 101 KB / 491 |
+| `book.opus` | 56 µs | 46 µs | 3 | 105 KB / 445 |
 
-Benchmark on modern hardware (AMD Ryzen):
-```
-BenchmarkOpen/FLAC-16    2000    550 µs/op    892 B/op    18 allocs/op
-BenchmarkOpen/MP3-16     3000    420 µs/op    764 B/op    15 allocs/op
-BenchmarkOpen/M4A-16     2500    480 µs/op    834 B/op    16 allocs/op
-```
+Numbers depend on the machine and on the files, so treat them as an order of magnitude and
+run the benchmarks on your own hardware. Artwork is not included: it is read only by
+`ExtractArtwork`.
 
-## Command-Line Tools
+## Command-Line Tool
 
 ### audiometa
 
@@ -203,14 +299,15 @@ go install github.com/simonhull/audiometa/cmd/audiometa@latest
 
 Or download a prebuilt binary (linux, macOS, Windows; amd64 and arm64) from the
 [GitHub releases page](https://github.com/simonhull/audiometa/releases), verify it
-against `checksums.txt`, and put `audiometa` on your `PATH`.
+against `checksums.txt`, and put `audiometa` on your `PATH`. See
+[RELEASING.md](RELEASING.md) for how releases are built.
 
 #### Usage
 
 ```bash
 audiometa song.flac                      # same as: audiometa inspect song.flac
 audiometa inspect --json *.m4b           # one JSON object per file
-audiometa chapters audiobook.m4b         # [1] 00:00:00.000 -> 00:12:31.500  Chapter 1
+audiometa chapters audiobook.m4b         # [1] 00:00:00.000 → 00:12:31.500  Chapter 1
 audiometa artwork --out covers/ *.mp3    # extract embedded artwork (add --force to overwrite)
 audiometa atoms audiobook.m4b            # dump the MP4 atom tree (debugging)
 audiometa version
@@ -231,41 +328,39 @@ The former `atom-dump-tool` is now `audiometa atoms`.
 
 Full API documentation is available at [pkg.go.dev/github.com/simonhull/audiometa](https://pkg.go.dev/github.com/simonhull/audiometa).
 
-## Go Version
+## Requirements
 
-Requires **Go 1.26+** for modern language features:
-- Iterators (`iter.Seq2`)
-- Enhanced generics
-- New `slices`, `maps`, `cmp` packages
-- Built-in `min`, `max`, `clear`
-- `for i := range N` integer range loops
+Requires **Go 1.27+** (the `go` directive in `go.mod`). The only dependency is
+`golang.org/x/sync`.
 
 ## Project Structure
 
 ```
 audiometa/
-├── *.go              # Public API (file.go, tags.go, audio.go, etc.)
+├── *.go              # Public API (file.go, options.go, tags.go, ...)
+├── example_test.go   # Runnable godoc examples
 ├── internal/         # Private implementation
-│   ├── binary/       # Binary reading primitives
+│   ├── binary/       # Bounds-checked binary reading (SafeReader)
+│   ├── registry/     # Format parser registry
+│   ├── types/        # Shared data types (Tags, AudioInfo, Chapter, ...)
 │   ├── flac/         # FLAC parser
-│   ├── mp3/          # MP3 parser
+│   ├── mp3/          # MP3 parser (ID3v2, ID3v1, MPEG frames)
 │   ├── m4a/          # M4A/M4B parser
 │   ├── ogg/          # Ogg Vorbis/Opus parser
-│   ├── vorbis/       # Shared Vorbis comment parsing
-│   └── parsing/      # Parsing utilities
-├── cmd/              # Command-line tools
+│   ├── vorbis/       # Shared Vorbis comment and chapter parsing
+│   ├── imagemeta/    # Image type and dimension sniffing
+│   └── parsing/      # Series and narrator heuristics
+├── cmd/audiometa/    # Command-line tool
 ├── examples/         # Example programs
-└── docs/             # Documentation
+├── testdata/         # Sample files and benchmark fixtures
+└── docs/design/      # Design documents
 ```
 
 ## Architecture
 
-audiometa follows modern Go best practices:
-
-- **Layered API**: Simple things simple, complex things possible
-- **Zero surprises**: Predictable, well-documented behavior
-- **Performance first**: Optimized hot paths, lazy loading
-- **Graceful degradation**: Warnings instead of errors where possible
+- **Layered API**: `Open` for the common case; options, contexts and raw tags when you need them
+- **Lazy loading**: artwork is read only when requested
+- **Graceful degradation**: warnings instead of errors wherever partial data is still useful
 
 ### Format Parser Registration
 
@@ -287,7 +382,10 @@ cd audiometa
 # Install the pinned toolchain (Go, golangci-lint, stringer, goimports)
 mise install
 
-# Run all tests
+# Everything CI checks: build, race tests, lint, vet, gofmt
+mise run check
+
+# Run all tests (including the godoc examples)
 go test ./...
 
 # Run tests with race detector
@@ -304,6 +402,9 @@ go test -bench=. -benchmem ./...
 go test -bench=BenchmarkOpen -cpuprofile=cpu.prof -memprofile=mem.prof
 go tool pprof cpu.prof
 
+# Fuzz a parser
+go test -fuzz=FuzzParseMP3 ./internal/mp3
+
 # Generate code (stringer for enums)
 go generate ./...
 
@@ -314,7 +415,7 @@ goimports -w .
 # Run linters (uses the mise-pinned golangci-lint)
 mise exec -- golangci-lint run ./...
 
-# Install CLI tools locally
+# Install the CLI locally
 go install ./cmd/audiometa
 
 # Build all binaries
@@ -334,7 +435,3 @@ go build -v ./cmd/...
 
 - Inspired by [Tag](https://github.com/dhowden/tag), [TagLib](https://taglib.org/) and [Mutagen](https://github.com/quodlibet/mutagen)
 - Built with modern Go patterns and performance in mind
-
----
-
-**Made with ❤️ using Go 1.26**
