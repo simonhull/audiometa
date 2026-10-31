@@ -9,14 +9,35 @@ import (
 	"github.com/simonhull/audiometa/internal/types"
 )
 
-// MP3 bitrate table (MPEG1 Layer III) in kbps.
-var bitrateTable = []int{
-	0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0,
-}
+// MPEG audio version bits, (header >> 19) & 3. MPEG-2.5 (0) and reserved (1)
+// are rejected by findMP3FrameAt; supporting 2.5 would need 11025/12000/8000 Hz
+// sample rates and 576 samples per frame.
+const (
+	versionMPEG2 = 2
+	versionMPEG1 = 3
+)
 
-// MP3 sample rate table (MPEG1) in Hz.
-var sampleRateTable = []int{
-	44100, 48000, 32000, 0,
+// Layer III bitrate tables in kbps, indexed by the header's bitrate index.
+var (
+	bitrateTableV1 = []int{0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0}
+	bitrateTableV2 = []int{0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0}
+)
+
+// Sample rate tables in Hz, indexed by the header's sample rate index.
+var (
+	sampleRateTableV1 = []int{44100, 48000, 32000, 0}
+	sampleRateTableV2 = []int{22050, 24000, 16000, 0}
+)
+
+// mpegVersion extracts the version bits: 3 = MPEG-1, 2 = MPEG-2.
+func mpegVersion(header uint32) uint32 { return (header >> 19) & 0x3 }
+
+// samplesPerFrame returns the Layer III samples per frame for the header's version.
+func samplesPerFrame(header uint32) int {
+	if mpegVersion(header) == versionMPEG1 {
+		return 1152
+	}
+	return 576
 }
 
 // parseTechnicalInfo extracts bitrate, sample rate, codec, and duration from MP3 frames.
@@ -37,7 +58,7 @@ func parseTechnicalInfo(sr *binutil.SafeReader, tagSize int64, fileSize int64, f
 				file.Audio.Codec = "MP3"
 
 				// Check for VBR header
-				duration, vbr := parseVBRHeader(sr, frameOffset, sampleRate, fileSize, tagSize)
+				duration, vbr := parseVBRHeader(sr, frameOffset, header, sampleRate)
 				if vbr {
 					file.Audio.Duration = duration
 					file.Audio.VBR = true
@@ -72,11 +93,11 @@ func findMP3FrameAt(sr *binutil.SafeReader, offset int64) (uint32, error) {
 	}
 
 	// Validate MPEG version and layer
-	version := (header >> 19) & 0x3
+	version := mpegVersion(header)
 	layer := (header >> 17) & 0x3
 
 	// MPEG1 (version 11) or MPEG2 (version 10)
-	if version != 3 && version != 2 {
+	if version != versionMPEG1 && version != versionMPEG2 {
 		return 0, errors.New("unsupported MPEG version")
 	}
 
@@ -90,16 +111,21 @@ func findMP3FrameAt(sr *binutil.SafeReader, offset int64) (uint32, error) {
 
 // parseMP3FrameHeader extracts bitrate, sample rate, and channels from frame header.
 func parseMP3FrameHeader(header uint32) (bitrate, sampleRate, channels int) {
+	bitrates, sampleRates := bitrateTableV1, sampleRateTableV1
+	if mpegVersion(header) != versionMPEG1 {
+		bitrates, sampleRates = bitrateTableV2, sampleRateTableV2
+	}
+
 	// Bitrate index (4 bits)
 	bitrateIdx := (header >> 12) & 0xF
-	if bitrateIdx < uint32(len(bitrateTable)) {
-		bitrate = bitrateTable[bitrateIdx] * 1000 // Convert to bps
+	if bitrateIdx < uint32(len(bitrates)) {
+		bitrate = bitrates[bitrateIdx] * 1000 // Convert to bps
 	}
 
 	// Sample rate index (2 bits)
 	sampleRateIdx := (header >> 10) & 0x3
-	if sampleRateIdx < uint32(len(sampleRateTable)) {
-		sampleRate = sampleRateTable[sampleRateIdx]
+	if sampleRateIdx < uint32(len(sampleRates)) {
+		sampleRate = sampleRates[sampleRateIdx]
 	}
 
 	// Channel mode (2 bits)
@@ -114,7 +140,7 @@ func parseMP3FrameHeader(header uint32) (bitrate, sampleRate, channels int) {
 }
 
 // parseVBRHeader checks for Xing/VBRI VBR headers and calculates accurate duration.
-func parseVBRHeader(sr *binutil.SafeReader, frameOffset int64, sampleRate int, _ int64, _ int64) (time.Duration, bool) {
+func parseVBRHeader(sr *binutil.SafeReader, frameOffset int64, header uint32, sampleRate int) (time.Duration, bool) {
 	// Xing/Info header is 36 bytes after frame header for MPEG1
 	// Check for "Xing" or "Info" marker
 	xingOffset := frameOffset + 36
@@ -135,7 +161,7 @@ func parseVBRHeader(sr *binutil.SafeReader, frameOffset int64, sampleRate int, _
 				// Frames are at offset 14 (4 bytes)
 				if len(vbriBuf) >= 18 {
 					numFrames := binary.BigEndian.Uint32(vbriBuf[14:18])
-					return calculateDurationFromFrames(numFrames, sampleRate), true
+					return calculateDurationFromFrames(numFrames, sampleRate, samplesPerFrame(header)), true
 				}
 			}
 		}
@@ -148,16 +174,14 @@ func parseVBRHeader(sr *binutil.SafeReader, frameOffset int64, sampleRate int, _
 	// Frames field is present if bit 0 is set
 	if flags&0x0001 != 0 {
 		numFrames := binary.BigEndian.Uint32(buf[8:12])
-		return calculateDurationFromFrames(numFrames, sampleRate), true
+		return calculateDurationFromFrames(numFrames, sampleRate, samplesPerFrame(header)), true
 	}
 
 	return 0, false
 }
 
 // calculateDurationFromFrames calculates duration from number of frames.
-func calculateDurationFromFrames(numFrames uint32, sampleRate int) time.Duration {
-	// Each MPEG1 Layer III frame = 1152 samples
-	samplesPerFrame := 1152
+func calculateDurationFromFrames(numFrames uint32, sampleRate, samplesPerFrame int) time.Duration {
 	totalSamples := uint64(numFrames) * uint64(samplesPerFrame)
 	durationSeconds := float64(totalSamples) / float64(sampleRate)
 	return time.Duration(durationSeconds * float64(time.Second))
