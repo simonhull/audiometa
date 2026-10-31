@@ -3,6 +3,7 @@ package m4a
 import (
 	"bytes"
 	"encoding/binary"
+	"io"
 	"testing"
 
 	audiobinary "github.com/simonhull/audiometa/internal/binary"
@@ -255,5 +256,168 @@ func TestParseTrackNumber_NoDataAtom(t *testing.T) {
 	_, err := parseTrackNumber(sr, trknAtom)
 	if err == nil {
 		t.Error("expected error for missing data atom, got nil")
+	}
+}
+
+// createTypedMetadataItem builds an ilst item whose data atom has the given type indicator.
+func createTypedMetadataItem(itemType []byte, typeIndicator uint32, payload []byte) []byte {
+	data := &bytes.Buffer{}
+	binary.Write(data, binary.BigEndian, typeIndicator) // version 0 + type indicator
+	binary.Write(data, binary.BigEndian, uint32(0))     // reserved
+	data.Write(payload)
+	return createAtomWithType(itemType, createMockAtom("data", data.Bytes()))
+}
+
+func runIlst(t *testing.T, items ...[]byte) *types.File {
+	t.Helper()
+	ilst := createMockAtom("ilst", bytes.Join(items, nil))
+	sr := audiobinary.NewSafeReader(bytes.NewReader(ilst), int64(len(ilst)), "test.m4b")
+	ilstAtom, err := readAtomHeader(sr, 0, int64(len(ilst)))
+	if err != nil {
+		t.Fatalf("readAtomHeader: %v", err)
+	}
+	file := &types.File{}
+	if err := extractIlstMetadata(sr, ilstAtom, file); err != nil {
+		t.Fatalf("extractIlstMetadata: %v", err)
+	}
+	return file
+}
+
+func TestParseMetadataTag_Integer(t *testing.T) {
+	tests := []struct {
+		name    string
+		typ     uint32
+		payload []byte
+		want    string
+	}{
+		{"signed 2 bytes", 21, []byte{0x00, 0x05}, "5"},
+		{"signed -1", 21, []byte{0xFF, 0xFF}, "-1"},
+		{"signed 3 bytes negative", 21, []byte{0xFF, 0xFF, 0xFE}, "-2"},
+		{"unsigned 2 bytes", 22, []byte{0xFF, 0xFF}, "65535"},
+		{"unsigned 4 bytes", 22, []byte{0, 0, 0, 7}, "7"},
+		{"unsupported width", 21, []byte{1, 2, 3, 4, 5}, ""},
+		{"image type", 13, make([]byte, 100), ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			item := createTypedMetadataItem([]byte{0xA9, 'm', 'v', 'i'}, tt.typ, tt.payload)
+			sr := audiobinary.NewSafeReader(bytes.NewReader(item), int64(len(item)), "test.m4b")
+			atom, _ := readAtomHeader(sr, 0, int64(len(item)))
+			got, err := parseMetadataTag(sr, atom)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIlstSeriesPartInteger(t *testing.T) {
+	file := runIlst(t,
+		createMetadataItem([]byte{0xA9, 'm', 'v', 'n'}, "The Expanse"),
+		createTypedMetadataItem([]byte{0xA9, 'm', 'v', 'i'}, 21, []byte{0x00, 0x05}),
+	)
+	if file.Tags.Series != "The Expanse" || file.Tags.SeriesPart != "5" {
+		t.Errorf("Series=%q SeriesPart=%q", file.Tags.Series, file.Tags.SeriesPart)
+	}
+}
+
+func TestIlstSeriesPartZeroIgnored(t *testing.T) {
+	file := runIlst(t, createTypedMetadataItem([]byte{0xA9, 'm', 'v', 'i'}, 21, []byte{0x00, 0x00}))
+	if file.Tags.SeriesPart != "" {
+		t.Errorf("SeriesPart = %q, want empty", file.Tags.SeriesPart)
+	}
+}
+
+func TestIlstDate(t *testing.T) {
+	tests := []struct {
+		value    string
+		wantYear int
+		wantDate string
+	}{
+		{"2015-03-01T07:00:00Z", 2015, "2015-03-01T07:00:00Z"},
+		{"1999", 1999, "1999"},
+		{"unknown", 0, "unknown"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.value, func(t *testing.T) {
+			file := runIlst(t, createMetadataItem([]byte{0xA9, 'd', 'a', 'y'}, tt.value))
+			if file.Tags.Year != tt.wantYear || file.Tags.Date != tt.wantDate {
+				t.Errorf("Year=%d Date=%q, want %d %q", file.Tags.Year, file.Tags.Date, tt.wantYear, tt.wantDate)
+			}
+		})
+	}
+}
+
+func TestIlstNewFields(t *testing.T) {
+	file := runIlst(t,
+		createMetadataItem([]byte("aART"), "Album Artist"),
+		createMetadataItem([]byte("cprt"), "(c) Someone"),
+		createMetadataItem([]byte{0xA9, 'l', 'y', 'r'}, "la la"),
+		createTypedMetadataItem([]byte("disk"), 0, []byte{0, 0, 0, 2, 0, 3}),
+	)
+	if file.Tags.AlbumArtist != "Album Artist" || file.Tags.Copyright != "(c) Someone" || file.Tags.Lyrics != "la la" {
+		t.Errorf("unexpected tags: %+v", file.Tags)
+	}
+	if file.Tags.DiscNumber != 2 || file.Tags.DiscTotal != 3 {
+		t.Errorf("disc = %d/%d, want 2/3", file.Tags.DiscNumber, file.Tags.DiscTotal)
+	}
+}
+
+func TestIlstDescriptionPriority(t *testing.T) {
+	item := func(typ, v string) []byte { return createMetadataItem([]byte(typ), v) }
+	des := []byte{0xA9, 'd', 'e', 's'}
+	tests := []struct {
+		name  string
+		items [][]byte
+		want  string
+	}{
+		{"ldes first", [][]byte{item("ldes", "long"), item("desc", "short"), createMetadataItem(des, "des")}, "long"},
+		{"des before desc", [][]byte{createMetadataItem(des, "des"), item("desc", "short")}, "des"},
+		{"desc before ldes", [][]byte{item("desc", "short"), item("ldes", "long")}, "long"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := runIlst(t, tt.items...).Tags.Description; got != tt.want {
+				t.Errorf("Description = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+type maxReadReaderAt struct {
+	r   io.ReaderAt
+	max int
+}
+
+func (m *maxReadReaderAt) ReadAt(p []byte, off int64) (int, error) {
+	m.max = max(m.max, len(p))
+	return m.r.ReadAt(p, off)
+}
+
+func TestIlstSkipsCoverData(t *testing.T) {
+	ilst := createMockAtom("ilst", bytes.Join([][]byte{
+		createMetadataItem([]byte{0xA9, 'n', 'a', 'm'}, "Title"),
+		createTypedMetadataItem([]byte("covr"), 13, make([]byte, 65536)),
+		createMetadataItem([]byte("aART"), "AA"),
+	}, nil))
+	rr := &maxReadReaderAt{r: bytes.NewReader(ilst)}
+	sr := audiobinary.NewSafeReader(rr, int64(len(ilst)), "test.m4b")
+	ilstAtom, err := readAtomHeader(sr, 0, int64(len(ilst)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rr.max = 0
+	file := &types.File{}
+	if err := extractIlstMetadata(sr, ilstAtom, file); err != nil {
+		t.Fatal(err)
+	}
+	if file.Tags.Title != "Title" || file.Tags.AlbumArtist != "AA" {
+		t.Errorf("walk did not continue past covr: %+v", file.Tags)
+	}
+	if rr.max >= 1024 {
+		t.Errorf("largest read was %d bytes; covr payload should not be read", rr.max)
 	}
 }

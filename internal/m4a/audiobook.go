@@ -164,19 +164,29 @@ func mapAudiobookField(fieldName, value string, file *types.File) {
 	}
 }
 
+// lookupFold returns the first non-empty value whose key equals key case-insensitively.
+func lookupFold(tags map[string]string, key string) string {
+	for k, v := range tags {
+		if v != "" && strings.EqualFold(k, key) {
+			return v
+		}
+	}
+	return ""
+}
+
 // Priority: Custom atoms > Title parsing > Album parsing > Path parsing.
 func resolveSeriesPart(sr *binary.SafeReader, file *types.File, customTags map[string]string) string {
 	// Priority 1: Explicit custom iTunes atoms
-	if part := customTags["Series Part"]; part != "" {
+	if part := lookupFold(customTags, "Series Part"); part != "" {
 		return part
 	}
-	if part := customTags["Series Position"]; part != "" {
+	if part := lookupFold(customTags, "Series Position"); part != "" {
 		return part
 	}
-	if part := customTags["Part"]; part != "" {
+	if part := lookupFold(customTags, "Part"); part != "" {
 		return part
 	}
-	if part := customTags["Volume"]; part != "" {
+	if part := lookupFold(customTags, "Volume"); part != "" {
 		return part
 	}
 

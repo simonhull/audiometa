@@ -456,3 +456,19 @@ func TestResolveSeriesPart_FromPathParsing(t *testing.T) {
 		})
 	}
 }
+
+func TestParseAudiobookTags_SeriesPartCaseInsensitive(t *testing.T) {
+	ilst := createMockAtom("ilst", append(
+		createCustomAtom("com.apple.iTunes", "Series", "Dune"),
+		createCustomAtom("com.apple.iTunes", "SERIES PART", "3")...))
+	sr := audiobinary.NewSafeReader(bytes.NewReader(ilst), int64(len(ilst)), "")
+	ilstAtom, _ := readAtomHeader(sr, 0, int64(len(ilst)))
+
+	file := &types.File{}
+	if err := parseAudiobookTags(sr, ilstAtom, file); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if file.Tags.SeriesPart != "3" {
+		t.Errorf("SeriesPart = %q, want 3", file.Tags.SeriesPart)
+	}
+}
