@@ -101,7 +101,7 @@ func parseCueSheet(sr *binary.SafeReader, offset int64, length uint32, file *typ
 	}
 
 	// Convert cuesheet to chapters
-	file.Chapters = cuesheetToChapters(cuesheet, file.Audio.SampleRate)
+	file.Chapters = cuesheetToChapters(cuesheet, file.Audio.SampleRate, file.Audio.Duration)
 
 	return nil
 }
@@ -205,71 +205,76 @@ func parseCueIndex(sr *binary.SafeReader, offset int64) (*CueIndex, int64, error
 	}, offset, nil
 }
 
+// Lead-out track numbers (RFC 9639 section 8.7): 170 for CD-DA cuesheets, 255 otherwise.
+const (
+	leadOutTrackCD    = 170
+	leadOutTrackNonCD = 255
+)
+
+func isLeadOut(number byte) bool { return number == leadOutTrackCD || number == leadOutTrackNonCD }
+
+// trackStartSample returns the sample where the track's audible content starts: the track
+// offset plus the INDEX 01 offset (INDEX 00, if present, is the pregap). Falls back to the
+// track offset when there is no INDEX 01.
+func trackStartSample(t CueTrack) uint64 {
+	for _, idx := range t.Indices {
+		if idx.Number == 1 {
+			return t.Offset + idx.Offset
+		}
+	}
+	return t.Offset
+}
+
+// samplesToDuration converts a sample count to a Duration without float rounding.
+// sampleRate is at most 2^20-1 (20-bit STREAMINFO field), so rem*1e9 cannot overflow uint64.
+func samplesToDuration(samples uint64, sampleRate int) time.Duration {
+	rate := uint64(sampleRate)
+	return time.Duration(samples/rate)*time.Second + time.Duration(samples%rate*uint64(time.Second)/rate)
+}
+
 // cuesheetToChapters converts a CUESHEET to types.Chapter slice.
-func cuesheetToChapters(cuesheet *CueSheet, sampleRate int) []types.Chapter {
-	if len(cuesheet.Tracks) == 0 {
+func cuesheetToChapters(cuesheet *CueSheet, sampleRate int, fileDuration time.Duration) []types.Chapter {
+	if len(cuesheet.Tracks) == 0 || sampleRate <= 0 {
 		return nil
 	}
 
-	if sampleRate <= 0 {
-		return nil
+	// The lead-out is always the last track.
+	var leadOut *CueTrack
+	if last := cuesheet.Tracks[len(cuesheet.Tracks)-1]; isLeadOut(last.Number) {
+		leadOut = &last
 	}
 
-	// Filter out non-audio tracks and lead-out (track 170)
-	var audioTracks []CueTrack
+	chapters := make([]types.Chapter, 0, len(cuesheet.Tracks))
 	for _, track := range cuesheet.Tracks {
-		if track.IsAudio && track.Number != 170 {
-			audioTracks = append(audioTracks, track)
+		if !track.IsAudio || isLeadOut(track.Number) {
+			continue
 		}
-	}
 
-	if len(audioTracks) == 0 {
-		return nil
-	}
-
-	// Find lead-out track for calculating last chapter end time
-	var leadOutOffset uint64
-	for _, track := range cuesheet.Tracks {
-		if track.Number == 170 {
-			leadOutOffset = track.Offset
-			break
-		}
-	}
-
-	// Convert tracks to chapters
-	chapters := make([]types.Chapter, len(audioTracks))
-
-	for i, track := range audioTracks {
-		// Calculate start time (samples / sample_rate = seconds)
-		seconds := float64(track.Offset) / float64(sampleRate)
-		startTime := time.Duration(seconds * float64(time.Second))
-
-		// Calculate end time
-		var endTime time.Duration
-		if i < len(audioTracks)-1 {
-			// End at start of next track
-			nextOffset := audioTracks[i+1].Offset
-			seconds := float64(nextOffset) / float64(sampleRate)
-			endTime = time.Duration(seconds * float64(time.Second))
-		} else if leadOutOffset > 0 {
-			// Last track: use lead-out if available
-			seconds := float64(leadOutOffset) / float64(sampleRate)
-			endTime = time.Duration(seconds * float64(time.Second))
-		}
-		// If no lead-out and last track, endTime stays 0 (will be set by duration)
-
-		// Generate title (Track number, or use ISRC if present)
+		// Title is the track number, or the ISRC if present.
 		title := fmt.Sprintf("Track %02d", track.Number)
 		if track.ISRC != "" {
 			title = fmt.Sprintf("Track %02d (%s)", track.Number, track.ISRC)
 		}
 
-		chapters[i] = types.Chapter{
-			Index:     i + 1,
+		chapters = append(chapters, types.Chapter{
+			Index:     len(chapters) + 1,
 			Title:     title,
-			StartTime: startTime,
-			EndTime:   endTime,
-		}
+			StartTime: samplesToDuration(trackStartSample(track), sampleRate),
+		})
+	}
+
+	if len(chapters) == 0 {
+		return nil
+	}
+
+	for i := range chapters[:len(chapters)-1] {
+		chapters[i].EndTime = chapters[i+1].StartTime
+	}
+	last := &chapters[len(chapters)-1]
+	if leadOut != nil {
+		last.EndTime = samplesToDuration(leadOut.Offset, sampleRate)
+	} else {
+		last.EndTime = fileDuration
 	}
 
 	return chapters

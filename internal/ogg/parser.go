@@ -99,16 +99,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 			return nil, fmt.Errorf("failed to parse Vorbis identification header: %w", err)
 		}
 
-		// Parse Vorbis comment header (packet 1)
-		if err := parseVorbisComment(packets[1], file); err != nil {
-			// Non-fatal - add warning
-			file.Warnings = append(file.Warnings, types.Warning{
-				Stage:   types.StageMetadata,
-				Message: fmt.Sprintf("failed to parse Vorbis comment header: %v", err),
-				Err:     err,
-			})
-		}
-
+		// Duration first: the comment parser derives the last chapter's end time from it.
 		// Calculate duration from last page's granule position
 		if file.Audio.SampleRate > 0 {
 			duration, err := calculateDuration(sr, size, file.Audio.SampleRate)
@@ -124,6 +115,16 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 			}
 		}
 
+		// Parse Vorbis comment header (packet 1)
+		if err := parseVorbisComment(packets[1], file); err != nil {
+			// Non-fatal - add warning
+			file.Warnings = append(file.Warnings, types.Warning{
+				Stage:   types.StageMetadata,
+				Message: fmt.Sprintf("failed to parse Vorbis comment header: %v", err),
+				Err:     err,
+			})
+		}
+
 	case "opus":
 		file.Format = types.FormatOpus
 		// Parse OpusHead identification header (packet 0)
@@ -131,16 +132,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 			return nil, fmt.Errorf("failed to parse OpusHead header: %w", err)
 		}
 
-		// Parse OpusTags comment header (packet 1)
-		if err := parseOpusTags(packets[1], file); err != nil {
-			// Non-fatal - add warning
-			file.Warnings = append(file.Warnings, types.Warning{
-				Stage:   types.StageMetadata,
-				Message: fmt.Sprintf("failed to parse OpusTags header: %v", err),
-				Err:     err,
-			})
-		}
-
+		// Duration first: the comment parser derives the last chapter's end time from it.
 		// Calculate duration (Opus always at 48kHz)
 		duration, err := calculateDuration(sr, size, 48000)
 		if err != nil {
@@ -152,6 +144,16 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 			})
 		} else {
 			file.Audio.Duration = duration
+		}
+
+		// Parse OpusTags comment header (packet 1)
+		if err := parseOpusTags(packets[1], file); err != nil {
+			// Non-fatal - add warning
+			file.Warnings = append(file.Warnings, types.Warning{
+				Stage:   types.StageMetadata,
+				Message: fmt.Sprintf("failed to parse OpusTags header: %v", err),
+				Err:     err,
+			})
 		}
 
 		// Estimate bitrate for Opus (no nominal bitrate in header)

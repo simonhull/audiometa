@@ -7,7 +7,7 @@ import "time"
 // Chapters are supported in:
 //   - M4B/M4A files (QuickTime chapter tracks, Nero CHPL format)
 //   - MP3 files (ID3v2 CHAP frames)
-//   - FLAC files (CUESHEET metadata block)
+//   - FLAC files (CHAPTER Vorbis comments, else the CUESHEET metadata block)
 //   - Ogg Vorbis/Opus files (CHAPTER Vorbis comments)
 //
 // Access chapters via file.Chapters:

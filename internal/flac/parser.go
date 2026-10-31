@@ -62,6 +62,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	}
 
 	// Parse metadata blocks
+	var vorbisComments []string
 	offset := int64(4) // After "fLaC"
 	for offset < size {
 		// Read metadata block header (4 bytes)
@@ -96,7 +97,9 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 			}
 
 		case blockTypeVorbisComment:
-			if err := parseVorbisComment(sr, offset, blockLength, file); err != nil {
+			comments, err := parseVorbisComment(sr, offset, blockLength, file)
+			vorbisComments = append(vorbisComments, comments...)
+			if err != nil {
 				file.Warnings = append(file.Warnings, types.Warning{
 					Stage:   types.StageMetadata,
 					Message: fmt.Sprintf("failed to parse Vorbis comments: %v", err),
@@ -139,6 +142,13 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		if isLast {
 			break
 		}
+	}
+
+	// CHAPTERxxx= comments carry titles and are what audiobook taggers write; they take
+	// precedence over CUESHEET track markers. Runs after the loop so block order doesn't matter
+	// and STREAMINFO's duration is known.
+	if chapters := vorbis.ParseChapters(vorbisComments, file.Audio.Duration); len(chapters) > 0 {
+		file.Chapters = chapters
 	}
 
 	// Set container and codec
@@ -264,13 +274,14 @@ func parseStreamInfo(sr *binary.SafeReader, offset, blockLength int64, file *typ
 }
 
 // parseVorbisComment extracts tags from VORBIS_COMMENT block.
-func parseVorbisComment(sr *binary.SafeReader, offset, _ int64, file *types.File) error {
+func parseVorbisComment(sr *binary.SafeReader, offset, _ int64, file *types.File) ([]string, error) {
+	var comments []string
 	currentOffset := offset
 
 	// Read vendor string length (32-bit little-endian)
 	vendorLength, err := binary.ReadLE[uint32](sr, currentOffset, "vendor string length")
 	if err != nil {
-		return err
+		return comments, err
 	}
 	currentOffset += 4
 
@@ -280,7 +291,7 @@ func parseVorbisComment(sr *binary.SafeReader, offset, _ int64, file *types.File
 	// Read number of comments (32-bit little-endian)
 	numComments, err := binary.ReadLE[uint32](sr, currentOffset, "number of comments")
 	if err != nil {
-		return err
+		return comments, err
 	}
 	currentOffset += 4
 
@@ -289,19 +300,20 @@ func parseVorbisComment(sr *binary.SafeReader, offset, _ int64, file *types.File
 		// Read comment length (32-bit little-endian)
 		commentLength, err := binary.ReadLE[uint32](sr, currentOffset, "comment length")
 		if err != nil {
-			return fmt.Errorf("read comment %d length: %w", i, err)
+			return comments, fmt.Errorf("read comment %d length: %w", i, err)
 		}
 		currentOffset += 4
 
 		// Read comment string (UTF-8)
 		commentData := make([]byte, commentLength)
 		if err := sr.ReadAt(commentData, currentOffset, fmt.Sprintf("comment %d", i)); err != nil {
-			return fmt.Errorf("read comment %d: %w", i, err)
+			return comments, fmt.Errorf("read comment %d: %w", i, err)
 		}
 		currentOffset += int64(commentLength)
 
 		// Parse "KEY=VALUE" format
 		comment := string(commentData)
+		comments = append(comments, comment)
 		if err := vorbis.ParseComment(comment, file); err != nil {
 			// Non-fatal - add warning and continue
 			file.Warnings = append(file.Warnings, types.Warning{
@@ -312,7 +324,7 @@ func parseVorbisComment(sr *binary.SafeReader, offset, _ int64, file *types.File
 		}
 	}
 
-	return nil
+	return comments, nil
 }
 
 // parsePicture extracts artwork from PICTURE block.

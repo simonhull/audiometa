@@ -7,12 +7,13 @@ import (
 	"errors"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/simonhull/audiometa/internal/types"
 )
 
 // createMinimalOgg creates a minimal Ogg Vorbis file with identification and comment headers.
-func createMinimalOgg(title, artist, album string) []byte {
+func createMinimalOgg(title, artist, album string, extra ...string) []byte {
 	buf := &bytes.Buffer{}
 
 	// Helper to create Ogg page
@@ -97,6 +98,7 @@ func createMinimalOgg(title, artist, album string) []byte {
 	if album != "" {
 		comments = append(comments, "ALBUM="+album)
 	}
+	comments = append(comments, extra...)
 
 	// Comment count
 	binary.Write(commentHeader, binary.LittleEndian, uint32(len(comments)))
@@ -130,7 +132,7 @@ func createMinimalOgg(title, artist, album string) []byte {
 }
 
 // createMinimalOpus creates a minimal Ogg Opus file with OpusHead and OpusTags headers.
-func createMinimalOpus(title, artist, album string) []byte {
+func createMinimalOpus(title, artist, album string, extra ...string) []byte {
 	buf := &bytes.Buffer{}
 
 	// Helper to create Ogg page
@@ -211,6 +213,7 @@ func createMinimalOpus(title, artist, album string) []byte {
 	if album != "" {
 		comments = append(comments, "ALBUM="+album)
 	}
+	comments = append(comments, extra...)
 
 	// Comment count
 	binary.Write(commentHeader, binary.LittleEndian, uint32(len(comments)))
@@ -886,5 +889,35 @@ func BenchmarkParseOpusTags(b *testing.B) {
 		_ = file.Tags.Artist
 		_ = file.Tags.Album
 		f.Close()
+	}
+}
+
+func TestParse_ChapterEndTimeUsesDuration(t *testing.T) {
+	extra := []string{"CHAPTER001=00:00:00.000", "CHAPTER001NAME=Intro", "CHAPTER002=00:00:00.500"}
+	for _, tc := range []struct {
+		name string
+		data []byte
+	}{
+		{"vorbis", createMinimalOgg("T", "A", "B", extra...)},
+		{"opus", createMinimalOpus("T", "A", "B", extra...)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			file, err := (&parser{}).Parse(context.Background(), bytes.NewReader(tc.data), int64(len(tc.data)), "test.ogg")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if file.Audio.Duration <= 0 {
+				t.Fatalf("duration = %v, want > 0", file.Audio.Duration)
+			}
+			if len(file.Chapters) != 2 {
+				t.Fatalf("got %d chapters, want 2", len(file.Chapters))
+			}
+			if got := file.Chapters[0].EndTime; got != 500*time.Millisecond {
+				t.Errorf("chapter 1 end = %v, want 500ms", got)
+			}
+			if got := file.Chapters[1].EndTime; got != file.Audio.Duration {
+				t.Errorf("chapter 2 end = %v, want duration %v", got, file.Audio.Duration)
+			}
+		})
 	}
 }

@@ -100,38 +100,33 @@ func ParseChapters(comments []string, fileDuration time.Duration) []types.Chapte
 	})
 
 	// Convert to types.Chapter
-	chapters := make([]types.Chapter, len(chapterList))
-	for i, chap := range chapterList {
+	chapters := make([]types.Chapter, 0, len(chapterList))
+	for _, chap := range chapterList {
 		startTime, err := parseChapterTimestamp(chap.timestamp)
 		if err != nil {
-			// Invalid timestamp - skip this chapter
-			continue
+			continue // Invalid timestamp: drop the chapter entirely
 		}
-
-		// Calculate end time
-		var endTime time.Duration
-		if i < len(chapterList)-1 {
-			// End at start of next chapter (ignore error, endTime stays 0 if invalid)
-			endTime, _ = parseChapterTimestamp(chapterList[i+1].timestamp)
-		} else if fileDuration > 0 {
-			// Last chapter: use file duration
-			endTime = fileDuration
-		}
-		// If no duration and last chapter, endTime stays 0
-
 		title := chap.title
 		if title == "" {
 			title = fmt.Sprintf("Chapter %d", chap.number)
 		}
-
-		chapters[i] = types.Chapter{
-			Index:     i + 1,
+		chapters = append(chapters, types.Chapter{
+			Index:     len(chapters) + 1,
 			Title:     title,
 			StartTime: startTime,
-			EndTime:   endTime,
-		}
+		})
+	}
+	if len(chapters) == 0 {
+		return nil
 	}
 
+	// End each chapter at the next one's start; the last at the file duration (0 if unknown).
+	for i := range chapters[:len(chapters)-1] {
+		chapters[i].EndTime = chapters[i+1].StartTime
+	}
+	if fileDuration > 0 {
+		chapters[len(chapters)-1].EndTime = fileDuration
+	}
 	return chapters
 }
 
