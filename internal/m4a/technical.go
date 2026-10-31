@@ -1,6 +1,7 @@
 package m4a
 
 import (
+	"math"
 	"time"
 
 	"github.com/simonhull/audiometa/internal/binary"
@@ -101,8 +102,7 @@ func parseMvhd(sr *binary.SafeReader, mvhdAtom *Atom, file *types.File) error {
 
 	// Calculate duration: duration / timescale
 	if timescale > 0 {
-		durationNs := (int64(duration) * 1_000_000_000) / int64(timescale)
-		file.Audio.Duration = time.Duration(durationNs)
+		file.Audio.Duration = mvhdDuration(duration, timescale)
 	}
 
 	return nil
@@ -230,4 +230,20 @@ func parseStsd(sr *binary.SafeReader, stsdAtom *Atom, file *types.File) error {
 	file.Audio.SampleRate = int(sampleRateFixed >> 16)
 
 	return nil
+}
+
+// mvhdDuration converts a duration in timescale units to a time.Duration without
+// overflowing the intermediate product. Values beyond what time.Duration can
+// hold are clamped to the maximum.
+func mvhdDuration(duration uint64, timescale uint32) time.Duration {
+	if timescale == 0 {
+		return 0
+	}
+	ts := uint64(timescale)
+	secs := duration / ts
+	rem := duration % ts // rem < 2^32, so rem*1e9 < 2^62
+	if secs > math.MaxInt64/uint64(time.Second) {
+		return time.Duration(math.MaxInt64)
+	}
+	return time.Duration(secs)*time.Second + time.Duration(rem*uint64(time.Second)/ts)
 }

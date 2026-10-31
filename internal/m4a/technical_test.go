@@ -3,6 +3,7 @@ package m4a
 import (
 	"bytes"
 	"encoding/binary"
+	"math"
 	"testing"
 	"time"
 
@@ -97,5 +98,28 @@ func TestParseTechnicalInfo_NoMvhd(t *testing.T) {
 
 	if file.Audio.Duration != 0 {
 		t.Errorf("expected duration 0 for missing mvhd, got %v", file.Audio.Duration)
+	}
+}
+
+func TestMvhdDuration(t *testing.T) {
+	tests := []struct {
+		name      string
+		duration  uint64
+		timescale uint32
+		want      time.Duration
+	}{
+		{"70 hour book at 44100", 44100 * 3600 * 70, 44100, 70 * time.Hour},
+		{"one minute", 2646000, 44100, 60 * time.Second},
+		{"one second", 1000, 1000, time.Second},
+		{"rounds down", 1, 3, 333333333 * time.Nanosecond},
+		{"zero timescale", 12345, 0, 0},
+		{"huge duration clamps", math.MaxUint64, 1, time.Duration(math.MaxInt64)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := mvhdDuration(tt.duration, tt.timescale); got != tt.want {
+				t.Errorf("mvhdDuration(%d, %d) = %v, want %v", tt.duration, tt.timescale, got, tt.want)
+			}
+		})
 	}
 }
