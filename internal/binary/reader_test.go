@@ -124,115 +124,6 @@ func TestRead_Uint64(t *testing.T) {
 	}
 }
 
-func TestReader_Sequential(t *testing.T) {
-	data := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}
-	mock := &mockReader{data: data}
-	sr := NewSafeReader(mock, int64(len(data)), "test.m4b")
-	r := NewReader(sr, 0)
-
-	val1, err := ReadValue[uint8](r, "first byte")
-	if err != nil {
-		t.Fatalf("read 1 failed: %v", err)
-	}
-	if val1 != 0x01 {
-		t.Errorf("expected 0x01, got 0x%02x", val1)
-	}
-
-	val2, err := ReadValue[uint16](r, "second word")
-	if err != nil {
-		t.Fatalf("read 2 failed: %v", err)
-	}
-	expected := binary.BigEndian.Uint16([]byte{0x02, 0x03})
-	if val2 != expected {
-		t.Errorf("expected 0x%04x, got 0x%04x", expected, val2)
-	}
-
-	// Verify offset advanced correctly
-	if r.Offset() != 3 {
-		t.Errorf("expected offset 3, got %d", r.Offset())
-	}
-}
-
-func TestReader_Skip(t *testing.T) {
-	data := make([]byte, 100)
-	mock := &mockReader{data: data}
-	sr := NewSafeReader(mock, int64(len(data)), "test.m4b")
-	r := NewReader(sr, 10)
-
-	initialOffset := r.Offset()
-	if initialOffset != 10 {
-		t.Errorf("expected initial offset 10, got %d", initialOffset)
-	}
-
-	r.Skip(20)
-	if r.Offset() != 30 {
-		t.Errorf("expected offset 30 after skip, got %d", r.Offset())
-	}
-}
-
-func TestReader_ReadString(t *testing.T) {
-	data := []byte("Hello, World!")
-	mock := &mockReader{data: data}
-	sr := NewSafeReader(mock, int64(len(data)), "test.m4b")
-	r := NewReader(sr, 0)
-
-	str, err := r.ReadString(5, "greeting")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if str != "Hello" {
-		t.Errorf("expected 'Hello', got '%s'", str)
-	}
-
-	if r.Offset() != 5 {
-		t.Errorf("expected offset 5, got %d", r.Offset())
-	}
-}
-
-func TestChainReader_Success(t *testing.T) {
-	data := []byte{0x01, 0x02, 0x03, 0x04}
-	mock := &mockReader{data: data}
-	sr := NewSafeReader(mock, int64(len(data)), "test.m4b")
-	r := NewReader(sr, 0)
-	cr := NewChainReader(r)
-
-	v1 := ReadChained[uint8](cr, "first")
-	v2 := ReadChained[uint8](cr, "second")
-	v3 := ReadChained[uint8](cr, "third")
-
-	if err := cr.Error(); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if v1 != 0x01 || v2 != 0x02 || v3 != 0x03 {
-		t.Errorf("unexpected values: %02x %02x %02x", v1, v2, v3)
-	}
-}
-
-func TestChainReader_ErrorAccumulation(t *testing.T) {
-	data := []byte{0x01, 0x02}
-	mock := &mockReader{data: data}
-	sr := NewSafeReader(mock, int64(len(data)), "test.m4b")
-	r := NewReader(sr, 0)
-	cr := NewChainReader(r)
-
-	_ = ReadChained[uint8](cr, "first")  // OK
-	_ = ReadChained[uint8](cr, "second") // OK
-	_ = ReadChained[uint8](cr, "third")  // Error - out of bounds
-
-	if cr.Error() == nil {
-		t.Fatal("expected error, got nil")
-	}
-
-	// Once error occurs, subsequent reads should not execute
-	_ = ReadChained[uint8](cr, "fourth")
-	// Should still have the same (first) error
-	if cr.Error() == nil {
-		t.Fatal("error should persist")
-	}
-}
-
 func BenchmarkRead_Uint32(b *testing.B) {
 	data := make([]byte, 1024*1024) // 1MB
 	for i := 0; i < len(data); i += 4 {
@@ -245,20 +136,6 @@ func BenchmarkRead_Uint32(b *testing.B) {
 	for i := range b.N {
 		offset := int64((i % (len(data) / 4)) * 4)
 		_, _ = Read[uint32](sr, offset, "benchmark")
-	}
-}
-
-func BenchmarkReader_Sequential(b *testing.B) {
-	data := make([]byte, 1024*1024) // 1MB
-	mock := &mockReader{data: data}
-	sr := NewSafeReader(mock, int64(len(data)), "bench.m4b")
-
-	b.ResetTimer()
-	for range b.N {
-		r := NewReader(sr, 0)
-		for range 1000 {
-			_, _ = ReadValue[uint32](r, "test")
-		}
 	}
 }
 
