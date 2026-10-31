@@ -450,3 +450,54 @@ func TestExtractIlstMetadata_RepeatedAtomsFirstWins(t *testing.T) {
 		t.Errorf("first value did not win: title=%q album=%q desc=%q", tg.Title, tg.Album, tg.Description)
 	}
 }
+
+// multiValueItem builds an ilst item with one UTF-8 data atom per value.
+func multiValueItem(itemType string, values ...string) []byte {
+	var body []byte
+	for _, v := range values {
+		body = append(body, createDataAtom(v)...)
+	}
+	return createMockAtom(itemType, body)
+}
+
+func TestExtractIlst_MultiValueArtist(t *testing.T) {
+	file := runIlst(t, multiValueItem("\xA9ART", "A", "B"))
+	tg := file.Tags
+	if tg.Artist != "A" || !slices.Equal(tg.Artists, []string{"A", "B"}) {
+		t.Errorf("Artist = %q, Artists = %q", tg.Artist, tg.Artists)
+	}
+	if got := tg.Get("\xA9ART"); !slices.Equal(got, []string{"A", "B"}) {
+		t.Errorf("raw = %q", got)
+	}
+}
+
+func TestExtractIlst_MultiValueGenre(t *testing.T) {
+	file := runIlst(t, multiValueItem("\xA9gen", "Rock", "Jazz"), multiValueItem("\xA9wrt", "C1", "C2"))
+	tg := file.Tags
+	if !slices.Equal(tg.Genres, []string{"Rock", "Jazz"}) || !slices.Equal(tg.Get("\xA9gen"), []string{"Rock", "Jazz"}) {
+		t.Errorf("Genres = %q, raw = %q", tg.Genres, tg.Get("\xA9gen"))
+	}
+	if !slices.Equal(tg.Composers, []string{"C1", "C2"}) {
+		t.Errorf("Composers = %q", tg.Composers)
+	}
+}
+
+func TestExtractIlst_MultiValueSingleField(t *testing.T) {
+	file := runIlst(t, multiValueItem("\xA9nam", "First", "Second"))
+	if file.Tags.Title != "First" || !slices.Equal(file.Tags.Get("\xA9nam"), []string{"First", "Second"}) {
+		t.Errorf("Title = %q, raw = %q", file.Tags.Title, file.Tags.Get("\xA9nam"))
+	}
+}
+
+func TestExtractIlst_GnreRaw(t *testing.T) {
+	file := runIlst(t, createTypedMetadataItem([]byte("gnre"), 0, []byte{0x00, 0x12}))
+	if got := file.Tags.Get("gnre"); !slices.Equal(got, []string{"17"}) {
+		t.Errorf("gnre raw = %q, want [17]", got)
+	}
+	if len(file.Tags.Genres) != 0 {
+		t.Errorf("Genres = %q; gnre must not map into Genres", file.Tags.Genres)
+	}
+	if file := runIlst(t, createTypedMetadataItem([]byte("gnre"), 0, []byte{0, 0})); file.Tags.Get("gnre") != nil {
+		t.Errorf("gnre 0 recorded as %q", file.Tags.Get("gnre"))
+	}
+}

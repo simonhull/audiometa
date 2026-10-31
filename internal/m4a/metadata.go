@@ -10,6 +10,12 @@ import (
 	"github.com/simonhull/audiometa/internal/types"
 )
 
+// Atom types shared by the reader and the writer.
+const (
+	atomData   = "data"
+	itemArtist = "\xA9ART" // ©ART
+)
+
 // Data atom type indicators (bytes 1-3 of the data atom's version/flags word).
 const (
 	dataTypeImplicit   = 0
@@ -37,7 +43,8 @@ func decodeBEInteger(b []byte, signed bool) string {
 	return strconv.FormatInt(int64(u<<shift)>>shift, 10) //nolint:gosec // G115: deliberate two's-complement reinterpretation; the arithmetic shift sign-extends the len(b)-byte value
 }
 
-// parseMetadataTag extracts the string value from an iTunes metadata tag atom.
+// parseMetadataTag extracts the string value of the first data atom of an
+// iTunes metadata tag atom.
 func parseMetadataTag(sr *binary.SafeReader, tagAtom *Atom) (string, error) {
 	// Tag atoms contain a "data" atom with the actual value
 	// Format: tag atom → data atom → version/flags → value
@@ -47,12 +54,46 @@ func parseMetadataTag(sr *binary.SafeReader, tagAtom *Atom) (string, error) {
 	}
 
 	// Find data atom inside tag
-	dataAtom, err := findAtom(sr, tagAtom.DataOffset(), tagAtom.DataOffset()+tagAtom.DataSize(), "data")
+	dataAtom, err := findAtom(sr, tagAtom.DataOffset(), tagAtom.DataOffset()+tagAtom.DataSize(), atomData)
 	if err != nil {
 		// No data atom found - return empty
 		return "", nil
 	}
+	return parseDataValue(sr, dataAtom)
+}
 
+// parseMetadataValues returns the non-empty text or integer value of every
+// data atom of an iTunes metadata tag atom, in order. Data atoms of other
+// types (images, UTF-16, floats) are skipped, and a malformed child atom
+// ends the list.
+func parseMetadataValues(sr *binary.SafeReader, tagAtom *Atom) ([]string, error) {
+	var values []string
+	off, end := tagAtom.DataOffset(), tagAtom.DataOffset()+tagAtom.DataSize()
+	for off < end {
+		child, err := readAtomHeader(sr, off, end)
+		if err != nil {
+			// Like parseMetadataTag, a malformed child ends the item silently,
+			// keeping the values before it.
+			return values, nil
+		}
+		if child.Type == atomData {
+			value, err := parseDataValue(sr, child)
+			if err != nil {
+				return values, err
+			}
+			if value != "" {
+				values = append(values, value)
+			}
+		}
+		// readAtomHeader guarantees 8 <= child.Size <= end-off.
+		off += child.Size
+	}
+	return values, nil
+}
+
+// parseDataValue decodes one data atom: text (types 0 and 1, trimmed) or a
+// big-endian integer (types 21 and 22) as decimal text. Other types yield "".
+func parseDataValue(sr *binary.SafeReader, dataAtom *Atom) (string, error) {
 	// version (1 byte) + type indicator (3 bytes), then reserved/locale (4 bytes)
 	vf, err := sr.Read[uint32](dataAtom.DataOffset(), "data type indicator")
 	if err != nil {
@@ -136,19 +177,13 @@ func extractIlstMetadata(ctx context.Context, sr *binary.SafeReader, ilstAtom *A
 		case "covr", "----":
 			// covr: artwork, extracted lazily by ExtractArtwork; never read during Open.
 			// ----: freeform atoms, handled by parseAudiobookTags.
-		default:
-			// Parse as text tag
-			value, err := parseMetadataTag(sr, tagAtom)
-			if err != nil {
-				file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-					Stage:   types.StageMetadata,
-					Message: fmt.Sprintf("failed to parse tag %s: %v", tagAtom.Type, err),
-					Err:     err,
-				})
-			} else {
-				// Map tag to metadata field
-				mapTagToField(tagAtom.Type, value, file)
+		case keyGnre:
+			// ID3v1 genre index: recorded raw only, never mapped into Genres.
+			if index, ok := parseGnre(sr, tagAtom); ok {
+				file.Tags.AddRaw(keyGnre, strconv.Itoa(index))
 			}
+		default:
+			mapTextItem(sr, tagAtom, file)
 		}
 
 		// Move to next tag
@@ -160,15 +195,15 @@ func extractIlstMetadata(ctx context.Context, sr *binary.SafeReader, ilstAtom *A
 
 // ilstTextFields maps ilst atoms whose value is assigned verbatim to a Tags field.
 var ilstTextFields = map[string]func(*types.Tags) *string{
-	"\xA9nam": func(t *types.Tags) *string { return &t.Title },       // ©nam
-	"\xA9ART": func(t *types.Tags) *string { return &t.Artist },      // ©ART
-	"\xA9alb": func(t *types.Tags) *string { return &t.Album },       // ©alb
-	"\xA9cmt": func(t *types.Tags) *string { return &t.Comment },     // ©cmt
-	"\xA9grp": func(t *types.Tags) *string { return &t.Grouping },    // ©grp - often series info for audiobooks
-	"\xA9lyr": func(t *types.Tags) *string { return &t.Lyrics },      // ©lyr
-	"aART":    func(t *types.Tags) *string { return &t.AlbumArtist }, // album artist
-	"cprt":    func(t *types.Tags) *string { return &t.Copyright },   // copyright
-	"ldes":    func(t *types.Tags) *string { return &t.Description }, // long description wins over desc
+	"\xA9nam":  func(t *types.Tags) *string { return &t.Title },       // ©nam
+	itemArtist: func(t *types.Tags) *string { return &t.Artist },      // ©ART
+	"\xA9alb":  func(t *types.Tags) *string { return &t.Album },       // ©alb
+	"\xA9cmt":  func(t *types.Tags) *string { return &t.Comment },     // ©cmt
+	"\xA9grp":  func(t *types.Tags) *string { return &t.Grouping },    // ©grp - often series info for audiobooks
+	"\xA9lyr":  func(t *types.Tags) *string { return &t.Lyrics },      // ©lyr
+	"aART":     func(t *types.Tags) *string { return &t.AlbumArtist }, // album artist
+	"cprt":     func(t *types.Tags) *string { return &t.Copyright },   // copyright
+	"ldes":     func(t *types.Tags) *string { return &t.Description }, // long description wins over desc
 }
 
 // applyIlstDate stores a ©day value: Date verbatim, Year from its leading four digits.
@@ -200,7 +235,7 @@ func mapTagToField(tag string, value string, file *types.File) {
 	// The first occurrence of a repeated single-valued atom wins.
 	seen := len(file.Tags.Get(tag)) > 0
 	file.Tags.AddRaw(tag, value)
-	if tag == "\xA9ART" {
+	if tag == itemArtist {
 		file.Tags.Artists = append(file.Tags.Artists, value)
 	}
 	if field, ok := ilstTextFields[tag]; ok {
@@ -230,6 +265,60 @@ func mapTagToField(tag string, value string, file *types.File) {
 	}
 }
 
+// mapTextItem reads every value of a text or integer ilst item and maps it:
+// the first through mapTagToField, the rest through mapExtraValue.
+func mapTextItem(sr *binary.SafeReader, tagAtom *Atom, file *types.File) {
+	values, err := parseMetadataValues(sr, tagAtom)
+	if err != nil {
+		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
+			Stage:   types.StageMetadata,
+			Message: fmt.Sprintf("failed to parse tag %s: %v", tagAtom.Type, err),
+			Err:     err,
+		})
+		return
+	}
+	if len(values) == 0 {
+		return
+	}
+	mapTagToField(tagAtom.Type, values[0], file)
+	for _, v := range values[1:] {
+		mapExtraValue(tagAtom.Type, v, file)
+	}
+}
+
+// mapExtraValue records a second or later value of a multi-value ilst item:
+// it is added to the raw tags and to the item's slice field, if it has one.
+// Single-valued fields keep the first value.
+func mapExtraValue(tag, value string, file *types.File) {
+	file.Tags.AddRaw(tag, value)
+	switch tag {
+	case itemArtist:
+		file.Tags.Artists = append(file.Tags.Artists, value)
+	case "\xA9gen":
+		file.Tags.Genres = append(file.Tags.Genres, value)
+	case "\xA9wrt":
+		file.Tags.Composers = append(file.Tags.Composers, value)
+	}
+}
+
+// keyGnre is the ilst item holding an ID3v1 genre index plus one.
+const keyGnre = "gnre"
+
+// parseGnre decodes a gnre item: its first data atom holds a 16-bit
+// big-endian ID3v1 genre index plus one. ok is false when the item is
+// malformed or holds 0 (no genre).
+func parseGnre(sr *binary.SafeReader, atom *Atom) (index int, ok bool) {
+	dataAtom, err := findAtom(sr, atom.DataOffset(), atom.DataOffset()+atom.DataSize(), atomData)
+	if err != nil || dataAtom.DataSize() != 8+2 {
+		return 0, false
+	}
+	v, err := sr.Read[uint16](dataAtom.DataOffset()+8, "gnre value")
+	if err != nil || v == 0 {
+		return 0, false
+	}
+	return int(v) - 1, true
+}
+
 // TrackData holds track number information.
 type TrackData struct {
 	Number int
@@ -241,7 +330,7 @@ func parseTrackNumber(sr *binary.SafeReader, atom *Atom) (TrackData, error) {
 	result := TrackData{}
 
 	// Find data atom
-	dataAtom, err := findAtom(sr, atom.DataOffset(), atom.DataOffset()+atom.DataSize(), "data")
+	dataAtom, err := findAtom(sr, atom.DataOffset(), atom.DataOffset()+atom.DataSize(), atomData)
 	if err != nil {
 		return result, err
 	}
