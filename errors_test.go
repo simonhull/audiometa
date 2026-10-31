@@ -95,16 +95,15 @@ func TestCorruptedFileError_Error(t *testing.T) {
 func TestOutOfBoundsError_ErrorsAs(t *testing.T) {
 	t.Run("through wrapping", func(t *testing.T) {
 		err := fmt.Errorf("parse: %w", &OutOfBoundsError{Path: "a.m4b", Offset: 9, Length: 4, Size: 10})
-		var target *OutOfBoundsError
-		if !errors.As(err, &target) || target.Offset != 9 {
+		target, ok := errors.AsType[*OutOfBoundsError](err)
+		if !ok || target.Offset != 9 {
 			t.Fatalf("errors.As failed: %v", err)
 		}
 	})
 	t.Run("from SafeReader", func(t *testing.T) {
 		sr := binary.NewSafeReader(bytes.NewReader(make([]byte, 4)), 4, "a.m4b")
 		_, err := sr.Read[uint32](2, "field")
-		var target *OutOfBoundsError
-		if !errors.As(fmt.Errorf("parse: %w", err), &target) {
+		if _, ok := errors.AsType[*OutOfBoundsError](fmt.Errorf("parse: %w", err)); !ok {
 			t.Fatalf("errors.As failed for %v", err)
 		}
 	})

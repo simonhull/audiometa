@@ -118,8 +118,8 @@ func TestOpen_RecoversParserPanic(t *testing.T) {
 
 	path := writeTemp(t, "a.flac", oneWarningFLAC)
 	_, err := Open(path)
-	var cfe *CorruptedFileError
-	if !errors.As(err, &cfe) {
+	cfe, ok := errors.AsType[*CorruptedFileError](err)
+	if !ok {
 		t.Fatalf("want CorruptedFileError, got %v", err)
 	}
 	if !strings.Contains(cfe.Reason, "boom") {
@@ -140,8 +140,7 @@ func TestOpen_RecoversParserPanic(t *testing.T) {
 func TestExtractArtwork_RecoversPanic(t *testing.T) {
 	f := &File{parser: panicParser{}, reader: bytes.NewReader(nil)}
 	_, err := f.ExtractArtwork()
-	var cfe *CorruptedFileError
-	if !errors.As(err, &cfe) {
+	if _, ok := errors.AsType[*CorruptedFileError](err); !ok {
 		t.Fatalf("want CorruptedFileError, got %v", err)
 	}
 }

@@ -38,8 +38,8 @@ func TestFindAtom_RejectsSizeBeyondParent(t *testing.T) {
 
 	select {
 	case err := <-done:
-		var corrupted *types.CorruptedFileError
-		if !errors.As(err, &corrupted) {
+		corrupted, ok := errors.AsType[*types.CorruptedFileError](err)
+		if !ok {
 			t.Fatalf("expected *types.CorruptedFileError, got %T: %v", err, err)
 		}
 		if corrupted.Offset != 16 {

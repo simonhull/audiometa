@@ -350,8 +350,8 @@ func TestSafeReader_ReadAt_ReturnsOutOfBoundsError(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := sr.ReadAt(make([]byte, tt.n), tt.off, "thing")
-			var oob *OutOfBoundsError
-			if !errors.As(err, &oob) {
+			oob, ok := errors.AsType[*OutOfBoundsError](err)
+			if !ok {
 				t.Fatalf("errors.As failed for %v", err)
 			}
 			if oob.Offset != tt.off || oob.Length != tt.n || oob.Size != 10 || oob.Path != "p.bin" || oob.What != "thing" {
