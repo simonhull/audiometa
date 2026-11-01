@@ -2,11 +2,14 @@ package trailer
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"slices"
 	"testing"
+
+	binutil "github.com/simonhull/audiometa/internal/binary"
 )
 
 // audio stands in for the bytes before any trailing tag.
@@ -71,7 +74,7 @@ func TestStart(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			data := slices.Concat(append([][]byte{audio}, tt.trailers...)...)
-			got, err := Start(bytes.NewReader(data), 0, int64(len(data)))
+			got, err := Start(t.Context(), sr(data), 0, int64(len(data)))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -99,7 +102,7 @@ func TestStart_LeavesBrokenBlocksAsAudio(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			data := slices.Concat(audio, trailer)
-			got, err := Start(bytes.NewReader(data), 0, int64(len(data)))
+			got, err := Start(t.Context(), sr(data), 0, int64(len(data)))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -113,7 +116,7 @@ func TestStart_LeavesBrokenBlocksAsAudio(t *testing.T) {
 func TestStart_RespectsRangeStart(t *testing.T) {
 	t.Parallel()
 	data := id3v1() // the whole range is one tag-shaped block
-	got, err := Start(bytes.NewReader(data), 1, int64(len(data)))
+	got, err := Start(t.Context(), sr(data), 1, int64(len(data)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +134,104 @@ func (failingReader) ReadAt([]byte, int64) (int, error) { return 0, errDisk }
 
 func TestStart_ReadErrorsPassThrough(t *testing.T) {
 	t.Parallel()
-	if _, err := Start(failingReader{}, 0, 1000); !errors.Is(err, errDisk) {
+	if _, err := Start(t.Context(), binutil.NewSafeReader(failingReader{}, 1000, ""), 0, 1000); !errors.Is(err, errDisk) {
 		t.Errorf("err = %v, want the read error", err)
 	}
+}
+
+// sr wraps data in a SafeReader.
+func sr(data []byte) *binutil.SafeReader {
+	return binutil.NewSafeReader(bytes.NewReader(data), int64(len(data)), "")
+}
+
+func TestStart_RejectsLookalikes(t *testing.T) {
+	t.Parallel()
+	badVersion := ape(40, false)
+	binary.LittleEndian.PutUint32(badVersion[len(badVersion)-24:], 3000)
+	headerFlagNoHeader := ape(40, false)
+	binary.LittleEndian.PutUint32(headerFlagNoHeader[len(headerFlagNoHeader)-12:], 1<<31)
+	signedLyrics := lyrics3v2("IND0000210")
+	copy(signedLyrics[len(signedLyrics)-15:], "+00021")
+	notSynchsafe := id3v2WithFooter(30)
+	notSynchsafe[len(notSynchsafe)-1] |= 0x80
+	noFooterFlag := id3v2WithFooter(30)
+	noFooterFlag[len(noFooterFlag)-5] &^= 0x10
+	mismatched := id3v2WithFooter(30)
+	mismatched[3] = 3 // header says v2.3, footer says v2.4
+
+	for name, trailer := range map[string][]byte{
+		"APE version 3000":           badVersion,
+		"APE header flag, no header": headerFlagNoHeader,
+		"Lyrics3v2 signed size":      signedLyrics,
+		"ID3v2 size not synchsafe":   notSynchsafe,
+		"ID3v2 footer flag missing":  noFooterFlag,
+		"ID3v2 header differs":       mismatched,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			data := slices.Concat(audio, trailer)
+			got, err := Start(t.Context(), sr(data), 0, int64(len(data)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != int64(len(data)) {
+				t.Errorf("Start = %d, want %d (look-alike kept as audio)", got, len(data))
+			}
+		})
+	}
+}
+
+func TestStart_TAGInsideAPEIsNotID3v1(t *testing.T) {
+	t.Parallel()
+	tag := ape(200, true)
+	copy(tag[len(tag)-128:], "TAG") // inside the item bytes, 128 bytes from the end
+	data := slices.Concat(audio, tag)
+	got, err := Start(t.Context(), sr(data), 0, int64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != int64(len(audio)) {
+		t.Errorf("Start = %d, want %d (whole APE tag)", got, len(audio))
+	}
+}
+
+func TestStart_APEv1(t *testing.T) {
+	t.Parallel()
+	tag := ape(40, false)
+	binary.LittleEndian.PutUint32(tag[len(tag)-24:], 1000)
+	data := slices.Concat(audio, tag)
+	got, err := Start(t.Context(), sr(data), 0, int64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != int64(len(audio)) {
+		t.Errorf("Start = %d, want %d", got, len(audio))
+	}
+}
+
+func TestStart_Canceled(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	data := slices.Concat(audio, id3v1())
+	if _, err := Start(ctx, sr(data), 0, int64(len(data))); !errors.Is(err, context.Canceled) {
+		t.Errorf("err = %v, want context.Canceled", err)
+	}
+}
+
+func FuzzStart(f *testing.F) {
+	f.Add(slices.Concat(audio, ape(40, true), lyrics3v2("IND0000210"), id3v1()))
+	f.Add(slices.Concat(audio, id3v2WithFooter(30)))
+	f.Add([]byte("TAGAPETAGEXLYRICS2003DI"))
+	f.Fuzz(func(t *testing.T, data []byte) {
+		end := int64(len(data))
+		start := end / 3
+		got, err := Start(t.Context(), sr(data), start, end)
+		if err != nil {
+			t.Fatalf("Start on in-memory data: %v", err)
+		}
+		if got < start || got > end {
+			t.Fatalf("Start = %d, outside [%d, %d]", got, start, end)
+		}
+	})
 }

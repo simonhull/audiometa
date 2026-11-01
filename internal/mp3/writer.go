@@ -73,11 +73,12 @@ func (w *writer) AudioDigest(ctx context.Context, src io.ReaderAt, size int64) (
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	start, end, _, err := audioRange(binutil.NewSafeReader(src, size, ""), size)
+	sr := binutil.NewSafeReader(src, size, "")
+	start, end, _, err := audioRange(sr, size)
 	if err != nil {
 		return nil, err
 	}
-	if end, err = trailer.Start(src, start, end); err != nil {
+	if end, err = trailer.Start(ctx, sr, start, end); err != nil {
 		return nil, err
 	}
 	return writeutil.DigestRange(ctx, src, start, end-start)

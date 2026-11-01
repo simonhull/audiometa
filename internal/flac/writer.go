@@ -83,11 +83,12 @@ func (w *writer) AudioDigest(ctx context.Context, src io.ReaderAt, size int64) (
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	start, err := walkBlocks(ctx, binutil.NewSafeReader(src, size, ""), size, nil)
+	sr := binutil.NewSafeReader(src, size, "")
+	start, err := walkBlocks(ctx, sr, size, nil)
 	if err != nil {
 		return nil, err
 	}
-	end, err := trailer.Start(src, start, size)
+	end, err := trailer.Start(ctx, sr, start, size)
 	if err != nil {
 		return nil, err
 	}
