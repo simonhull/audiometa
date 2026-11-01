@@ -81,6 +81,23 @@ func ExampleFile_ExtractArtwork() {
 	// Front cover (16x16 JPEG, 224B)
 }
 
+// The audio digest identifies a recording across renames and retags.
+func ExampleFile_AudioDigest() {
+	file, err := audiometa.Open("testdata/sample.flac")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	sum, err := file.AudioDigest()
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("%x\n", sum)
+	// Output:
+	// f36e19b9a2c276157124aab7ab0b52e90025e3f92e6c2bc4f4da8988ef12fdff
+}
+
 // Images over the size limit are dropped with a warning.
 func ExampleWithMaxArtworkSize() {
 	file, err := audiometa.Open("testdata/sample.mp3", audiometa.WithMaxArtworkSize(100))

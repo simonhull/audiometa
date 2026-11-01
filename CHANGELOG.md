@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### Added
+
+- `File.AudioDigest` and `File.AudioDigestContext`: a SHA-256 of a file's audio data that metadata edits never change, for MP3, FLAC, M4A/M4B, Ogg Vorbis and Opus.
+
+### Fixed
+
+- The FLAC write verifier reported any read failure on the first four bytes as "invalid FLAC magic bytes"; the read error is now returned.
+
 ## v0.11.0 — 2026-10-31
 
 ### Breaking-ish

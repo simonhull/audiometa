@@ -84,6 +84,15 @@ if err == nil && len(artwork) > 0 {
 }
 ```
 
+### Audio Digest
+
+`AudioDigest` returns a SHA-256 of the audio data alone. Retagging, renaming or moving
+a file never changes it, so it identifies the same recording across all three.
+
+```go
+sum, err := file.AudioDigest() // [32]byte; reads all of the audio
+```
+
 ### Graceful Error Handling
 
 Damaged tags don't stop a scan. What could be parsed is returned, and the problems are
