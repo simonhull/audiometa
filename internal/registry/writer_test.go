@@ -30,3 +30,31 @@ func TestRegisterWriter_GetWriter(t *testing.T) {
 		t.Errorf("GetWriter(AIFF) = %v, want nil", got)
 	}
 }
+
+type stubDigester struct{}
+
+func (stubDigester) AudioDigest(context.Context, io.ReaderAt, int64) ([]byte, error) {
+	return nil, nil
+}
+
+func TestGetDigester(t *testing.T) {
+	t.Cleanup(func() {
+		unregisterWriter(types.FormatWAV)
+		unregisterDigester(types.FormatAIFF)
+	})
+
+	w := stubWriter{}
+	RegisterWriter(types.FormatWAV, w)
+	d := stubDigester{}
+	RegisterDigester(types.FormatAIFF, d)
+
+	if got := GetDigester(types.FormatWAV); got != w {
+		t.Errorf("GetDigester(WAV) = %v, want the registered writer", got)
+	}
+	if got := GetDigester(types.FormatAIFF); got != d {
+		t.Errorf("GetDigester(AIFF) = %v, want the registered digester", got)
+	}
+	if got := GetDigester(types.FormatUnknown); got != nil {
+		t.Errorf("GetDigester(Unknown) = %v, want nil", got)
+	}
+}

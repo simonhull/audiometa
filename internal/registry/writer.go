@@ -7,6 +7,16 @@ import (
 	"github.com/simonhull/audiometa/internal/types"
 )
 
+// AudioDigester computes the digest that a metadata write must leave unchanged.
+type AudioDigester interface {
+	// AudioDigest returns the SHA-256 of src's audio payload: the bytes no
+	// metadata write may change (MP3: after the ID3v2 tag, before any ID3v1
+	// trailer; FLAC: after the last metadata block; M4A: the concatenated
+	// payloads of every mdat atom; Ogg: the packet bytes of the first logical
+	// stream after its header packets).
+	AudioDigest(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error)
+}
+
 // TagWriter is implemented by format packages that can serialize edited metadata.
 // Implementations must be deterministic: the same src and edits produce the same bytes.
 type TagWriter interface {
@@ -15,10 +25,7 @@ type TagWriter interface {
 	// where one applies; structural problems return *types.CorruptedFileError.
 	WriteFile(ctx context.Context, w io.Writer, src io.ReaderAt, size int64, edits *types.EditSet) (int64, error)
 
-	// AudioDigest returns the SHA-256 of src's audio payload: the bytes no metadata
-	// write may change (MP3: after the ID3v2 tag, before any ID3v1 trailer; FLAC: after
-	// the last metadata block; M4A: the concatenated payloads of every mdat atom).
-	AudioDigest(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error)
+	AudioDigester
 }
 
 // InPlaceWriter is optionally implemented by TagWriters that can apply edits by
@@ -52,4 +59,36 @@ func unregisterWriter(format types.Format) {
 	mu.Lock()
 	defer mu.Unlock()
 	delete(writers, format)
+}
+
+// digesters holds AudioDigesters for formats without a TagWriter; guarded by mu.
+var digesters = make(map[types.Format]AudioDigester)
+
+// RegisterDigester registers d for a format that has no TagWriter. Called
+// from format packages' init().
+func RegisterDigester(format types.Format, d AudioDigester) {
+	mu.Lock()
+	defer mu.Unlock()
+	digesters[format] = d
+}
+
+// GetDigester returns the digester for format: the one registered with
+// RegisterDigester, otherwise the format's TagWriter, otherwise nil.
+func GetDigester(format types.Format) AudioDigester {
+	mu.RLock()
+	defer mu.RUnlock()
+	if d, ok := digesters[format]; ok {
+		return d
+	}
+	if w, ok := writers[format]; ok {
+		return w
+	}
+	return nil
+}
+
+// unregisterDigester removes the digester for format. Used by tests.
+func unregisterDigester(format types.Format) {
+	mu.Lock()
+	defer mu.Unlock()
+	delete(digesters, format)
 }
