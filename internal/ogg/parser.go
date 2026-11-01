@@ -14,6 +14,7 @@ import (
 
 const (
 	codecVorbis  = "vorbis"
+	codecOpus    = "opus"
 	containerOgg = "Ogg"
 )
 
@@ -97,7 +98,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 			})
 		}
 
-	case "opus":
+	case codecOpus:
 		file.Format = types.FormatOpus
 		// Parse OpusHead identification header (packet 0)
 		if err := parseOpusHead(packets[0], file); err != nil {
@@ -214,7 +215,7 @@ func readHeaderPackets(ctx context.Context, sr *binary.SafeReader, size int64, f
 func detectOggCodec(firstPacket []byte) string {
 	// Check for OpusHead (8 bytes)
 	if len(firstPacket) >= 8 && string(firstPacket[0:8]) == "OpusHead" {
-		return "opus"
+		return codecOpus
 	}
 
 	// Check for Vorbis (7 bytes: 0x01 + "vorbis")
