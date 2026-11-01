@@ -3,9 +3,12 @@ package audiometa
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -233,4 +236,50 @@ func lastAudioByte(data []byte) int {
 		end -= id3v1Size
 	}
 	return end - 1
+}
+
+// apeTag is a minimal APEv2 tag (header, one 13-byte item, footer), as
+// mp3gain and foobar2000 append for ReplayGain.
+func apeTag() []byte {
+	footer := func(flags uint32) []byte {
+		b := make([]byte, 32)
+		copy(b, "APETAGEX")
+		binary.LittleEndian.PutUint32(b[8:], 2000)
+		binary.LittleEndian.PutUint32(b[12:], 13+32)
+		binary.LittleEndian.PutUint32(b[16:], 1)
+		binary.LittleEndian.PutUint32(b[20:], flags)
+		return b
+	}
+	item := slices.Concat([]byte{4, 0, 0, 0, 0, 0, 0, 0}, []byte("GAIN\x00"))[:13]
+	return slices.Concat(footer(1<<31|1<<29), item, footer(1<<31))
+}
+
+func TestAudioDigest_IgnoresTrailingTags(t *testing.T) {
+	t.Parallel()
+	id3v1 := append([]byte("TAG"), make([]byte, 125)...)
+	tests := []struct {
+		path   string
+		insert func(data []byte) []byte
+	}{
+		// MP3: APEv2 goes between the audio and the existing ID3v1 trailer.
+		{"testdata/sample.mp3", func(data []byte) []byte {
+			cut := lastAudioByte(data) + 1
+			return slices.Concat(data[:cut], apeTag(), data[cut:])
+		}},
+		// FLAC: some tools append ID3v1 and APEv2 after the frames.
+		{"testdata/sample.flac", func(data []byte) []byte {
+			return slices.Concat(data, apeTag(), id3v1)
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			t.Parallel()
+			_, data := copySample(t, tt.path)
+			path := writeTemp(t, filepath.Base(tt.path), tt.insert(data))
+			sum := digestFile(t, path)
+			if got := hex.EncodeToString(sum[:]); got != sampleDigests[tt.path] {
+				t.Errorf("digest with trailing tags = %s, want %s", got, sampleDigests[tt.path])
+			}
+		})
+	}
 }

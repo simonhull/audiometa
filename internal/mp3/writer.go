@@ -8,6 +8,7 @@ import (
 
 	binutil "github.com/simonhull/audiometa/internal/binary"
 	"github.com/simonhull/audiometa/internal/registry"
+	"github.com/simonhull/audiometa/internal/trailer"
 	"github.com/simonhull/audiometa/internal/types"
 	"github.com/simonhull/audiometa/internal/writeutil"
 )
@@ -74,6 +75,9 @@ func (w *writer) AudioDigest(ctx context.Context, src io.ReaderAt, size int64) (
 	}
 	start, end, _, err := audioRange(binutil.NewSafeReader(src, size, ""), size)
 	if err != nil {
+		return nil, err
+	}
+	if end, err = trailer.Start(src, start, end); err != nil {
 		return nil, err
 	}
 	return writeutil.DigestRange(ctx, src, start, end-start)

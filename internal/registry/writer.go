@@ -10,10 +10,11 @@ import (
 // AudioDigester computes the digest that a metadata write must leave unchanged.
 type AudioDigester interface {
 	// AudioDigest returns the SHA-256 of src's audio payload: the bytes no
-	// metadata write may change (MP3: after the ID3v2 tag, before any ID3v1
-	// trailer; FLAC: after the last metadata block; M4A: the concatenated
-	// payloads of every mdat atom; Ogg: the packet bytes of the first logical
-	// stream after its header packets).
+	// metadata write may change. MP3: after the ID3v2 tag, before any
+	// trailing ID3v1, APEv2, Lyrics3v2 or footer-terminated ID3v2 tags. FLAC:
+	// after the last metadata block, before any such trailing tags. M4A: the
+	// concatenated payloads of every mdat atom. Ogg: the packet bytes of the
+	// first logical stream after its header packets.
 	AudioDigest(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error)
 }
 

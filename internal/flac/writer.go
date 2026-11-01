@@ -11,6 +11,7 @@ import (
 
 	binutil "github.com/simonhull/audiometa/internal/binary"
 	"github.com/simonhull/audiometa/internal/registry"
+	"github.com/simonhull/audiometa/internal/trailer"
 	"github.com/simonhull/audiometa/internal/types"
 	"github.com/simonhull/audiometa/internal/writeutil"
 )
@@ -86,7 +87,11 @@ func (w *writer) AudioDigest(ctx context.Context, src io.ReaderAt, size int64) (
 	if err != nil {
 		return nil, err
 	}
-	return writeutil.DigestRange(ctx, src, start, size-start)
+	end, err := trailer.Start(src, start, size)
+	if err != nil {
+		return nil, err
+	}
+	return writeutil.DigestRange(ctx, src, start, end-start)
 }
 
 // InPlacePatch returns the new metadata blocks to write at offset 4 when they
