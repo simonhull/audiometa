@@ -74,28 +74,31 @@ func (w *writer) AudioDigest(ctx context.Context, src io.ReaderAt, size int64) (
 		return nil, err
 	}
 	sr := binutil.NewSafeReader(src, size, "")
-	start, end, _, err := audioRange(sr, size)
+	start, _, _, err := audioRange(sr, size)
 	if err != nil {
 		return nil, err
 	}
-	if end, err = trailer.Start(ctx, sr, start, end); err != nil {
+	// Scan from the end of the file, not audioRange's end: trailer.Start
+	// tells an ID3v1 trailer from "TAG" inside an APEv2 or Lyrics3 tag.
+	end, err := trailer.Start(ctx, sr, start, size)
+	if err != nil {
 		return nil, err
 	}
 	return writeutil.DigestRange(ctx, src, start, end-start)
 }
 
-// PreservedDigest returns the SHA-256 of everything between the ID3v2 tag and
-// the ID3v1 trailer, including any APEv2 or Lyrics3 tag: the bytes WriteFile
-// copies verbatim.
+// PreservedDigest returns the SHA-256 of everything after the ID3v2 tag,
+// including any APEv2, Lyrics3 and ID3v1 tags: the bytes WriteFile copies
+// verbatim.
 func (w *writer) PreservedDigest(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	start, end, _, err := audioRange(binutil.NewSafeReader(src, size, ""), size)
+	start, _, _, err := audioRange(binutil.NewSafeReader(src, size, ""), size)
 	if err != nil {
 		return nil, err
 	}
-	return writeutil.DigestRange(ctx, src, start, end-start)
+	return writeutil.DigestRange(ctx, src, start, size-start)
 }
 
 // InPlacePatch returns the new tag to write at offset 0 when the file has an

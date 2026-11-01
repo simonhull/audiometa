@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"io"
 	"os"
 	"path/filepath"
@@ -158,10 +159,9 @@ func TestPreservedDigestCoversTrailingTags(t *testing.T) {
 		t.Fatal(err)
 	}
 	ape := slices.Concat([]byte("APETAGEX"), []byte{0xD0, 0x07, 0, 0, 32, 0, 0, 0}, make([]byte, 16))
-	cut := len(data) // the sample has no ID3v1 trailer
-	tagged := slices.Concat(data[:cut], ape, data[cut:])
+	tagged := slices.Concat(data, ape) // the sample has no ID3v1 trailer
 	damaged := slices.Clone(tagged)
-	damaged[cut+28] ^= 0xFF // inside the APE footer's reserved bytes
+	damaged[len(data)+28] ^= 0xFF // inside the APE footer's reserved bytes
 
 	w := &writer{}
 	digest := func(b []byte, f func(context.Context, io.ReaderAt, int64) ([]byte, error)) []byte {
@@ -176,5 +176,57 @@ func TestPreservedDigestCoversTrailingTags(t *testing.T) {
 	}
 	if bytes.Equal(digest(tagged, w.PreservedDigest), digest(damaged, w.PreservedDigest)) {
 		t.Error("PreservedDigest must change when the trailing APE tag is damaged")
+	}
+}
+
+// apeWithHeader builds an APEv2 tag with a header and n item bytes of 'a'.
+func apeWithHeader(n int) []byte {
+	part := func(flags uint32) []byte {
+		b := make([]byte, 32)
+		copy(b, "APETAGEX")
+		binary.LittleEndian.PutUint32(b[8:], 2000)
+		binary.LittleEndian.PutUint32(b[12:], uint32(n+32))
+		binary.LittleEndian.PutUint32(b[20:], flags)
+		return b
+	}
+	return slices.Concat(part(1<<31|1<<29), bytes.Repeat([]byte{'a'}, n), part(1<<31))
+}
+
+func digestOf(t *testing.T, b []byte, f func(context.Context, io.ReaderAt, int64) ([]byte, error)) []byte {
+	t.Helper()
+	sum, err := f(t.Context(), bytes.NewReader(b), int64(len(b)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return sum
+}
+
+func TestAudioDigestIgnoresTAGInsideAPE(t *testing.T) {
+	t.Parallel()
+	data, err := os.ReadFile("../../testdata/sample.mp3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ape := apeWithHeader(200)
+	copy(ape[len(ape)-128:], "TAG") // an item value that looks like an ID3v1 trailer
+	w := &writer{}
+	if !bytes.Equal(digestOf(t, slices.Concat(data, ape), w.AudioDigest), digestOf(t, data, w.AudioDigest)) {
+		t.Error("an APEv2 tag with \"TAG\" in an item changed the audio digest")
+	}
+}
+
+func TestPreservedDigestCoversID3v1(t *testing.T) {
+	t.Parallel()
+	data, err := os.ReadFile("../../testdata/sample.mp3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id3v1 := append([]byte("TAG"), bytes.Repeat([]byte{'x'}, 125)...)
+	tagged := slices.Concat(data, id3v1)
+	damaged := slices.Clone(tagged)
+	damaged[len(damaged)-1] ^= 0xFF
+	w := &writer{}
+	if bytes.Equal(digestOf(t, tagged, w.PreservedDigest), digestOf(t, damaged, w.PreservedDigest)) {
+		t.Error("PreservedDigest must change when the ID3v1 trailer is damaged")
 	}
 }
