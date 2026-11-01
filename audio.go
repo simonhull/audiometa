@@ -14,7 +14,8 @@ import (
 // on the aliased type, [types.AudioInfo].
 type AudioInfo = types.AudioInfo
 
-// ReplayGainInfo holds ReplayGain loudness normalization values: track and
-// album gain in dB and track and album peak amplitude (1.0 is full scale).
-// AudioInfo.ReplayGain is nil when the file has no ReplayGain tags.
+// ReplayGainInfo holds ReplayGain loudness normalization values from any
+// format: track and album gain in dB relative to the -18 LUFS reference, and
+// track and album peak amplitude (1.0 is full scale). A zero field is unknown.
+// AudioInfo.ReplayGain is nil when the file has no valid ReplayGain tags.
 type ReplayGainInfo = types.ReplayGainInfo
