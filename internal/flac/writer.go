@@ -130,7 +130,13 @@ func buildMeta(ctx context.Context, sr *binutil.SafeReader, size int64, edits *t
 // that never reaches its last block is a CorruptedFileError.
 func walkBlocks(ctx context.Context, sr *binutil.SafeReader, size int64, visit func(typ uint8, off, n int64) error) (int64, error) {
 	var magic [4]byte
-	if size < int64(len(magic)) || sr.ReadAt(magic[:], 0, "FLAC magic bytes") != nil || string(magic[:]) != flacMagic {
+	if size < int64(len(magic)) {
+		return 0, corrupted(sr.Path(), 0, "invalid FLAC magic bytes")
+	}
+	if err := sr.ReadAt(magic[:], 0, "FLAC magic bytes"); err != nil {
+		return 0, err
+	}
+	if string(magic[:]) != flacMagic {
 		return 0, corrupted(sr.Path(), 0, "invalid FLAC magic bytes")
 	}
 	off := int64(len(magic))
