@@ -68,6 +68,11 @@ func (w *fakeWriter) AudioDigest(_ context.Context, _ io.ReaderAt, size int64) (
 	return sum[:], nil
 }
 
+// PreservedDigest mirrors AudioDigest, so digestFn drives verification too.
+func (w *fakeWriter) PreservedDigest(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error) {
+	return w.AudioDigest(ctx, src, size)
+}
+
 func (w *fakeWriter) callCount() int {
 	w.mu.Lock()
 	defer w.mu.Unlock()

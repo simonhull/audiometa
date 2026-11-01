@@ -168,7 +168,7 @@ func WriteContext(ctx context.Context, path string, edit func(f *File) error, op
 		return nil
 	}
 
-	digest, err := digestSafely(ctx, tw, f.reader, f.Size, target)
+	digest, err := preservedSafely(ctx, tw, f.reader, f.Size, target)
 	if err != nil {
 		return fmt.Errorf("digest source audio: %w", err)
 	}
@@ -325,7 +325,7 @@ func verifyFile(ctx context.Context, r io.ReaderAt, size int64, labelPath string
 	if !slices.EqualFunc(parsed.file.Chapters, ref.chapters, chapterEqual) {
 		return fmt.Errorf("%w: chapters changed", ErrVerifyFailed)
 	}
-	digest, err := digestSafely(ctx, tw, r, size, labelPath)
+	digest, err := preservedSafely(ctx, tw, r, size, labelPath)
 	if err != nil {
 		return fmt.Errorf("%w: digest written audio: %w", ErrVerifyFailed, err)
 	}
@@ -384,6 +384,16 @@ func writeSafely(ctx context.Context, tw registry.TagWriter, w io.Writer, r io.R
 		}
 	}()
 	return tw.WriteFile(ctx, cw, r, size, edits)
+}
+
+// preservedSafely calls tw.PreservedDigest, converting a panic into a CorruptedFileError.
+func preservedSafely(ctx context.Context, tw registry.TagWriter, r io.ReaderAt, size int64, path string) (digest []byte, err error) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			digest, err = nil, panicError(path, rec)
+		}
+	}()
+	return tw.PreservedDigest(ctx, r, size)
 }
 
 // digestSafely calls d.AudioDigest, converting a panic into a CorruptedFileError.

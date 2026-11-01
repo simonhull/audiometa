@@ -18,6 +18,10 @@ func (stubWriter) AudioDigest(context.Context, io.ReaderAt, int64) ([]byte, erro
 	return nil, nil
 }
 
+func (stubWriter) PreservedDigest(context.Context, io.ReaderAt, int64) ([]byte, error) {
+	return nil, nil
+}
+
 func TestRegisterWriter_GetWriter(t *testing.T) {
 	t.Cleanup(func() { unregisterWriter(types.FormatWAV) })
 

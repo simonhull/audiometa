@@ -84,6 +84,13 @@ func (w *writer) WriteFile(ctx context.Context, out io.Writer, src io.ReaderAt, 
 	return cw.N, nil
 }
 
+// PreservedDigest is the AudioDigest, as M4A write verification has always
+// been: the atoms around the edits are re-emitted rather than copied as one
+// region, and verifyFile checks the chapters they carry separately.
+func (w *writer) PreservedDigest(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error) {
+	return w.AudioDigest(ctx, src, size)
+}
+
 // AudioDigest returns the SHA-256 of the payloads of every top-level mdat
 // atom, in file order.
 func (w *writer) AudioDigest(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error) {

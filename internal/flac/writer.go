@@ -95,6 +95,19 @@ func (w *writer) AudioDigest(ctx context.Context, src io.ReaderAt, size int64) (
 	return writeutil.DigestRange(ctx, src, start, end-start)
 }
 
+// PreservedDigest returns the SHA-256 of everything after the last metadata
+// block, including any trailing tags: the bytes WriteFile copies verbatim.
+func (w *writer) PreservedDigest(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	start, err := walkBlocks(ctx, binutil.NewSafeReader(src, size, ""), size, nil)
+	if err != nil {
+		return nil, err
+	}
+	return writeutil.DigestRange(ctx, src, start, size-start)
+}
+
 // InPlacePatch returns the new metadata blocks to write at offset 4 when they
 // fill exactly the space of the old ones (possibly with a resized PADDING
 // block). The patch is then exactly what WriteFile writes before the audio.

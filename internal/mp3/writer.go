@@ -84,6 +84,20 @@ func (w *writer) AudioDigest(ctx context.Context, src io.ReaderAt, size int64) (
 	return writeutil.DigestRange(ctx, src, start, end-start)
 }
 
+// PreservedDigest returns the SHA-256 of everything between the ID3v2 tag and
+// the ID3v1 trailer, including any APEv2 or Lyrics3 tag: the bytes WriteFile
+// copies verbatim.
+func (w *writer) PreservedDigest(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	start, end, _, err := audioRange(binutil.NewSafeReader(src, size, ""), size)
+	if err != nil {
+		return nil, err
+	}
+	return writeutil.DigestRange(ctx, src, start, end-start)
+}
+
 // InPlacePatch returns the new tag to write at offset 0 when the file has an
 // ID3v2 tag and the edited frames fit in its space. The patch is then
 // exactly what WriteFile writes before the audio.

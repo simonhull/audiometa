@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	binutil "github.com/simonhull/audiometa/internal/binary"
@@ -146,5 +148,33 @@ func TestWriter_TruncatedTagRefused(t *testing.T) {
 	src = src[:len(src)-3]
 	if _, err := tryWrite(src, &types.EditSet{Orig: &types.Tags{}, Final: &types.Tags{}}); err == nil {
 		t.Error("writing a truncated tag succeeded")
+	}
+}
+
+func TestPreservedDigestCoversTrailingTags(t *testing.T) {
+	t.Parallel()
+	data, err := os.ReadFile("../../testdata/sample.mp3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ape := slices.Concat([]byte("APETAGEX"), []byte{0xD0, 0x07, 0, 0, 32, 0, 0, 0}, make([]byte, 16))
+	cut := len(data) // the sample has no ID3v1 trailer
+	tagged := slices.Concat(data[:cut], ape, data[cut:])
+	damaged := slices.Clone(tagged)
+	damaged[cut+28] ^= 0xFF // inside the APE footer's reserved bytes
+
+	w := &writer{}
+	digest := func(b []byte, f func(context.Context, io.ReaderAt, int64) ([]byte, error)) []byte {
+		sum, err := f(t.Context(), bytes.NewReader(b), int64(len(b)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return sum
+	}
+	if !bytes.Equal(digest(tagged, w.AudioDigest), digest(damaged, w.AudioDigest)) {
+		t.Error("AudioDigest must ignore the trailing APE tag")
+	}
+	if bytes.Equal(digest(tagged, w.PreservedDigest), digest(damaged, w.PreservedDigest)) {
+		t.Error("PreservedDigest must change when the trailing APE tag is damaged")
 	}
 }

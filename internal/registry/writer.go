@@ -7,14 +7,14 @@ import (
 	"github.com/simonhull/audiometa/internal/types"
 )
 
-// AudioDigester computes the digest that a metadata write must leave unchanged.
+// AudioDigester computes the digest that identifies a file's audio.
 type AudioDigester interface {
-	// AudioDigest returns the SHA-256 of src's audio payload: the bytes no
-	// metadata write may change. MP3: after the ID3v2 tag, before any
-	// trailing ID3v1, APEv2, Lyrics3v2 or footer-terminated ID3v2 tags. FLAC:
-	// after the last metadata block, before any such trailing tags. M4A: the
-	// concatenated payloads of every mdat atom. Ogg: the packet bytes of the
-	// first logical stream after its header packets.
+	// AudioDigest returns the SHA-256 of src's audio payload, leaving out its
+	// tags. MP3: after the ID3v2 tag, before any trailing ID3v1, APEv2,
+	// Lyrics3v2 or footer-terminated ID3v2 tags. FLAC: after the last metadata
+	// block, before any such trailing tags. M4A: the concatenated payloads of
+	// every mdat atom. Ogg: the packet bytes of the first logical stream after
+	// its header packets.
 	AudioDigest(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error)
 }
 
@@ -25,6 +25,11 @@ type TagWriter interface {
 	// It never modifies src. It returns bytes written. Errors wrap the types.Err* sentinels
 	// where one applies; structural problems return *types.CorruptedFileError.
 	WriteFile(ctx context.Context, w io.Writer, src io.ReaderAt, size int64, edits *types.EditSet) (int64, error)
+
+	// PreservedDigest returns the SHA-256 of every byte a metadata write must
+	// copy unchanged. It covers the AudioDigest bytes plus anything else the
+	// writer passes through verbatim, such as trailing APEv2 or Lyrics3 tags.
+	PreservedDigest(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error)
 
 	AudioDigester
 }

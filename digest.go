@@ -28,7 +28,7 @@ var lookupDigester = registry.GetDigester
 //   - Ogg Vorbis and Opus: the packets of the first logical stream after its
 //     header packets.
 //
-// Tags written by other tools in those places do not change the digest
+// Trailing tags that other tools add or edit there do not change the digest
 // either. A QuickTime chapter track's titles are stored as M4B samples, so
 // rewriting them does.
 //
