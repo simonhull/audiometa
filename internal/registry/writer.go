@@ -65,7 +65,8 @@ func unregisterWriter(format types.Format) {
 var digesters = make(map[types.Format]AudioDigester)
 
 // RegisterDigester registers d for a format that has no TagWriter. Called
-// from format packages' init().
+// from format packages' init(). A registered digester takes precedence over
+// the format's TagWriter in GetDigester.
 func RegisterDigester(format types.Format, d AudioDigester) {
 	mu.Lock()
 	defer mu.Unlock()

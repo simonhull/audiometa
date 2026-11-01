@@ -44,7 +44,7 @@ func wantDigest(pkts ...[]byte) []byte {
 
 func digestOf(t *testing.T, data []byte) []byte {
 	t.Helper()
-	got, err := digester{}.AudioDigest(context.Background(), bytes.NewReader(data), int64(len(data)))
+	got, err := digester{}.AudioDigest(t.Context(), bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		t.Fatalf("AudioDigest: %v", err)
 	}
@@ -99,6 +99,61 @@ func TestAudioDigest_HashesOnlyAudioPackets(t *testing.T) {
 	}
 }
 
+func TestAudioDigest_PacketsSpanningPages(t *testing.T) {
+	big := bytes.Repeat([]byte{0xB1}, 70_000) // more than one page's 255 segments
+	tests := []struct {
+		name string
+		data []byte
+		want []byte
+	}{
+		{"audio packet continued across pages", buildOgg(slices.Concat(
+			[]pageSpec{pageOf(1, opusHead), pageOf(1, commentHeader(10))},
+			splitAcrossPages(big, 0, 1),
+			[]pageSpec{pageOf(1, audio1)},
+		)...), wantDigest(big, audio1)},
+		{"header packet continued across pages", buildOgg(slices.Concat(
+			[]pageSpec{pageOf(1, opusHead)},
+			splitAcrossPages(commentHeader(70_000), 0, 1),
+			[]pageSpec{pageOf(1, audio1, audio2)},
+		)...), wantDigest(audio1, audio2)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := digestOf(t, tt.data); !bytes.Equal(got, tt.want) {
+				t.Errorf("digest = %x, want %x", got, tt.want)
+			}
+		})
+	}
+}
+
+// lastPage marks p as the last page of its logical stream.
+func lastPage(p pageSpec) pageSpec {
+	p.headerType |= pageEOS
+	return p
+}
+
+func TestAudioDigest_StreamEnd(t *testing.T) {
+	clean := buildOgg(pageOf(1, opusHead), pageOf(1, commentHeader(10)), lastPage(pageOf(1, audio1, audio2)))
+	tests := []struct {
+		name string
+		data []byte
+	}{
+		{"chained link after the last page is ignored", slices.Concat(clean, buildOgg(
+			pageOf(1, opusHead), pageOf(1, commentHeader(10)), pageOf(1, audio3),
+		))},
+		{"appended tag after the audio is ignored", slices.Concat(clean, append([]byte("TAG"), make([]byte, 125)...))},
+		{"truncated trailing page is ignored", slices.Concat(clean, buildOgg(pageOf(1, audio3))[:40])},
+	}
+	want := wantDigest(audio1, audio2)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := digestOf(t, tt.data); !bytes.Equal(got, want) {
+				t.Errorf("digest = %x, want %x", got, want)
+			}
+		})
+	}
+}
+
 func TestAudioDigest_ChangesWithAudio(t *testing.T) {
 	a := buildOgg(pageOf(1, opusHead), pageOf(1, commentHeader(10)), pageOf(1, audio1, audio2))
 	b := buildOgg(pageOf(1, opusHead), pageOf(1, commentHeader(10)), pageOf(1, audio1, audio3))
@@ -109,33 +164,54 @@ func TestAudioDigest_ChangesWithAudio(t *testing.T) {
 
 func TestAudioDigest_Errors(t *testing.T) {
 	tests := []struct {
-		name string
-		data []byte
+		name        string
+		data        []byte
+		wantCorrupt bool
 	}{
-		{"unknown codec", buildOgg(pageOf(1, []byte("not a codec header")), pageOf(1, audio1))},
-		{"ends inside the header packets", buildOgg(pageOf(1, vorbisID), pageOf(1, commentHeader(10)))},
-		{"not an Ogg stream", []byte("RIFF....WAVEfmt ")},
+		{"empty input", nil, true},
+		{"unknown codec", buildOgg(pageOf(1, []byte("not a codec header")), pageOf(1, audio1)), true},
+		{"ends inside the header packets", buildOgg(pageOf(1, vorbisID), pageOf(1, commentHeader(10))), true},
+		{"not an Ogg stream", []byte("RIFF....WAVEfmt "), false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := digester{}.AudioDigest(context.Background(), bytes.NewReader(tt.data), int64(len(tt.data)))
+			_, err := digester{}.AudioDigest(t.Context(), bytes.NewReader(tt.data), int64(len(tt.data)))
 			if err == nil {
 				t.Fatal("AudioDigest succeeded, want an error")
+			}
+			if _, ok := errors.AsType[*types.CorruptedFileError](err); ok != tt.wantCorrupt {
+				t.Errorf("err = %v; CorruptedFileError = %v, want %v", err, ok, tt.wantCorrupt)
 			}
 		})
 	}
 }
 
-func TestAudioDigest_StructuralErrorsAreCorruptedFileErrors(t *testing.T) {
-	data := buildOgg(pageOf(1, vorbisID), pageOf(1, commentHeader(10)))
-	_, err := digester{}.AudioDigest(context.Background(), bytes.NewReader(data), int64(len(data)))
-	if _, ok := errors.AsType[*types.CorruptedFileError](err); !ok {
-		t.Errorf("err = %v, want *types.CorruptedFileError", err)
+// failingReader serves data, then fails every read at or past failAt.
+type failingReader struct {
+	data   []byte
+	failAt int64
+}
+
+var errDisk = errors.New("disk error")
+
+func (r failingReader) ReadAt(p []byte, off int64) (int, error) {
+	if off+int64(len(p)) > r.failAt {
+		return 0, errDisk
+	}
+	return bytes.NewReader(r.data).ReadAt(p, off)
+}
+
+func TestAudioDigest_ReadErrorsPassThrough(t *testing.T) {
+	data := buildOgg(pageOf(1, opusHead), pageOf(1, commentHeader(10)), pageOf(1, audio1))
+	src := failingReader{data: data, failAt: 10}
+	_, err := digester{}.AudioDigest(t.Context(), src, int64(len(data)))
+	if !errors.Is(err, errDisk) {
+		t.Errorf("err = %v, want it to wrap the read error", err)
 	}
 }
 
 func TestAudioDigest_Canceled(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	data := buildOgg(pageOf(1, opusHead), pageOf(1, commentHeader(10)), pageOf(1, audio1))
 	if _, err := (digester{}).AudioDigest(ctx, bytes.NewReader(data), int64(len(data))); !errors.Is(err, context.Canceled) {
