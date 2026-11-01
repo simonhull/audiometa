@@ -30,9 +30,10 @@ type AudioInfo struct {
 // Gains are in dB relative to the ReplayGain 2 reference level (-18 LUFS);
 // peaks are linear sample amplitudes where 1.0 is full scale. A zero field
 // is unknown. Values come from REPLAYGAIN_* tags (Vorbis comments, MP3 TXXX
-// frames, M4A freeform items); Opus R128_TRACK_GAIN and R128_ALBUM_GAIN are
-// converted to the same reference by adding 5 dB, and carry no peaks. The
-// Opus header's output gain is not included: decoders apply it already.
+// frames, M4A freeform items). On Opus, valid R128_TRACK_GAIN and
+// R128_ALBUM_GAIN tags take precedence: they are converted to the same
+// reference by adding 5 dB, and carry no peaks. The Opus header's output
+// gain is not included: decoders apply it already.
 // See https://wiki.hydrogenaud.io/index.php?title=ReplayGain
 type ReplayGainInfo struct {
 	TrackGain float64 // Track gain adjustment in dB (can be negative)

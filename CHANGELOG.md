@@ -11,7 +11,7 @@ All notable changes to this project are documented here.
 
 ### Changed
 
-- A ReplayGain value that does not parse is reported as a warning and left unset, instead of being read as 0.
+- A ReplayGain value that does not parse is reported as a `StageMetadata` warning (so `Open` fails under `WithStrictParsing`) and left unset, instead of being read as 0. `AudioInfo.ReplayGain` is nil, not a zeroed struct, when no value parses.
 
 ### Fixed
 
