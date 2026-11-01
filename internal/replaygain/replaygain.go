@@ -51,20 +51,29 @@ var r128Fields = []field{
 	{"R128_ALBUM_GAIN", parseR128, albumGain},
 }
 
+// maxQuoted bounds how much of an invalid value a warning quotes.
+const maxQuoted = 64
+
 // Apply sets f.Audio.ReplayGain from f's raw tags, leaving it nil when no
 // tag holds a valid value, and appends a StageMetadata warning for each
 // value it cannot parse. The first value of a repeated key wins.
 //
-// Opus files with R128_TRACK_GAIN or R128_ALBUM_GAIN take their gains from
-// those tags alone, converted to the ReplayGain reference; their peaks stay
-// unknown. Other files, and Opus files without R128 tags, use the
-// REPLAYGAIN_* tags.
+// Opus files take their gains from R128_TRACK_GAIN and R128_ALBUM_GAIN,
+// converted to the ReplayGain reference, with peaks left unknown. Other
+// files, and Opus files with no valid R128 value, use the REPLAYGAIN_* tags.
 func Apply(f *types.File) {
-	fields := replayGainFields
-	if f.Format == types.FormatOpus && hasAny(&f.Tags, r128Fields) {
-		fields = r128Fields
+	if f.Format == types.FormatOpus {
+		if rg := read(f, r128Fields); rg != nil {
+			f.Audio.ReplayGain = rg
+			return
+		}
 	}
+	f.Audio.ReplayGain = read(f, replayGainFields)
+}
 
+// read returns the values of fields found in f's raw tags, or nil when none
+// is valid, warning about each value it cannot parse.
+func read(f *types.File, fields []field) *types.ReplayGainInfo {
 	var (
 		rg    types.ReplayGainInfo
 		found bool
@@ -78,7 +87,7 @@ func Apply(f *types.File) {
 		if err != nil {
 			f.Warnings = types.AppendWarning(f.Warnings, types.Warning{
 				Stage:   types.StageMetadata,
-				Message: fmt.Sprintf("ignoring %s %q: %v", fd.key, raw, err),
+				Message: fmt.Sprintf("ignoring %s %q: %v", fd.key, truncate(raw), err),
 				Err:     err,
 			})
 			continue
@@ -86,19 +95,18 @@ func Apply(f *types.File) {
 		*fd.dst(&rg) = v
 		found = true
 	}
-	if found {
-		f.Audio.ReplayGain = &rg
+	if !found {
+		return nil
 	}
+	return &rg
 }
 
-// hasAny reports whether tags hold a non-empty value for any of fields.
-func hasAny(tags *types.Tags, fields []field) bool {
-	for _, fd := range fields {
-		if tags.GetFirst(fd.key) != "" {
-			return true
-		}
+// truncate shortens s to maxQuoted bytes for a warning message.
+func truncate(s string) string {
+	if len(s) <= maxQuoted {
+		return s
 	}
-	return false
+	return s[:maxQuoted] + "..."
 }
 
 // parseGain parses a gain such as "-6.50 dB", "+2.1dB" or "-6.5".

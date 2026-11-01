@@ -2,6 +2,7 @@ package replaygain
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/simonhull/audiometa/internal/types"
@@ -104,5 +105,30 @@ func TestApply_InvalidFieldKeepsValidOnes(t *testing.T) {
 	}
 	if len(f.Warnings) != 1 {
 		t.Errorf("warnings = %v, want 1", f.Warnings)
+	}
+}
+
+func TestApply_OpusFallsBackWhenR128IsInvalid(t *testing.T) {
+	t.Parallel()
+	f := fileWith(types.FormatOpus, "R128_TRACK_GAIN", "-6.5", "REPLAYGAIN_TRACK_GAIN", "-3 dB", "REPLAYGAIN_TRACK_PEAK", "0.9")
+	Apply(f)
+	want := types.ReplayGainInfo{TrackGain: -3, TrackPeak: 0.9}
+	if got := f.Audio.ReplayGain; got == nil || *got != want {
+		t.Errorf("ReplayGain = %+v, want %+v", got, want)
+	}
+	if len(f.Warnings) != 1 || !errors.Is(f.Warnings[0].Err, errNotNumber) {
+		t.Errorf("warnings = %v, want one for R128_TRACK_GAIN", f.Warnings)
+	}
+}
+
+func TestApply_WarningQuotesBoundedValue(t *testing.T) {
+	t.Parallel()
+	f := fileWith(types.FormatMP3, "REPLAYGAIN_TRACK_GAIN", strings.Repeat("x", 1<<20))
+	Apply(f)
+	if len(f.Warnings) != 1 {
+		t.Fatalf("warnings = %d, want 1", len(f.Warnings))
+	}
+	if n := len(f.Warnings[0].Message); n > 200 {
+		t.Errorf("warning message is %d bytes, want at most 200", n)
 	}
 }
