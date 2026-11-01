@@ -86,8 +86,9 @@ if err == nil && len(artwork) > 0 {
 
 ### Audio Digest
 
-`AudioDigest` returns a SHA-256 of the audio data alone. Retagging, renaming or moving
-a file never changes it, so it identifies the same recording across all three.
+`AudioDigest` returns a SHA-256 of the audio data alone. Renaming or moving a file, or
+editing its tags and artwork with audiometa, never changes it, so it identifies the same
+recording across all three. See the `AudioDigest` docs for exactly what each format hashes.
 
 ```go
 sum, err := file.AudioDigest() // [32]byte; reads all of the audio

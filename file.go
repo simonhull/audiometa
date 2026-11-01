@@ -37,8 +37,9 @@ import (
 // Tags and artwork can be edited in memory and saved with [File.WriteTo] or
 // [Write]; see Tags.Set and [File.AddArtwork].
 //
-// [File.ExtractArtwork], [File.ExtractArtworkContext] and the artwork edit
-// methods are safe for concurrent use. The exported fields are not
+// [File.ExtractArtwork], [File.ExtractArtworkContext], [File.AudioDigest],
+// [File.AudioDigestContext] and the artwork edit methods are safe for
+// concurrent use. The exported fields are not
 // synchronized; do not modify them while other goroutines use the File.
 type File struct {
 	types.File

@@ -3,25 +3,41 @@ package audiometa
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
+
+	"github.com/simonhull/audiometa/internal/registry"
 )
 
-// AudioDigest returns the SHA-256 of the file's audio data, leaving out every
-// byte of metadata: tags, artwork, chapters and padding. Editing metadata,
-// with audiometa or any other tagger, does not change it; changing the audio
-// does. Two files with identical audio have the same digest, so it can
-// recognize a file that was renamed, moved or retagged.
+// lookupDigester is swapped by tests.
+var lookupDigester = registry.GetDigester
+
+// AudioDigest returns the SHA-256 of the file's audio data. Tags, artwork and
+// padding are left out, so editing them with audiometa never changes the
+// digest, while changing the audio does. Files with byte-identical audio data
+// share a digest, which identifies a file that was renamed, moved or retagged.
 //
-// What counts as audio depends on the format: MP3 frames between the ID3v2
-// tag and any ID3v1 trailer; FLAC frames after the last metadata block; the
-// payloads of every M4A/M4B mdat atom; and for Ogg Vorbis and Opus the packet
-// bytes of the first logical stream after its header packets.
+// What is hashed depends on the format:
 //
-// The digest is computed from the file on disk, not from unsaved edits, and
-// is not cached: each call reads all of the audio. It is safe for concurrent
-// use. The error is an [*UnsupportedFormatError] if the format has no digest,
-// or wraps the read error, for example [os.ErrClosed] after [File.Close] or a
-// [*CorruptedFileError]. Use [File.AudioDigestContext] to make it cancellable.
+//   - MP3: everything between the ID3v2 tag and the ID3v1 trailer, including
+//     any APEv2 or Lyrics3 tag.
+//   - FLAC: everything after the last metadata block, including any tag a
+//     tool appended after the audio frames.
+//   - M4A/M4B: the payload of every mdat atom, including the samples of a
+//     QuickTime chapter track.
+//   - Ogg Vorbis and Opus: the packets of the first logical stream after its
+//     header packets.
+//
+// A tagger that writes outside those regions, such as one adding an APEv2 tag
+// to an MP3, does change the digest.
+//
+// AudioDigest hashes the file as it was opened, not unsaved edits or later
+// changes to the path, and reads all of the audio on every call. It is safe
+// for concurrent use. The error wraps an [*UnsupportedFormatError] if the
+// format has no digest, a [*CorruptedFileError] or [*OutOfBoundsError] if the
+// file has no audio data or its structure is broken or cut short, or the read
+// error, for example [os.ErrClosed] after [File.Close]. Use
+// [File.AudioDigestContext] to make it cancellable.
 func (f *File) AudioDigest() ([sha256.Size]byte, error) {
 	return f.AudioDigestContext(context.Background())
 }
@@ -35,14 +51,29 @@ func (f *File) AudioDigestContext(ctx context.Context) ([sha256.Size]byte, error
 	var sum [sha256.Size]byte
 	d := lookupDigester(f.Format)
 	if d == nil {
-		return sum, &UnsupportedFormatError{Path: f.Path, Reason: fmt.Sprintf("no audio digest for %s files", f.Format)}
+		return sum, fmt.Errorf("audio digest: %w", &UnsupportedFormatError{Path: f.Path, Reason: fmt.Sprintf("no digest for %s files", f.Format)})
 	}
 	digest, err := digestSafely(ctx, d, f.reader, f.Size, f.Path)
 	if err != nil {
-		return sum, fmt.Errorf("audio digest of %s: %w", f.Path, err)
+		return sum, fmt.Errorf("audio digest: %w", withPath(err, f.Path))
 	}
 	if len(digest) != sha256.Size {
-		return sum, fmt.Errorf("audio digest of %s: digester returned %d bytes, want %d", f.Path, len(digest), sha256.Size)
+		return sum, fmt.Errorf("audio digest: digester returned %d bytes, want %d", len(digest), sha256.Size)
 	}
-	return [sha256.Size]byte(digest), nil
+	if sum = [sha256.Size]byte(digest); sum == sha256.Sum256(nil) {
+		return [sha256.Size]byte{}, fmt.Errorf("audio digest: %w", &CorruptedFileError{Path: f.Path, Reason: "no audio data"})
+	}
+	return sum, nil
+}
+
+// withPath fills in the Path of a structural error that a digester raised
+// without one, so it reads like the errors [Open] returns.
+func withPath(err error, path string) error {
+	if e, ok := errors.AsType[*CorruptedFileError](err); ok && e.Path == "" {
+		e.Path = path
+	}
+	if e, ok := errors.AsType[*OutOfBoundsError](err); ok && e.Path == "" {
+		e.Path = path
+	}
+	return err
 }

@@ -92,9 +92,10 @@
 //
 // # Audio Digest
 //
-// [File.AudioDigest] returns a SHA-256 of the audio data alone. No metadata
-// edit changes it, so it recognizes a file that was renamed, moved or
-// retagged, and two files with identical audio share it.
+// [File.AudioDigest] returns a SHA-256 of the audio data alone. Tag and
+// artwork edits made with audiometa never change it, so it recognizes a file
+// that was renamed, moved or retagged, and files with byte-identical audio
+// share it.
 //
 // # Warnings and Errors
 //

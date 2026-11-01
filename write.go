@@ -20,9 +20,6 @@ import (
 // lookupWriter is swapped by tests.
 var lookupWriter = registry.GetWriter
 
-// lookupDigester is swapped by tests.
-var lookupDigester = registry.GetDigester
-
 // WriteTo writes a complete copy of the file with all pending edits applied
 // to w, and returns the number of bytes written. It implements [io.WriterTo].
 //
