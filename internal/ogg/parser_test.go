@@ -956,6 +956,9 @@ func TestParse_ReplayGain(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			if len(f.Warnings) != 0 {
+				t.Errorf("warnings = %v, want none", f.Warnings)
+			}
 			if got := f.Audio.ReplayGain; got == nil || *got != tt.want {
 				t.Errorf("ReplayGain = %+v, want %+v", got, tt.want)
 			}

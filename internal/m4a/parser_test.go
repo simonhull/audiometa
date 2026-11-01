@@ -321,6 +321,9 @@ func TestParse_ReplayGainFromFreeform(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := types.ReplayGainInfo{TrackGain: -4, TrackPeak: 0.9}
+	if len(f.Warnings) != 0 {
+		t.Errorf("warnings = %v, want none", f.Warnings)
+	}
 	if got := f.Audio.ReplayGain; got == nil || *got != want {
 		t.Errorf("ReplayGain = %+v, want %+v", got, want)
 	}
