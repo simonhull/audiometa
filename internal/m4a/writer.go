@@ -84,11 +84,30 @@ func (w *writer) WriteFile(ctx context.Context, out io.Writer, src io.ReaderAt, 
 	return cw.N, nil
 }
 
-// PreservedDigest is the AudioDigest, as M4A write verification has always
-// been: the atoms around the edits are re-emitted rather than copied as one
-// region, and verifyFile checks the chapters they carry separately.
+// PreservedDigest returns the SHA-256 of every top-level atom outside moov and
+// the free/skip run after it: the bytes WriteFile copies verbatim, wherever
+// they end up in the new file.
 func (w *writer) PreservedDigest(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error) {
-	return w.AudioDigest(ctx, src, size)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	sr := binutil.NewSafeReader(src, size, "")
+	top, err := readTopLevel(ctx, sr, size)
+	if err != nil {
+		return nil, err
+	}
+	if err := top.structureCheck(sr); err != nil {
+		return nil, err
+	}
+	start, end := top.moovRegion()
+	h := sha256.New()
+	if _, err := writeutil.CopyRange(ctx, h, src, 0, start); err != nil {
+		return nil, err
+	}
+	if _, err := writeutil.CopyRange(ctx, h, src, end, size-end); err != nil {
+		return nil, err
+	}
+	return h.Sum(nil), nil
 }
 
 // AudioDigest returns the SHA-256 of the payloads of every top-level mdat
@@ -157,13 +176,8 @@ func planWrite(ctx context.Context, sr *binutil.SafeReader, size int64, edits *t
 	if err := applyIlstEdits(root, edits); err != nil {
 		return nil, err
 	}
-	l := &layout{moovStart: moovAtom.Offset, rEnd: moovAtom.Offset + moovAtom.Size}
-	for _, a := range top.atoms[top.moov+1:] {
-		if a.Type != atomFree && a.Type != atomSkip {
-			break
-		}
-		l.rEnd += a.Size
-	}
+	l := &layout{}
+	l.moovStart, l.rEnd = top.moovRegion()
 	if l.moov, err = root.bytes(); err != nil {
 		return nil, err
 	}
@@ -257,6 +271,21 @@ func shiftEntry(typ string, entry []byte, moovStart, rEnd, delta int64) error {
 	}
 	binary.BigEndian.PutUint32(entry, uint32(shifted))
 	return nil
+}
+
+// moovRegion returns the extent of moov and the free/skip run after it: the
+// part of the file a metadata write replaces. Everything else is copied
+// verbatim. The caller must have checked that the file has a moov atom.
+func (top *topLevel) moovRegion() (start, end int64) {
+	m := top.atoms[top.moov]
+	start, end = m.Offset, m.Offset+m.Size
+	for _, a := range top.atoms[top.moov+1:] {
+		if a.Type != atomFree && a.Type != atomSkip {
+			break
+		}
+		end += a.Size
+	}
+	return start, end
 }
 
 // readTopLevel lists the file's top-level atoms. A final atom with size 0

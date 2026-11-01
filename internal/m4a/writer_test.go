@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
+	"io"
 	"os"
 	"slices"
 	"strings"
@@ -390,5 +391,45 @@ func TestLayout_FaststartCorpusGrowth(t *testing.T) {
 		if !bytes.Equal(digestOf(t, out), digestOf(t, src)) {
 			t.Errorf("%s: audio digest changed", path)
 		}
+		preserved := func(b []byte) []byte {
+			sum, err := (&writer{}).PreservedDigest(t.Context(), bytes.NewReader(b), int64(len(b)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			return sum
+		}
+		if !bytes.Equal(preserved(out), preserved(src)) {
+			t.Errorf("%s: preserved digest changed although the audio moved intact", path)
+		}
+	}
+}
+
+func TestPreservedDigestCoversAtomsOutsideMoov(t *testing.T) {
+	t.Parallel()
+	for _, path := range []string{"../../testdata/sample.m4a", "../../testdata/sample_faststart.m4a"} {
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			damaged := slices.Clone(data)
+			damaged[11] ^= 0xFF // ftyp's major brand, which a write copies verbatim
+
+			w := &writer{}
+			digest := func(b []byte, f func(context.Context, io.ReaderAt, int64) ([]byte, error)) []byte {
+				sum, err := f(t.Context(), bytes.NewReader(b), int64(len(b)))
+				if err != nil {
+					t.Fatal(err)
+				}
+				return sum
+			}
+			if !bytes.Equal(digest(data, w.AudioDigest), digest(damaged, w.AudioDigest)) {
+				t.Error("AudioDigest must ignore ftyp")
+			}
+			if bytes.Equal(digest(data, w.PreservedDigest), digest(damaged, w.PreservedDigest)) {
+				t.Error("PreservedDigest must change when ftyp is damaged")
+			}
+		})
 	}
 }
