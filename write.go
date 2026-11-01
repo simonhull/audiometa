@@ -20,6 +20,9 @@ import (
 // lookupWriter is swapped by tests.
 var lookupWriter = registry.GetWriter
 
+// lookupDigester is swapped by tests.
+var lookupDigester = registry.GetDigester
+
 // WriteTo writes a complete copy of the file with all pending edits applied
 // to w, and returns the number of bytes written. It implements [io.WriterTo].
 //
@@ -386,14 +389,14 @@ func writeSafely(ctx context.Context, tw registry.TagWriter, w io.Writer, r io.R
 	return tw.WriteFile(ctx, cw, r, size, edits)
 }
 
-// digestSafely calls tw.AudioDigest, converting a panic into a CorruptedFileError.
-func digestSafely(ctx context.Context, tw registry.TagWriter, r io.ReaderAt, size int64, path string) (digest []byte, err error) {
+// digestSafely calls d.AudioDigest, converting a panic into a CorruptedFileError.
+func digestSafely(ctx context.Context, d registry.AudioDigester, r io.ReaderAt, size int64, path string) (digest []byte, err error) {
 	defer func() {
 		if rec := recover(); rec != nil {
 			digest, err = nil, panicError(path, rec)
 		}
 	}()
-	return tw.AudioDigest(ctx, r, size)
+	return d.AudioDigest(ctx, r, size)
 }
 
 // patchSafely calls w.InPlacePatch, converting a panic into a CorruptedFileError.
