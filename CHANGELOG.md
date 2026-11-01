@@ -6,7 +6,7 @@ All notable changes to this project are documented here.
 
 ### Added
 
-- `File.AudioDigest` and `File.AudioDigestContext`: a SHA-256 of a file's audio data that metadata edits never change, for MP3, FLAC, M4A/M4B, Ogg Vorbis and Opus.
+- `File.AudioDigest` and `File.AudioDigestContext`: a SHA-256 of a file's audio data that metadata edits never change, for MP3, FLAC, M4A/M4B, Ogg Vorbis and Opus. Trailing ID3v1, APEv2, Lyrics3v2 and footer-terminated ID3v2 tags on MP3 and FLAC are left out, so tools such as mp3gain do not change it.
 
 ### Fixed
 

@@ -19,17 +19,18 @@ var lookupDigester = registry.GetDigester
 //
 // What is hashed depends on the format:
 //
-//   - MP3: everything between the ID3v2 tag and the ID3v1 trailer, including
-//     any APEv2 or Lyrics3 tag.
-//   - FLAC: everything after the last metadata block, including any tag a
-//     tool appended after the audio frames.
+//   - MP3: everything between the ID3v2 tag and any trailing ID3v1, APEv2,
+//     Lyrics3v2 or footer-terminated ID3v2 tags.
+//   - FLAC: everything after the last metadata block, up to any such
+//     trailing tags.
 //   - M4A/M4B: the payload of every mdat atom, including the samples of a
 //     QuickTime chapter track.
 //   - Ogg Vorbis and Opus: the packets of the first logical stream after its
 //     header packets.
 //
-// A tagger that writes outside those regions, such as one adding an APEv2 tag
-// to an MP3, does change the digest.
+// Tags written by other tools in those places do not change the digest
+// either. A QuickTime chapter track's titles are stored as M4B samples, so
+// rewriting them does.
 //
 // AudioDigest hashes the file as it was opened, not unsaved edits or later
 // changes to the path, and reads all of the audio on every call. It is safe
