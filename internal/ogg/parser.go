@@ -9,6 +9,7 @@ import (
 
 	"github.com/simonhull/audiometa/internal/binary"
 	"github.com/simonhull/audiometa/internal/registry"
+	"github.com/simonhull/audiometa/internal/replaygain"
 	"github.com/simonhull/audiometa/internal/types"
 )
 
@@ -137,6 +138,8 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	default:
 		return nil, fmt.Errorf("unknown or unsupported Ogg codec: %q", codec)
 	}
+
+	replaygain.Apply(file)
 
 	return file, nil
 }

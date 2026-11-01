@@ -7,7 +7,6 @@ package vorbis
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/simonhull/audiometa/internal/types"
@@ -138,40 +137,6 @@ func ParseComment(comment string, file *types.File) error { //nolint:gocyclo // 
 		setFirst(&tags.Label, value)
 	case "COPYRIGHT":
 		setFirst(&tags.Copyright, value)
-
-	// ReplayGain tags
-	case "REPLAYGAIN_TRACK_GAIN":
-		if len(tags.Get(key)) > 0 {
-			break
-		}
-		if file.Audio.ReplayGain == nil {
-			file.Audio.ReplayGain = &types.ReplayGainInfo{}
-		}
-		file.Audio.ReplayGain.TrackGain = parseReplayGainValue(value)
-	case "REPLAYGAIN_TRACK_PEAK":
-		if len(tags.Get(key)) > 0 {
-			break
-		}
-		if file.Audio.ReplayGain == nil {
-			file.Audio.ReplayGain = &types.ReplayGainInfo{}
-		}
-		file.Audio.ReplayGain.TrackPeak = parseReplayGainPeak(value)
-	case "REPLAYGAIN_ALBUM_GAIN":
-		if len(tags.Get(key)) > 0 {
-			break
-		}
-		if file.Audio.ReplayGain == nil {
-			file.Audio.ReplayGain = &types.ReplayGainInfo{}
-		}
-		file.Audio.ReplayGain.AlbumGain = parseReplayGainValue(value)
-	case "REPLAYGAIN_ALBUM_PEAK":
-		if len(tags.Get(key)) > 0 {
-			break
-		}
-		if file.Audio.ReplayGain == nil {
-			file.Audio.ReplayGain = &types.ReplayGainInfo{}
-		}
-		file.Audio.ReplayGain.AlbumPeak = parseReplayGainPeak(value)
 	}
 
 	// Store in raw tags as well
@@ -186,20 +151,4 @@ func setFirst(dst *string, value string) {
 	if *dst == "" {
 		*dst = value
 	}
-}
-
-// parseReplayGainValue parses a ReplayGain gain value like "-6.50 dB" or "-6.50".
-func parseReplayGainValue(s string) float64 {
-	s = strings.TrimSpace(s)
-	s = strings.TrimSuffix(s, " dB")
-	s = strings.TrimSuffix(s, "dB")
-	s = strings.TrimSpace(s)
-	val, _ := strconv.ParseFloat(s, 64)
-	return val
-}
-
-// parseReplayGainPeak parses a ReplayGain peak value like "0.988127".
-func parseReplayGainPeak(s string) float64 {
-	val, _ := strconv.ParseFloat(strings.TrimSpace(s), 64)
-	return val
 }

@@ -1,7 +1,6 @@
 package vorbis
 
 import (
-	"math"
 	"slices"
 	"strconv"
 	"testing"
@@ -89,97 +88,6 @@ func TestParseComment(t *testing.T) {
 				t.Errorf("ParseComment(%q) did not set expected field", tc.comment)
 			}
 		})
-	}
-}
-
-func TestParseComment_ReplayGain(t *testing.T) {
-	tests := []struct {
-		name    string
-		comment string
-		check   func(*types.File) bool
-	}{
-		{
-			"track gain with dB",
-			"REPLAYGAIN_TRACK_GAIN=-6.50 dB",
-			func(f *types.File) bool {
-				return f.Audio.ReplayGain != nil && math.Abs(f.Audio.ReplayGain.TrackGain-(-6.50)) < 0.001
-			},
-		},
-		{
-			"track gain without dB",
-			"REPLAYGAIN_TRACK_GAIN=-6.50",
-			func(f *types.File) bool {
-				return f.Audio.ReplayGain != nil && math.Abs(f.Audio.ReplayGain.TrackGain-(-6.50)) < 0.001
-			},
-		},
-		{
-			"track gain with dB no space",
-			"REPLAYGAIN_TRACK_GAIN=-6.50dB",
-			func(f *types.File) bool {
-				return f.Audio.ReplayGain != nil && math.Abs(f.Audio.ReplayGain.TrackGain-(-6.50)) < 0.001
-			},
-		},
-		{
-			"track peak",
-			"REPLAYGAIN_TRACK_PEAK=0.988127",
-			func(f *types.File) bool {
-				return f.Audio.ReplayGain != nil && math.Abs(f.Audio.ReplayGain.TrackPeak-0.988127) < 0.000001
-			},
-		},
-		{
-			"album gain",
-			"REPLAYGAIN_ALBUM_GAIN=-8.23 dB",
-			func(f *types.File) bool {
-				return f.Audio.ReplayGain != nil && math.Abs(f.Audio.ReplayGain.AlbumGain-(-8.23)) < 0.001
-			},
-		},
-		{
-			"album peak",
-			"REPLAYGAIN_ALBUM_PEAK=1.0",
-			func(f *types.File) bool {
-				return f.Audio.ReplayGain != nil && math.Abs(f.Audio.ReplayGain.AlbumPeak-1.0) < 0.001
-			},
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			file := &types.File{}
-			err := ParseComment(tc.comment, file)
-			if err != nil {
-				t.Fatalf("ParseComment() error = %v", err)
-			}
-			if !tc.check(file) {
-				t.Errorf("ParseComment(%q) did not set expected ReplayGain field", tc.comment)
-			}
-		})
-	}
-}
-
-func TestParseComment_ReplayGain_AllFields(t *testing.T) {
-	file := &types.File{}
-
-	_ = ParseComment("REPLAYGAIN_TRACK_GAIN=-6.50 dB", file)
-	_ = ParseComment("REPLAYGAIN_TRACK_PEAK=0.988127", file)
-	_ = ParseComment("REPLAYGAIN_ALBUM_GAIN=-8.23 dB", file)
-	_ = ParseComment("REPLAYGAIN_ALBUM_PEAK=1.0", file)
-
-	if file.Audio.ReplayGain == nil {
-		t.Fatal("ReplayGain should not be nil")
-	}
-
-	rg := file.Audio.ReplayGain
-	if math.Abs(rg.TrackGain-(-6.50)) > 0.001 {
-		t.Errorf("TrackGain = %v, want -6.50", rg.TrackGain)
-	}
-	if math.Abs(rg.TrackPeak-0.988127) > 0.000001 {
-		t.Errorf("TrackPeak = %v, want 0.988127", rg.TrackPeak)
-	}
-	if math.Abs(rg.AlbumGain-(-8.23)) > 0.001 {
-		t.Errorf("AlbumGain = %v, want -8.23", rg.AlbumGain)
-	}
-	if math.Abs(rg.AlbumPeak-1.0) > 0.001 {
-		t.Errorf("AlbumPeak = %v, want 1.0", rg.AlbumPeak)
 	}
 }
 
@@ -344,47 +252,6 @@ func TestParseComment_InvalidNumbers(t *testing.T) {
 	}
 }
 
-func TestParseReplayGainValue(t *testing.T) {
-	tests := []struct {
-		input string
-		want  float64
-	}{
-		{"-6.50 dB", -6.50},
-		{"-6.50dB", -6.50},
-		{"-6.50", -6.50},
-		{"  -6.50 dB  ", -6.50},
-		{"+3.20 dB", 3.20},
-		{"0", 0.0},
-		{"invalid", 0.0},
-	}
-
-	for _, tc := range tests {
-		got := parseReplayGainValue(tc.input)
-		if math.Abs(got-tc.want) > 0.001 {
-			t.Errorf("parseReplayGainValue(%q) = %v, want %v", tc.input, got, tc.want)
-		}
-	}
-}
-
-func TestParseReplayGainPeak(t *testing.T) {
-	tests := []struct {
-		input string
-		want  float64
-	}{
-		{"0.988127", 0.988127},
-		{"1.0", 1.0},
-		{"  0.5  ", 0.5},
-		{"invalid", 0.0},
-	}
-
-	for _, tc := range tests {
-		got := parseReplayGainPeak(tc.input)
-		if math.Abs(got-tc.want) > 0.000001 {
-			t.Errorf("parseReplayGainPeak(%q) = %v, want %v", tc.input, got, tc.want)
-		}
-	}
-}
-
 func TestParseComment_CaseInsensitiveKeys(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -398,10 +265,6 @@ func TestParseComment_CaseInsensitiveKeys(t *testing.T) {
 		{"album", "album=x", func(f *types.File) bool { return f.Tags.Album == "x" }},
 		{"tracknumber", "tracknumber=7", func(f *types.File) bool { return f.Tags.TrackNumber == 7 }},
 		{"series", "Series=Discworld", func(f *types.File) bool { return f.Tags.Series == "Discworld" }},
-		{"replaygain", "replaygain_track_gain=-6.50 dB", func(f *types.File) bool {
-			rg := f.Audio.ReplayGain
-			return rg != nil && rg.TrackGain == -6.5
-		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
