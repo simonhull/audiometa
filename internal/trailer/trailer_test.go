@@ -158,6 +158,12 @@ func TestStart_RejectsLookalikes(t *testing.T) {
 	noFooterFlag[len(noFooterFlag)-5] &^= 0x10
 	mismatched := id3v2WithFooter(30)
 	mismatched[3] = 3 // header says v2.3, footer says v2.4
+	headerVersionDiffers := ape(40, true)
+	binary.LittleEndian.PutUint32(headerVersionDiffers[8:], 1000)
+	headerSizeDiffers := ape(40, true)
+	binary.LittleEndian.PutUint32(headerSizeDiffers[12:], 99)
+	headerNotMarked := ape(40, true)
+	binary.LittleEndian.PutUint32(headerNotMarked[20:], 1<<31) // bit 29 ("this is the header") clear
 
 	for name, trailer := range map[string][]byte{
 		"APE version 3000":           badVersion,
@@ -166,6 +172,9 @@ func TestStart_RejectsLookalikes(t *testing.T) {
 		"ID3v2 size not synchsafe":   notSynchsafe,
 		"ID3v2 footer flag missing":  noFooterFlag,
 		"ID3v2 header differs":       mismatched,
+		"APE header version differs": headerVersionDiffers,
+		"APE header size differs":    headerSizeDiffers,
+		"APE header not marked":      headerNotMarked,
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -232,6 +241,10 @@ func FuzzStart(f *testing.F) {
 		}
 		if got < start || got > end {
 			t.Fatalf("Start = %d, outside [%d, %d]", got, start, end)
+		}
+		again, err := Start(t.Context(), sr(data), start, got)
+		if err != nil || again != got {
+			t.Fatalf("Start is not stable: Start(%d) = %d, then Start(%d) = %d, %v", end, got, got, again, err)
 		}
 	})
 }

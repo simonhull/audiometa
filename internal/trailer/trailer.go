@@ -15,6 +15,7 @@ const (
 	id3v1Size     = 128
 	apeFooterSize = 32
 	apeHasHeader  = 1 << 31
+	apeIsHeader   = 1 << 29
 	lyricsTail    = 15 // 6-digit size + "LYRICS200"
 	id3v2Footer   = 10
 	id3v2HasFoot  = 0x10
@@ -67,11 +68,8 @@ func id3v1Len(sr *binutil.SafeReader, start, end int64) (int64, error) {
 
 func apeLen(sr *binutil.SafeReader, start, end int64) (int64, error) {
 	footer, err := read(sr, start, end, end-apeFooterSize, apeFooterSize)
-	if footer == nil || err != nil || string(footer[:8]) != "APETAGEX" {
+	if footer == nil || err != nil || !apePart(footer, false) {
 		return 0, err
-	}
-	if v := binary.LittleEndian.Uint32(footer[8:12]); v != 1000 && v != 2000 {
-		return 0, nil
 	}
 	size := int64(binary.LittleEndian.Uint32(footer[12:16]))
 	if size < apeFooterSize {
@@ -81,11 +79,23 @@ func apeLen(sr *binutil.SafeReader, start, end int64) (int64, error) {
 		return fit(size, start, end), nil
 	}
 	size += apeFooterSize
-	ok, err := hasAt(sr, start, end, end-size, "APETAGEX")
-	if !ok || err != nil {
+	header, err := read(sr, start, end, end-size, apeFooterSize)
+	if header == nil || err != nil || !apePart(header, true) || !bytes.Equal(header[8:16], footer[8:16]) {
 		return 0, err
 	}
 	return size, nil
+}
+
+// apePart reports whether b is an APEv1/APEv2 header (isHeader) or footer:
+// the "APETAGEX" marker, a known version, and flag bit 29 saying which.
+func apePart(b []byte, isHeader bool) bool {
+	if string(b[:8]) != "APETAGEX" {
+		return false
+	}
+	if v := binary.LittleEndian.Uint32(b[8:12]); v != 1000 && v != 2000 {
+		return false
+	}
+	return binary.LittleEndian.Uint32(b[20:24])&apeIsHeader != 0 == isHeader
 }
 
 func lyrics3v2Len(sr *binutil.SafeReader, start, end int64) (int64, error) {
