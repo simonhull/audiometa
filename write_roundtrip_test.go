@@ -127,6 +127,16 @@ var roundTripEdits = []tagEdit{
 // roundTripMP3Edits are edits of MP3-native keys.
 var roundTripMP3Edits = []tagEdit{
 	{
+		name:    "set REPLAYGAIN_TRACK_GAIN",
+		apply:   func(f *audiometa.File) error { f.Tags.Set("REPLAYGAIN_TRACK_GAIN", "-6.00 dB"); return nil },
+		formats: []audiometa.Format{audiometa.FormatMP3},
+		check: func(t *testing.T, f *audiometa.File) {
+			if rg := f.Audio.ReplayGain; rg == nil || rg.TrackGain != -6.0 {
+				t.Errorf("ReplayGain = %+v, want TrackGain -6", rg)
+			}
+		},
+	},
+	{
 		name:    "set NARRATOR",
 		fields:  []string{"Narrator"},
 		apply:   func(f *audiometa.File) error { f.Tags.Set("NARRATOR", "Reader"); return nil },

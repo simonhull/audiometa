@@ -7,6 +7,7 @@ import (
 
 	binutil "github.com/simonhull/audiometa/internal/binary"
 	"github.com/simonhull/audiometa/internal/registry"
+	"github.com/simonhull/audiometa/internal/replaygain"
 	"github.com/simonhull/audiometa/internal/types"
 )
 
@@ -68,6 +69,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	}
 
 	closeOverDriveChapters(file)
+	replaygain.Apply(file)
 
 	return file, nil
 }
