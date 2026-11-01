@@ -5,9 +5,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"os"
 	"slices"
 	"testing"
 
+	"github.com/simonhull/audiometa/internal/registry"
 	"github.com/simonhull/audiometa/internal/types"
 )
 
@@ -138,5 +140,39 @@ func TestAudioDigest_Canceled(t *testing.T) {
 	data := buildOgg(pageOf(1, opusHead), pageOf(1, commentHeader(10)), pageOf(1, audio1))
 	if _, err := (digester{}).AudioDigest(ctx, bytes.NewReader(data), int64(len(data))); !errors.Is(err, context.Canceled) {
 		t.Errorf("err = %v, want context.Canceled", err)
+	}
+}
+
+func TestAudioDigest_SampleFiles(t *testing.T) {
+	for _, name := range []string{"../../testdata/sample.ogg", "../../testdata/sample.opus"} {
+		t.Run(name, func(t *testing.T) {
+			data, err := os.ReadFile(name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			first := digestOf(t, data)
+			if len(first) != sha256.Size {
+				t.Fatalf("digest length = %d, want %d", len(first), sha256.Size)
+			}
+			if !bytes.Equal(digestOf(t, data), first) {
+				t.Error("digest is not deterministic")
+			}
+
+			// The last byte of an Ogg file is audio payload; readPage does
+			// not verify CRCs, so the flipped file still parses.
+			flipped := slices.Clone(data)
+			flipped[len(flipped)-1] ^= 0xFF
+			if bytes.Equal(digestOf(t, flipped), first) {
+				t.Error("changing an audio byte did not change the digest")
+			}
+		})
+	}
+}
+
+func TestDigesterRegistered(t *testing.T) {
+	for _, f := range []types.Format{types.FormatOgg, types.FormatOpus} {
+		if registry.GetDigester(f) == nil {
+			t.Errorf("no digester registered for %s", f)
+		}
 	}
 }
