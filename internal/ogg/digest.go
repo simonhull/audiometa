@@ -31,7 +31,7 @@ func (digester) AudioDigest(ctx context.Context, src io.ReaderAt, size int64) ([
 	sr := binary.NewSafeReader(src, size, "")
 	h := sha256.New()
 	var serial uint32
-	remaining := 0 // header packets still to skip
+	var skip headerSkip
 	for i, off := 0, int64(0); off < size; i++ {
 		if err := binary.Canceled(ctx, i); err != nil {
 			return nil, err
@@ -45,34 +45,39 @@ func (digester) AudioDigest(ctx context.Context, src io.ReaderAt, size int64) ([
 			if !ok {
 				return nil, &types.CorruptedFileError{Reason: "unknown Ogg codec"}
 			}
-			serial, remaining = page.SerialNumber, n
+			serial, skip.remaining = page.SerialNumber, n
 		}
 		if page.SerialNumber == serial {
-			h.Write(afterHeaders(page, &remaining))
+			h.Write(skip.audio(page))
 		}
 		off = next
 	}
-	if remaining > 0 {
+	if skip.remaining > 0 {
 		return nil, &types.CorruptedFileError{Offset: size, Reason: "Ogg stream ends inside its header packets"}
 	}
 	return h.Sum(nil), nil
 }
 
-// afterHeaders returns the part of page's payload that follows the remaining
-// header packets, counting down *remaining for each header packet that ends
-// on the page. It returns nil while header packets are still incomplete.
-func afterHeaders(page *Page, remaining *int) []byte {
+// headerSkip separates a logical stream's header packets from its audio.
+type headerSkip struct {
+	remaining int // header packets not yet ended
+}
+
+// audio returns the part of page's payload after the stream's header packets,
+// counting down each header packet that ends on the page. It returns nil while
+// header packets are still incomplete.
+func (s *headerSkip) audio(page *Page) []byte {
 	pos := 0
 	for _, lace := range page.laceValues() {
-		if *remaining == 0 {
+		if s.remaining == 0 {
 			break
 		}
 		pos += int(lace)
 		if lace < 255 {
-			*remaining--
+			s.remaining--
 		}
 	}
-	if *remaining > 0 {
+	if s.remaining > 0 {
 		return nil
 	}
 	return page.Data[pos:]
