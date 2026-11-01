@@ -7,6 +7,7 @@ import (
 
 	"github.com/simonhull/audiometa/internal/binary"
 	"github.com/simonhull/audiometa/internal/registry"
+	"github.com/simonhull/audiometa/internal/replaygain"
 	"github.com/simonhull/audiometa/internal/types"
 )
 
@@ -112,6 +113,8 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+
+	replaygain.Apply(file)
 
 	return file, nil
 }

@@ -309,3 +309,19 @@ func createM4BWithMetadataAndCover(title, artist string, coverData []byte) []byt
 	buf.Write(moovAtom)
 	return buf.Bytes()
 }
+
+func TestParse_ReplayGainFromFreeform(t *testing.T) {
+	t.Parallel()
+	data := buildMP4(false,
+		ilstFreeform("replaygain_track_gain", "-4.00 dB"),
+		ilstFreeform("replaygain_track_peak", "0.900000"),
+	)
+	f, err := (&parser{}).Parse(t.Context(), bytes.NewReader(data), int64(len(data)), "x.m4a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := types.ReplayGainInfo{TrackGain: -4, TrackPeak: 0.9}
+	if got := f.Audio.ReplayGain; got == nil || *got != want {
+		t.Errorf("ReplayGain = %+v, want %+v", got, want)
+	}
+}

@@ -69,6 +69,16 @@ var longComment = strings.Repeat("0123456789abcdef", 256) // 4096 characters
 
 var roundTripEdits = []tagEdit{
 	{
+		name:    "set REPLAYGAIN_TRACK_GAIN",
+		apply:   func(f *audiometa.File) error { f.Tags.Set("REPLAYGAIN_TRACK_GAIN", "-6.00 dB"); return nil },
+		formats: []audiometa.Format{audiometa.FormatMP3, audiometa.FormatFLAC, audiometa.FormatM4A, audiometa.FormatM4B},
+		check: func(t *testing.T, f *audiometa.File) {
+			if rg := f.Audio.ReplayGain; rg == nil || rg.TrackGain != -6.0 {
+				t.Errorf("ReplayGain = %+v, want TrackGain -6", rg)
+			}
+		},
+	},
+	{
 		name:   "set title",
 		fields: []string{"Title"},
 		apply:  func(f *audiometa.File) error { f.Tags.Title = "Nouveau titre ✓ 日本語"; return nil },
@@ -127,16 +137,6 @@ var roundTripEdits = []tagEdit{
 // roundTripMP3Edits are edits of MP3-native keys.
 var roundTripMP3Edits = []tagEdit{
 	{
-		name:    "set REPLAYGAIN_TRACK_GAIN",
-		apply:   func(f *audiometa.File) error { f.Tags.Set("REPLAYGAIN_TRACK_GAIN", "-6.00 dB"); return nil },
-		formats: []audiometa.Format{audiometa.FormatMP3},
-		check: func(t *testing.T, f *audiometa.File) {
-			if rg := f.Audio.ReplayGain; rg == nil || rg.TrackGain != -6.0 {
-				t.Errorf("ReplayGain = %+v, want TrackGain -6", rg)
-			}
-		},
-	},
-	{
 		name:    "set NARRATOR",
 		fields:  []string{"Narrator"},
 		apply:   func(f *audiometa.File) error { f.Tags.Set("NARRATOR", "Reader"); return nil },
@@ -165,16 +165,6 @@ var roundTripMP3Edits = []tagEdit{
 // roundTripFLACEdits are edits of Vorbis comment keys and fields only the
 // FLAC harness checks.
 var roundTripFLACEdits = []tagEdit{
-	{
-		name:    "set REPLAYGAIN_TRACK_GAIN",
-		apply:   func(f *audiometa.File) error { f.Tags.Set("REPLAYGAIN_TRACK_GAIN", "-6.00 dB"); return nil },
-		formats: []audiometa.Format{audiometa.FormatFLAC},
-		check: func(t *testing.T, f *audiometa.File) {
-			if rg := f.Audio.ReplayGain; rg == nil || rg.TrackGain != -6.0 {
-				t.Errorf("ReplayGain = %+v, want TrackGain -6", rg)
-			}
-		},
-	},
 	{
 		name:    "set lyrics",
 		fields:  []string{"Lyrics"},
