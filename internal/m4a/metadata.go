@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/simonhull/audiometa/internal/binary"
 	"github.com/simonhull/audiometa/internal/types"
@@ -81,6 +82,9 @@ func parseMetadataValues(sr *binary.SafeReader, tagAtom *Atom) ([]string, error)
 		}
 		if child.Type == atomData {
 			value, err := parseDataValue(sr, child)
+			if err == nil && tagAtom.Type == itemMvi && strings.ContainsFunc(value, unicode.IsControl) {
+				value, err = parseBinaryMovementIndex(sr, child)
+			}
 			if err != nil {
 				return values, err
 			}
@@ -92,6 +96,17 @@ func parseMetadataValues(sr *binary.SafeReader, tagAtom *Atom) ([]string, error)
 		off += child.Size
 	}
 	return values, nil
+}
+
+// parseBinaryMovementIndex decodes a ©mvi whose integer payload is labeled as
+// text or implicit, as some taggers write it. Read as text, 10 stored in two
+// bytes comes out as "\x00". A payload no integer fits yields "".
+func parseBinaryMovementIndex(sr *binary.SafeReader, dataAtom *Atom) (string, error) {
+	buf := make([]byte, dataAtom.DataSize()-8)
+	if err := sr.ReadAt(buf, dataAtom.DataOffset()+8, "movement index"); err != nil {
+		return "", err
+	}
+	return decodeBEInteger(buf, false), nil
 }
 
 // parseDataValue decodes one data atom: text (types 0 and 1, trimmed) or a

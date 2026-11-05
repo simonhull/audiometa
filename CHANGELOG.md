@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here.
 
+## v0.12.1 — 2026-11-05
+
+### Fixed
+
+- M4A: a `©mvi` integer stored with a text or implicit data type now reads as its number, not as a control character (#3).
+
 ## v0.12.0 — 2026-11-01
 
 ### Added
