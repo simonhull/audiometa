@@ -501,3 +501,41 @@ func TestExtractIlst_GnreRaw(t *testing.T) {
 		t.Errorf("gnre 0 recorded as %q", file.Tags.Get("gnre"))
 	}
 }
+
+func TestExtractIlstMetadata_MovementIndexDataTypes(t *testing.T) {
+	tests := []struct {
+		name     string
+		dataType uint32
+		value    []byte
+		want     string
+	}{
+		{"signed integer", dataTypeBESigned, []byte{0, 10}, "10"},
+		{"unsigned integer", dataTypeBEUnsigned, []byte{0, 10}, "10"},
+		{"integer labeled implicit", dataTypeImplicit, []byte{0, 10}, "10"},
+		{"integer labeled text", dataTypeUTF8, []byte{0, 10}, "10"},
+		{"integer whose low byte is a digit", dataTypeImplicit, []byte{0, '1'}, "49"},
+		{"text", dataTypeUTF8, []byte("10"), "10"},
+		{"text with a trailing null", dataTypeUTF8, []byte("10\x00"), "10"},
+		{"text that is not a number", dataTypeUTF8, []byte("4.5"), "4.5"},
+		{"zero means unset", dataTypeImplicit, []byte{0, 0}, ""},
+		{"payload no integer fits", dataTypeImplicit, []byte{0, 0, 0, 0, 1}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ilst := createMockAtom("ilst", ilstInt(itemMvi, tt.dataType, tt.value))
+			sr := audiobinary.NewSafeReader(bytes.NewReader(ilst), int64(len(ilst)), "test.m4b")
+			ilstAtom, err := readAtomHeader(sr, 0, int64(len(ilst)))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			file := &types.File{}
+			if err := extractIlstMetadata(context.Background(), sr, ilstAtom, file); err != nil {
+				t.Fatal(err)
+			}
+			if file.Tags.SeriesPart != tt.want {
+				t.Errorf("SeriesPart = %q, want %q", file.Tags.SeriesPart, tt.want)
+			}
+		})
+	}
+}
