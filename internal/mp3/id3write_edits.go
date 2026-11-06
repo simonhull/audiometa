@@ -25,9 +25,11 @@ var standardTextFrameIDs = setOf(`
 	TIT3 TKEY TLAN TLEN TMCL TMED TMOO TOAL TOFN TOLY TOPE TORY TOWN TPE1 TPE2 TPE3 TPE4 TPOS TPRO
 	TPUB TRCK TRDA TRSN TRSO TSIZ TSO2 TSOA TSOC TSOP TSOT TSRC TSSE TSST TYER TCMP GRP1 MVNM MVIN`)
 
-// Frame IDs that exist in only one ID3v2 version.
+// Frame IDs that exist in only one ID3v2 version. TSOA, TSOP and TSOT are
+// ID3v2.4 by the spec but left out on purpose: iTunes and other taggers write
+// them to ID3v2.3 too, and ID3v2.3 has no sort frames of its own.
 var (
-	v24OnlyIDs = setOf("TDRC TDOR TDRL TDEN TDTG TIPL TMCL TMOO TPRO TSOA TSOP TSOT TSST")
+	v24OnlyIDs = setOf("TDRC TDOR TDRL TDEN TDTG TIPL TMCL TMOO TPRO TSST")
 	v23OnlyIDs = setOf("TYER TDAT TIME TORY TRDA TSIZ IPLS")
 )
 
