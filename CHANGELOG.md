@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented here.
 
+## v0.12.2 — 2026-11-05
+
+### Added
+
+- MP3: `USLT` lyrics are read into `Tags.Lyrics` (the first frame with text) and the raw key `USLT` (every text), including ID3v2.2 `ULT`. `Tags.Lyrics` is writable: it rewrites that one frame and keeps its language and description, a new frame gets the language `XXX` (unknown), and other `USLT` frames stay. Clearing `Tags.Lyrics` or deleting the raw key removes every `USLT` frame. A compressed `USLT` frame is skipped with a `StageMetadata` warning, like any other compressed frame, so `Open` fails on it under `WithStrictParsing`.
+- MP3: `TSOT`, `TSOA` and `TSOP` can be written to ID3v2.3 tags, as iTunes and other taggers do. Other ID3v2.4-only frames are still refused there.
+
+### Changed
+
+- `Tags.Get` on a multi-valued MP3 `TXXX` frame or M4A freeform item now returns every value. It used to return only the first value of a `TXXX` frame and only the last of a freeform item. A typed field filled from a freeform item now takes the first value, not the last, so `Narrator`, `Series` and the others, and `Tags.GetFirst` and ReplayGain, change on an M4A file whose item holds several values.
+- MP3: writing refuses, with `ErrUnsupportedWrite`, a raw key that names an ID3v2 frame other than a writable text frame (`USLT`, `COMM`, `APIC`, `UFID`, `PRIV`, `POPM`, `WOAR` and the like). Frame IDs are upper-case, so `text` or `user` are still ordinary keys, unless the file already has a `TXXX` frame of that description. These keys used to write a `TXXX` frame of that name without complaint. Other custom keys, including four-letter ones such as `MOOD` and `ASIN`, still write as `TXXX`.
+
+### Fixed
+
+- MP3: an empty raw key returns `ErrUnsupportedWrite`, as it does on FLAC and M4A, instead of writing a `TXXX` frame no reader reports.
+
 ## v0.12.1 — 2026-11-05
 
 ### Fixed
