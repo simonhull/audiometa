@@ -292,10 +292,16 @@ _, err := f.WriteTo(w) // any io.Writer; WriteToContext takes a context
   targets chapter data returns `ErrUnsupportedWrite`.
 - **ID3.** v2.3 stays v2.3, v2.4 stays v2.4, and v2.2 or untagged files get v2.4. An existing
   ID3v1 trailer is copied verbatim: it is never updated, added or removed. After deleting
-  `TIT2`, a reader that falls back to ID3v1 can show the stale ID3v1 title.
+  `TIT2`, a reader that falls back to ID3v1 can show the stale ID3v1 title. v2.3 accepts the
+  sort frames `TSOT`, `TSOA` and `TSOP`, as iTunes writes them; other v2.4-only frames are
+  refused there.
 - **Editing.** Change `f.Tags` fields directly, or use `Tags.Set` and `Tags.Delete` with
   format-native keys. Editing a field and its native key to different values returns
-  `ErrConflictingEdits`.
+  `ErrConflictingEdits`. An empty key returns `ErrUnsupportedWrite`, and so does an MP3 key
+  naming an ID3v2 frame that is not a writable text frame (`APIC`, `COMM`, `USLT`, lower-case
+  `tit2`), unless the file already has a `TXXX` of that description. Write lyrics through
+  `Tags.Lyrics`: on MP3 that keeps the frame's language and description, and a new frame gets
+  the language `XXX` (unknown).
 - **Artwork.** `AddArtwork`, `ReplaceArtwork`, `RemoveArtwork` and `RemoveAllArtwork`.
   M4A cover art has no picture type (only front cover or other).
 - **DRM.** Encrypted files (FairPlay, CENC, AAX, ID3 encrypted frames) return

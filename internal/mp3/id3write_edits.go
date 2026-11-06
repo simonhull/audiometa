@@ -18,12 +18,23 @@ const (
 	encUTF8   byte = 3
 )
 
-// standardTextFrameIDs are the raw keys written as their own text frame; any
-// other key is written as a TXXX frame with the key as its description.
+// standardTextFrameIDs are the raw keys written as their own text frame. Other
+// keys are written as a TXXX frame with the key as its description, unless
+// isFalseTXXX refuses them.
 var standardTextFrameIDs = setOf(`
 	TALB TBPM TCOM TCON TCOP TDAT TDEN TDLY TDOR TDRC TDRL TDTG TENC TEXT TFLT TIME TIPL TIT1 TIT2
 	TIT3 TKEY TLAN TLEN TMCL TMED TMOO TOAL TOFN TOLY TOPE TORY TOWN TPE1 TPE2 TPE3 TPE4 TPOS TPRO
 	TPUB TRCK TRDA TRSN TRSO TSIZ TSO2 TSOA TSOC TSOP TSOT TSRC TSSE TSST TYER TCMP GRP1 MVNM MVIN`)
+
+// unwritableFrameIDs are the registered ID3v2.3 and ID3v2.4 frames, and the
+// common iTunes and legacy extensions, that a raw key cannot write: non-text
+// frames, and text frames outside standardTextFrameIDs. It is a closed list and
+// not a test of the key's shape, because ISBN, ASIN, LANG and MOOD also have
+// four upper-case characters and are ordinary TXXX descriptions.
+var unwritableFrameIDs = setOf(`
+	AENC APIC ASPI ATXT CHAP COMM COMR CTOC ENCR EQU2 EQUA ETCO GEOB GRID IPLS LINK MCDI MLLT OWNE
+	PCNT PCST POPM POSS PRIV RBUF RGAD RVA2 RVAD RVRB SEEK SIGN SYLT SYTC TCAT TDES TGID TKWD TXXX
+	UFID USER USLT WCOM WCOP WFED WOAF WOAR WOAS WORS WPAY WPUB WXXX XDOR XRVA XSOA XSOP XSOT`)
 
 // Frame IDs that exist in only one ID3v2 version. TSOA, TSOP and TSOT are
 // ID3v2.4 by the spec but left out on purpose: iTunes and other taggers write
@@ -120,6 +131,9 @@ func (t *wtag) normalizeKey(key string) string {
 // values, or removes them when values is empty.
 func (t *wtag) applyKeyEdit(key string, values []string) error {
 	key = t.normalizeKey(key)
+	if key == "" {
+		return fmt.Errorf("%w: empty tag key", types.ErrUnsupportedWrite)
+	}
 	if strings.EqualFold(key, mediaMarkersDescription) {
 		return fmt.Errorf("%w: %s holds chapters, which are not editable", types.ErrUnsupportedWrite, key)
 	}
@@ -138,7 +152,28 @@ func (t *wtag) applyKeyEdit(key string, values []string) error {
 	if t.isTextKey(key) {
 		return t.setTextFrame(key, values)
 	}
+	if t.isFalseTXXX(key) {
+		return fmt.Errorf("%w: %q names an ID3v2 frame that is not a writable text frame", types.ErrUnsupportedWrite, key)
+	}
 	return t.setTXXX(key, values)
+}
+
+// isFalseTXXX reports whether writing key as a TXXX frame would only pretend
+// to write the frame it names: key is exactly a frame ID, and no TXXX frame in
+// the tag already has that description. Frame IDs are upper-case, so "text" or
+// "user" stays an ordinary description. A TXXX frame that is really there stays
+// editable, whatever its description.
+func (t *wtag) isFalseTXXX(key string) bool {
+	if !unwritableFrameIDs[key] {
+		return false
+	}
+	return !slices.ContainsFunc(t.frames, func(f wframe) bool {
+		if f.id != frameIDTXXX {
+			return false
+		}
+		d, ok := t.txxxDescription(f)
+		return ok && strings.EqualFold(d, key)
+	})
 }
 
 // isTextKey reports whether key is written as its own text frame: a standard

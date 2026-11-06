@@ -189,6 +189,12 @@ func (t *Tags) GetBest(candidates ...string) string {
 // or caller-built Tags, Set changes only the raw map.
 // Changes are in memory; use File.WriteTo or Write to persist them.
 //
+// Writing refuses, with ErrUnsupportedWrite, a key no tag can hold: an empty
+// key on any format, and on MP3 a key that names, in any case, an ID3v2 frame
+// other than a writable text frame ("APIC", "COMM", "USLT", "tit2"), unless the
+// file has a TXXX frame of that description. Other MP3 keys are TXXX
+// descriptions.
+//
 // Example:
 //
 //	tags.Set("COMMENT", "Remastered")
