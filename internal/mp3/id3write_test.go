@@ -299,7 +299,7 @@ func TestApply_FieldEdits(t *testing.T) {
 		{"disc", 4, nil, func(tg *types.Tags) { tg.DiscNumber = 2 }, "TPOS", "2", nil},
 		{"comment", 3, nil, func(tg *types.Tags) { tg.Comment = "Hello" }, "", "Hello", nil},
 		{"date", 4, nil, func(tg *types.Tags) { tg.Date = "2020-01-01" }, "", "", types.ErrUnsupportedWrite},
-		{"lyrics", 4, nil, func(tg *types.Tags) { tg.Lyrics = "la" }, "", "", types.ErrUnsupportedWrite},
+		{"lyrics", 4, nil, func(tg *types.Tags) { tg.Lyrics = "la" }, "USLT", "la", nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

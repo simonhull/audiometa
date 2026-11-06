@@ -307,7 +307,7 @@ Typed fields a format has no native place for return `ErrUnsupportedWrite`:
 
 | Format | Typed fields that cannot be written |
 |--------|-------------------------------------|
-| MP3 | `Date`, `OriginalDate`, `Lyrics`, `Performers`, `Copyright`, `Label`, `CatalogNumber`, `Barcode`, `ISRC`, `MusicBrainz*` |
+| MP3 | `Date`, `OriginalDate`, `Performers`, `Copyright`, `Label`, `CatalogNumber`, `Barcode`, `ISRC`, `MusicBrainz*` |
 | M4A/M4B | `OriginalDate`, `Performers`, `Label`, `CatalogNumber`, `Barcode`, `ISRC`, `MusicBrainz*` |
 | FLAC | none |
 

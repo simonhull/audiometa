@@ -137,6 +137,17 @@ var roundTripEdits = []tagEdit{
 // roundTripMP3Edits are edits of MP3-native keys.
 var roundTripMP3Edits = []tagEdit{
 	{
+		name:    "set lyrics",
+		fields:  []string{"Lyrics"},
+		apply:   func(f *audiometa.File) error { f.Tags.Lyrics = "la la"; return nil },
+		formats: []audiometa.Format{audiometa.FormatMP3},
+		check: func(t *testing.T, f *audiometa.File) {
+			if f.Tags.Lyrics != "la la" {
+				t.Errorf("Lyrics = %q, want la la", f.Tags.Lyrics)
+			}
+		},
+	},
+	{
 		name:    "set NARRATOR",
 		fields:  []string{"Narrator"},
 		apply:   func(f *audiometa.File) error { f.Tags.Set("NARRATOR", "Reader"); return nil },

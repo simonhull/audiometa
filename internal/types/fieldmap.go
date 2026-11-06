@@ -58,6 +58,7 @@ var (
 		{FieldASIN, []string{"ASIN", "AUDIBLE_ASIN"}},
 		{FieldLanguage, []string{"LANGUAGE", "LANG"}},
 		{FieldDescription, []string{"DESCRIPTION"}},
+		{FieldLyrics, []string{"USLT"}},
 	}
 
 	// Vorbis comment raw keys (FLAC, Ogg Vorbis, Opus): the upper-cased field

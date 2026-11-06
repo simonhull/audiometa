@@ -121,6 +121,13 @@ func (t *wtag) applyKeyEdit(key string, values []string) error {
 	if strings.EqualFold(key, mediaMarkersDescription) {
 		return fmt.Errorf("%w: %s holds chapters, which are not editable", types.ErrUnsupportedWrite, key)
 	}
+	if key == frameIDUSLT {
+		if len(values) > 0 {
+			return fmt.Errorf("%w: %s is written through the Lyrics field", types.ErrUnsupportedWrite, key)
+		}
+		t.removeLyrics()
+		return nil
+	}
 	for _, v := range values {
 		if !utf8.ValidString(v) || strings.ContainsRune(v, 0) {
 			return fmt.Errorf("%w: value of %s is not valid UTF-8 or contains NUL", types.ErrUnsupportedWrite, key)
@@ -255,6 +262,9 @@ func (t *wtag) insert(at int, f wframe) {
 func (t *wtag) applyFieldEdit(e types.FieldEdit, edits *types.EditSet) error {
 	if e.Field == types.FieldComment {
 		return t.applyComment(e.Values)
+	}
+	if e.Field == types.FieldLyrics {
+		return t.applyLyrics(e.Values)
 	}
 	targets, err := t.fieldTargetKeys(e, edits)
 	if err != nil {
@@ -412,36 +422,84 @@ func (t *wtag) applyComment(values []string) error {
 		if !ok || c.desc != "" {
 			continue
 		}
-		t.frames[i] = wframe{id: frameIDCOMM, payload: encodeCOMM(t.outVersion, c.lang, text), edited: true}
+		t.frames[i] = wframe{id: frameIDCOMM, payload: encodeLangText(t.outVersion, c.lang, "", text), edited: true}
 		replaced = true
 	}
 	if !replaced {
-		t.frames = append(t.frames, wframe{id: frameIDCOMM, payload: encodeCOMM(t.outVersion, "eng", text), edited: true})
+		t.frames = append(t.frames, wframe{id: frameIDCOMM, payload: encodeLangText(t.outVersion, "eng", "", text), edited: true})
 	}
 	return nil
 }
 
-// commInfo is the language and description of a COMM frame.
-type commInfo struct {
-	lang, desc string
+// parseCOMM decodes a COMM frame; ok is false for other frames and for COMM
+// frames that cannot be read (compressed or short).
+func (t *wtag) parseCOMM(f wframe) (langText, bool) {
+	if f.id != frameIDCOMM {
+		return langText{}, false
+	}
+	return t.frameLangText(f)
 }
 
-// parseCOMM decodes a COMM frame's language and description; ok is false for
-// other frames and for COMM frames that cannot be read (compressed or short).
-func (t *wtag) parseCOMM(f wframe) (commInfo, bool) {
-	if f.id != frameIDCOMM {
-		return commInfo{}, false
-	}
+// frameLangText decodes a COMM or USLT frame the way the reader does; ok is
+// false when it cannot be read (compressed or short).
+func (t *wtag) frameLangText(f wframe) (langText, bool) {
 	body, skip := frameBody(t.outVersion, 0, f.flags, f.payload)
-	if skip != "" || len(body) < 4 {
-		return commInfo{}, false
+	if skip != "" {
+		return langText{}, false
 	}
-	enc, data := body[0], body[4:]
-	c := commInfo{lang: string(body[1:4])}
-	if nul := findNullTerminator(data, enc); nul >= 0 {
-		c.desc = decodeText(data[:nul], enc)
+	return parseLangText(body)
+}
+
+// undeterminedLanguage is the language of a new USLT frame: "XXX", which
+// ID3v2 reserves for an unknown language. A language is never guessed.
+const undeterminedLanguage = "XXX"
+
+// applyLyrics sets or clears the lyrics. Setting rewrites the text of one USLT
+// frame, keeping its language and description, and leaves any other USLT frame
+// alone; with no frame to rewrite it appends one in the undetermined language.
+// Clearing removes every USLT frame, so the lyrics read back empty.
+func (t *wtag) applyLyrics(values []string) error {
+	if len(values) == 0 {
+		t.removeLyrics()
+		return nil
 	}
-	return c, true
+	text := values[0]
+	if !utf8.ValidString(text) || strings.ContainsRune(text, 0) {
+		return fmt.Errorf("%w: Lyrics is not valid UTF-8 or contains NUL", types.ErrUnsupportedWrite)
+	}
+	i, c := t.lyricsFrame()
+	frame := wframe{id: frameIDUSLT, payload: encodeLangText(t.outVersion, c.lang, c.desc, text), edited: true}
+	if i < 0 {
+		t.frames = append(t.frames, frame)
+		return nil
+	}
+	t.frames[i] = frame
+	return nil
+}
+
+// lyricsFrame returns the index and content of the USLT frame the Lyrics field
+// is read from: the first with text, else the first readable one. With neither
+// it returns -1 and the undetermined language with no description.
+func (t *wtag) lyricsFrame() (int, langText) {
+	at, found := -1, langText{lang: undeterminedLanguage}
+	for i, f := range t.frames {
+		if f.id != frameIDUSLT {
+			continue
+		}
+		c, ok := t.frameLangText(f)
+		switch {
+		case ok && c.text != "":
+			return i, c
+		case ok && at < 0:
+			at, found = i, c
+		}
+	}
+	return at, found
+}
+
+// removeLyrics drops every USLT frame.
+func (t *wtag) removeLyrics() {
+	t.remove(func(f wframe) (bool, error) { return f.id == frameIDUSLT, nil })
 }
 
 // applyArtwork applies the artwork operations, in order, to the APIC frames.
@@ -583,13 +641,13 @@ func encodeTXXX(version byte, desc string, values []string) []byte {
 	return append(out, encodeString(enc, joined)...)
 }
 
-// encodeCOMM builds a COMM payload with an empty description:
-// [enc][lang(3)][NUL][text].
-func encodeCOMM(version byte, lang, text string) []byte {
-	enc := textEncoding(version, text)
+// encodeLangText builds a COMM or USLT payload:
+// [enc][lang(3)][desc][NUL][text].
+func encodeLangText(version byte, lang, desc, text string) []byte {
+	enc := textEncoding(version, desc, text)
 	out := []byte{enc}
 	out = append(out, (lang + "\x00\x00\x00")[:3]...)
-	out = append(out, encodeString(enc, "")...)
+	out = append(out, encodeString(enc, desc)...)
 	out = append(out, terminator(enc)...)
 	return append(out, encodeString(enc, text)...)
 }
