@@ -46,20 +46,26 @@ func parseAudiobookTags(ctx context.Context, sr *binary.SafeReader, ilstAtom *At
 	return nil
 }
 
-// recordFreeformRaw stores a ---- atom in the raw tag map under the upper-cased
-// freeform name, matching the Vorbis key convention.
-func recordFreeformRaw(file *types.File, name, value string) {
-	if name != "" && value != "" {
-		file.Tags.AddRaw(strings.ToUpper(name), value)
+// recordFreeformRaw stores the values of a ---- atom in the raw tag map under
+// the upper-cased freeform name, matching the Vorbis key convention.
+func recordFreeformRaw(file *types.File, name string, values []string) {
+	if name == "" {
+		return
+	}
+	for _, v := range values {
+		file.Tags.AddRaw(strings.ToUpper(name), v)
 	}
 }
 
-// parseCustomAtomWithTags parses a ---- custom atom and returns the field name and value.
+// parseCustomAtomWithTags parses a ---- custom atom and returns the field name
+// and its first value. Every non-empty value of its data atoms goes to the raw
+// tags; like a repeated atom, only the first can fill a typed field.
 func parseCustomAtomWithTags(sr *binary.SafeReader, customAtom *Atom, file *types.File) (string, string, error) {
 	offset := customAtom.DataOffset()
 	end := offset + customAtom.DataSize()
 
-	var namespace, fieldName, value string
+	var namespace, fieldName string
+	var values []string
 
 	// Parse child atoms (mean, name, data)
 	for offset < end {
@@ -70,40 +76,16 @@ func parseCustomAtomWithTags(sr *binary.SafeReader, customAtom *Atom, file *type
 
 		switch atom.Type {
 		case "mean":
-			// Namespace (usually "com.apple.iTunes")
-			// Skip version+flags (4 bytes)
-			dataOffset := atom.DataOffset() + 4
-			dataSize := atom.DataSize() - 4
-			if dataSize > 0 && sr.CheckLen(dataOffset, int(dataSize), 1, "mean namespace") == nil {
-				buf := make([]byte, dataSize)
-				if err := sr.ReadAt(buf, dataOffset, "mean namespace"); err == nil {
-					namespace = string(buf)
-				}
-			}
-
+			// Namespace (usually "com.apple.iTunes"), after version and flags.
+			namespace = readAtomText(sr, atom, 4, "mean namespace")
 		case "name":
-			// Field name (e.g., "Narrator", "Series")
-			// Skip version+flags (4 bytes)
-			dataOffset := atom.DataOffset() + 4
-			dataSize := atom.DataSize() - 4
-			if dataSize > 0 && sr.CheckLen(dataOffset, int(dataSize), 1, "name field") == nil {
-				buf := make([]byte, dataSize)
-				if err := sr.ReadAt(buf, dataOffset, "name field"); err == nil {
-					fieldName = string(buf)
-				}
-			}
-
+			// Field name (e.g., "Narrator", "Series"), after version and flags.
+			fieldName = readAtomText(sr, atom, 4, "name field")
 		case "data":
-			// Value - parse the data atom directly
-			// Skip version (1 byte) + flags (3 bytes) + reserved (4 bytes) = 8 bytes
-			valueOffset := atom.DataOffset() + 8
-			valueSize := atom.DataSize() - 8
-			if valueSize > 0 && sr.CheckLen(valueOffset, int(valueSize), 1, "data value") == nil {
-				buf := make([]byte, valueSize)
-				if err := sr.ReadAt(buf, valueOffset, "data value"); err == nil {
-					value = strings.TrimRight(string(buf), "\x00")
-					value = strings.TrimSpace(value)
-				}
+			// Value, after version, flags and the reserved word.
+			text := readAtomText(sr, atom, 8, "data value")
+			if v := strings.TrimSpace(strings.TrimRight(text, "\x00")); v != "" {
+				values = append(values, v)
 			}
 		}
 
@@ -113,10 +95,28 @@ func parseCustomAtomWithTags(sr *binary.SafeReader, customAtom *Atom, file *type
 	// Map field name to metadata field
 	// Namespace is usually "com.apple.iTunes" but can vary
 	_ = namespace // Unused for now, but parsed for potential future filtering
-	mapAudiobookField(fieldName, value, file)
-	recordFreeformRaw(file, fieldName, value)
+	var first string
+	if len(values) > 0 {
+		first = values[0]
+	}
+	mapAudiobookField(fieldName, first, file)
+	recordFreeformRaw(file, fieldName, values)
 
-	return fieldName, value, nil
+	return fieldName, first, nil
+}
+
+// readAtomText returns an atom's content after skip bytes, or "" when there is
+// none or it cannot be read.
+func readAtomText(sr *binary.SafeReader, atom *Atom, skip int64, what string) string {
+	offset, size := atom.DataOffset()+skip, atom.DataSize()-skip
+	if size <= 0 || sr.CheckLen(offset, int(size), 1, what) != nil {
+		return ""
+	}
+	buf := make([]byte, size)
+	if err := sr.ReadAt(buf, offset, what); err != nil {
+		return ""
+	}
+	return string(buf)
 }
 
 // freeformTextFields maps lowercased freeform atom names whose value is assigned verbatim.

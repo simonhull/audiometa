@@ -574,7 +574,9 @@ func setIfEmpty(field func(*types.Tags) *string) func(*types.File, string) {
 	}
 }
 
-// Format: [encoding][description\0][value].
+// parseTXXXFrame handles TXXX: [encoding][description\0][value{\0value}]. Every
+// value goes to the raw tags, and the first fills the typed field, if any. A
+// frame with no value keeps its raw key, holding "", so it can still be deleted.
 func parseTXXXFrame(frame ID3v2Frame, file *types.File) {
 	if len(frame.Data) < 2 {
 		return
@@ -589,15 +591,20 @@ func parseTXXXFrame(frame ID3v2Frame, file *types.File) {
 	}
 
 	description := decodeText(data[:nullIdx], encoding)
-	value := firstValue(decodeText(data[nullIdx+terminatorSize(encoding):], encoding))
+	values := splitTextValues(decodeText(data[nullIdx+terminatorSize(encoding):], encoding))
+	if len(values) == 0 {
+		values = []string{""}
+	}
 
 	// Raw key convention: the upper-cased TXXX description (matches Vorbis keys).
 	if description != "" {
-		file.Tags.AddRaw(strings.ToUpper(description), value)
+		for _, v := range values {
+			file.Tags.AddRaw(strings.ToUpper(description), v)
+		}
 	}
 
 	if handler, ok := txxxFieldHandlers[strings.ToLower(description)]; ok {
-		handler(file, value)
+		handler(file, values[0])
 	}
 }
 
