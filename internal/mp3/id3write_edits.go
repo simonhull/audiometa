@@ -18,16 +18,29 @@ const (
 	encUTF8   byte = 3
 )
 
-// standardTextFrameIDs are the raw keys written as their own text frame; any
-// other key is written as a TXXX frame with the key as its description.
+// standardTextFrameIDs are the raw keys written as their own text frame. Other
+// keys are written as a TXXX frame with the key as its description, unless
+// isFalseTXXX refuses them.
 var standardTextFrameIDs = setOf(`
 	TALB TBPM TCOM TCON TCOP TDAT TDEN TDLY TDOR TDRC TDRL TDTG TENC TEXT TFLT TIME TIPL TIT1 TIT2
 	TIT3 TKEY TLAN TLEN TMCL TMED TMOO TOAL TOFN TOLY TOPE TORY TOWN TPE1 TPE2 TPE3 TPE4 TPOS TPRO
 	TPUB TRCK TRDA TRSN TRSO TSIZ TSO2 TSOA TSOC TSOP TSOT TSRC TSSE TSST TYER TCMP GRP1 MVNM MVIN`)
 
-// Frame IDs that exist in only one ID3v2 version.
+// unwritableFrameIDs are the registered ID3v2.3 and ID3v2.4 frames, and the
+// common iTunes and legacy extensions, that a raw key cannot write: non-text
+// frames, and text frames outside standardTextFrameIDs. It is a closed list and
+// not a test of the key's shape, because ISBN, ASIN, LANG and MOOD also have
+// four upper-case characters and are ordinary TXXX descriptions.
+var unwritableFrameIDs = setOf(`
+	AENC APIC ASPI ATXT CHAP COMM COMR CTOC ENCR EQU2 EQUA ETCO GEOB GRID IPLS LINK MCDI MLLT OWNE
+	PCNT PCST POPM POSS PRIV RBUF RGAD RVA2 RVAD RVRB SEEK SIGN SYLT SYTC TCAT TDES TGID TKWD TXXX
+	UFID USER USLT WCOM WCOP WFED WOAF WOAR WOAS WORS WPAY WPUB WXXX XDOR XRVA XSOA XSOP XSOT`)
+
+// Frame IDs that exist in only one ID3v2 version. TSOA, TSOP and TSOT are
+// ID3v2.4 by the spec but left out on purpose: iTunes and other taggers write
+// them to ID3v2.3 too, and ID3v2.3 has no sort frames of its own.
 var (
-	v24OnlyIDs = setOf("TDRC TDOR TDRL TDEN TDTG TIPL TMCL TMOO TPRO TSOA TSOP TSOT TSST")
+	v24OnlyIDs = setOf("TDRC TDOR TDRL TDEN TDTG TIPL TMCL TMOO TPRO TSST")
 	v23OnlyIDs = setOf("TYER TDAT TIME TORY TRDA TSIZ IPLS")
 )
 
@@ -118,8 +131,18 @@ func (t *wtag) normalizeKey(key string) string {
 // values, or removes them when values is empty.
 func (t *wtag) applyKeyEdit(key string, values []string) error {
 	key = t.normalizeKey(key)
+	if key == "" {
+		return fmt.Errorf("%w: empty tag key", types.ErrUnsupportedWrite)
+	}
 	if strings.EqualFold(key, mediaMarkersDescription) {
 		return fmt.Errorf("%w: %s holds chapters, which are not editable", types.ErrUnsupportedWrite, key)
+	}
+	if key == frameIDUSLT {
+		if len(values) > 0 {
+			return fmt.Errorf("%w: %s is written through the Lyrics field", types.ErrUnsupportedWrite, key)
+		}
+		t.removeLyrics()
+		return nil
 	}
 	for _, v := range values {
 		if !utf8.ValidString(v) || strings.ContainsRune(v, 0) {
@@ -129,7 +152,28 @@ func (t *wtag) applyKeyEdit(key string, values []string) error {
 	if t.isTextKey(key) {
 		return t.setTextFrame(key, values)
 	}
+	if t.isFalseTXXX(key) {
+		return fmt.Errorf("%w: %q names an ID3v2 frame that is not a writable text frame", types.ErrUnsupportedWrite, key)
+	}
 	return t.setTXXX(key, values)
+}
+
+// isFalseTXXX reports whether writing key as a TXXX frame would only pretend
+// to write the frame it names: key is exactly a frame ID, and no TXXX frame in
+// the tag already has that description. Frame IDs are upper-case, so "text" or
+// "user" stays an ordinary description. A TXXX frame that is really there stays
+// editable, whatever its description.
+func (t *wtag) isFalseTXXX(key string) bool {
+	if !unwritableFrameIDs[key] {
+		return false
+	}
+	return !slices.ContainsFunc(t.frames, func(f wframe) bool {
+		if f.id != frameIDTXXX {
+			return false
+		}
+		d, ok := t.txxxDescription(f)
+		return ok && strings.EqualFold(d, key)
+	})
 }
 
 // isTextKey reports whether key is written as its own text frame: a standard
@@ -255,6 +299,9 @@ func (t *wtag) insert(at int, f wframe) {
 func (t *wtag) applyFieldEdit(e types.FieldEdit, edits *types.EditSet) error {
 	if e.Field == types.FieldComment {
 		return t.applyComment(e.Values)
+	}
+	if e.Field == types.FieldLyrics {
+		return t.applyLyrics(e.Values)
 	}
 	targets, err := t.fieldTargetKeys(e, edits)
 	if err != nil {
@@ -412,36 +459,84 @@ func (t *wtag) applyComment(values []string) error {
 		if !ok || c.desc != "" {
 			continue
 		}
-		t.frames[i] = wframe{id: frameIDCOMM, payload: encodeCOMM(t.outVersion, c.lang, text), edited: true}
+		t.frames[i] = wframe{id: frameIDCOMM, payload: encodeLangText(t.outVersion, c.lang, "", text), edited: true}
 		replaced = true
 	}
 	if !replaced {
-		t.frames = append(t.frames, wframe{id: frameIDCOMM, payload: encodeCOMM(t.outVersion, "eng", text), edited: true})
+		t.frames = append(t.frames, wframe{id: frameIDCOMM, payload: encodeLangText(t.outVersion, "eng", "", text), edited: true})
 	}
 	return nil
 }
 
-// commInfo is the language and description of a COMM frame.
-type commInfo struct {
-	lang, desc string
+// parseCOMM decodes a COMM frame; ok is false for other frames and for COMM
+// frames that cannot be read (compressed or short).
+func (t *wtag) parseCOMM(f wframe) (langText, bool) {
+	if f.id != frameIDCOMM {
+		return langText{}, false
+	}
+	return t.frameLangText(f)
 }
 
-// parseCOMM decodes a COMM frame's language and description; ok is false for
-// other frames and for COMM frames that cannot be read (compressed or short).
-func (t *wtag) parseCOMM(f wframe) (commInfo, bool) {
-	if f.id != frameIDCOMM {
-		return commInfo{}, false
-	}
+// frameLangText decodes a COMM or USLT frame the way the reader does; ok is
+// false when it cannot be read (compressed or short).
+func (t *wtag) frameLangText(f wframe) (langText, bool) {
 	body, skip := frameBody(t.outVersion, 0, f.flags, f.payload)
-	if skip != "" || len(body) < 4 {
-		return commInfo{}, false
+	if skip != "" {
+		return langText{}, false
 	}
-	enc, data := body[0], body[4:]
-	c := commInfo{lang: string(body[1:4])}
-	if nul := findNullTerminator(data, enc); nul >= 0 {
-		c.desc = decodeText(data[:nul], enc)
+	return parseLangText(body)
+}
+
+// undeterminedLanguage is the language of a new USLT frame: "XXX", which
+// ID3v2 reserves for an unknown language. A language is never guessed.
+const undeterminedLanguage = "XXX"
+
+// applyLyrics sets or clears the lyrics. Setting rewrites the text of one USLT
+// frame, keeping its language and description, and leaves any other USLT frame
+// alone; with no frame to rewrite it appends one in the undetermined language.
+// Clearing removes every USLT frame, so the lyrics read back empty.
+func (t *wtag) applyLyrics(values []string) error {
+	if len(values) == 0 {
+		t.removeLyrics()
+		return nil
 	}
-	return c, true
+	text := values[0]
+	if !utf8.ValidString(text) || strings.ContainsRune(text, 0) {
+		return fmt.Errorf("%w: Lyrics is not valid UTF-8 or contains NUL", types.ErrUnsupportedWrite)
+	}
+	i, c := t.lyricsFrame()
+	frame := wframe{id: frameIDUSLT, payload: encodeLangText(t.outVersion, c.lang, c.desc, text), edited: true}
+	if i < 0 {
+		t.frames = append(t.frames, frame)
+		return nil
+	}
+	t.frames[i] = frame
+	return nil
+}
+
+// lyricsFrame returns the index and content of the USLT frame the Lyrics field
+// is read from: the first with text, else the first readable one. With neither
+// it returns -1 and the undetermined language with no description.
+func (t *wtag) lyricsFrame() (int, langText) {
+	at, found := -1, langText{lang: undeterminedLanguage}
+	for i, f := range t.frames {
+		if f.id != frameIDUSLT {
+			continue
+		}
+		c, ok := t.frameLangText(f)
+		switch {
+		case ok && c.text != "":
+			return i, c
+		case ok && at < 0:
+			at, found = i, c
+		}
+	}
+	return at, found
+}
+
+// removeLyrics drops every USLT frame.
+func (t *wtag) removeLyrics() {
+	t.remove(func(f wframe) (bool, error) { return f.id == frameIDUSLT, nil })
 }
 
 // applyArtwork applies the artwork operations, in order, to the APIC frames.
@@ -583,13 +678,13 @@ func encodeTXXX(version byte, desc string, values []string) []byte {
 	return append(out, encodeString(enc, joined)...)
 }
 
-// encodeCOMM builds a COMM payload with an empty description:
-// [enc][lang(3)][NUL][text].
-func encodeCOMM(version byte, lang, text string) []byte {
-	enc := textEncoding(version, text)
+// encodeLangText builds a COMM or USLT payload:
+// [enc][lang(3)][desc][NUL][text].
+func encodeLangText(version byte, lang, desc, text string) []byte {
+	enc := textEncoding(version, desc, text)
 	out := []byte{enc}
 	out = append(out, (lang + "\x00\x00\x00")[:3]...)
-	out = append(out, encodeString(enc, "")...)
+	out = append(out, encodeString(enc, desc)...)
 	out = append(out, terminator(enc)...)
 	return append(out, encodeString(enc, text)...)
 }

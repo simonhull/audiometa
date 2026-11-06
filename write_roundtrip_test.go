@@ -137,6 +137,17 @@ var roundTripEdits = []tagEdit{
 // roundTripMP3Edits are edits of MP3-native keys.
 var roundTripMP3Edits = []tagEdit{
 	{
+		name:    "set lyrics",
+		fields:  []string{"Lyrics"},
+		apply:   func(f *audiometa.File) error { f.Tags.Lyrics = "la la"; return nil },
+		formats: []audiometa.Format{audiometa.FormatMP3},
+		check: func(t *testing.T, f *audiometa.File) {
+			if f.Tags.Lyrics != "la la" {
+				t.Errorf("Lyrics = %q, want la la", f.Tags.Lyrics)
+			}
+		},
+	},
+	{
 		name:    "set NARRATOR",
 		fields:  []string{"Narrator"},
 		apply:   func(f *audiometa.File) error { f.Tags.Set("NARRATOR", "Reader"); return nil },
@@ -841,4 +852,16 @@ func writeTempCopy(t *testing.T, src string) string {
 		t.Fatal(err)
 	}
 	return dst
+}
+
+func TestWrite_EmptyKeyRefusedOnEveryFormat(t *testing.T) {
+	for _, path := range []string{"testdata/sample.mp3", "testdata/sample_v24.mp3", "testdata/sample.flac", "testdata/sample.m4a", "testdata/sample.m4b", "testdata/sample.ogg", "testdata/sample.opus"} {
+		t.Run(path, func(t *testing.T) {
+			f := openFile(t, path)
+			f.Tags.Set("", "x")
+			if _, err := f.WriteTo(io.Discard); !errors.Is(err, audiometa.ErrUnsupportedWrite) {
+				t.Errorf("err = %v, want ErrUnsupportedWrite", err)
+			}
+		})
+	}
 }

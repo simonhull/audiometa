@@ -299,7 +299,7 @@ func TestApply_FieldEdits(t *testing.T) {
 		{"disc", 4, nil, func(tg *types.Tags) { tg.DiscNumber = 2 }, "TPOS", "2", nil},
 		{"comment", 3, nil, func(tg *types.Tags) { tg.Comment = "Hello" }, "", "Hello", nil},
 		{"date", 4, nil, func(tg *types.Tags) { tg.Date = "2020-01-01" }, "", "", types.ErrUnsupportedWrite},
-		{"lyrics", 4, nil, func(tg *types.Tags) { tg.Lyrics = "la" }, "", "", types.ErrUnsupportedWrite},
+		{"lyrics", 4, nil, func(tg *types.Tags) { tg.Lyrics = "la" }, "USLT", "la", nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -610,5 +610,40 @@ func TestApply_V22KeysNormalized(t *testing.T) {
 	}
 	if got := parseBytes(t, out).Tags.GetFirst("TDRC"); got != "1999" {
 		t.Errorf("TDRC = %q, want 1999", got)
+	}
+}
+
+func TestApply_SortFramesInEitherVersion(t *testing.T) {
+	for _, v := range []byte{3, 4} {
+		for _, id := range []string{"TSOT", "TSOA", "TSOP"} {
+			src := file(id3Tag(v, id3Frame(v, "TIT2", latin1Text("T"))))
+			out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.Set(id, "Sort, The") }))
+			if got := frameIDs(framesOf(t, out).frames); !slices.Equal(got, []string{"TIT2", id}) {
+				t.Errorf("v2.%d %s: frames %v", v, id, got)
+			}
+			if got := parseBytes(t, out).Tags.GetFirst(id); got != "Sort, The" {
+				t.Errorf("v2.%d %s = %q", v, id, got)
+			}
+		}
+	}
+}
+
+func TestApply_SortFrameRewrittenInV23(t *testing.T) {
+	src := file(id3Tag(3, id3Frame(3, "TSOP", latin1Text("Old")), id3Frame(3, "TIT2", latin1Text("T"))))
+	out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.Set("TSOP", "New") }))
+	if got := frameIDs(framesOf(t, out).frames); !slices.Equal(got, []string{"TSOP", "TIT2"}) {
+		t.Errorf("frames %v", got)
+	}
+	if got := parseBytes(t, out).Tags.Get("TSOP"); !slices.Equal(got, []string{"New"}) {
+		t.Errorf("TSOP = %q", got)
+	}
+}
+
+func TestApply_OtherV24FramesStayRefusedInV23(t *testing.T) {
+	src := file(id3Tag(3, id3Frame(3, "TIT2", latin1Text("T"))))
+	for _, id := range []string{"TDRC", "TDOR", "TDRL", "TDEN", "TDTG", "TIPL", "TMCL", "TMOO", "TPRO", "TSST"} {
+		if _, err := tryWrite(src, editsFor(t, src, func(tg *types.Tags) { tg.Set(id, "x") })); !errors.Is(err, types.ErrUnsupportedWrite) {
+			t.Errorf("%s: err = %v, want ErrUnsupportedWrite", id, err)
+		}
 	}
 }

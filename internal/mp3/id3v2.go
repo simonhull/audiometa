@@ -343,6 +343,7 @@ const (
 	frameIDTIT2 = "TIT2"
 	frameIDCOMM = "COMM"
 	frameIDAPIC = "APIC"
+	frameIDUSLT = "USLT"
 	frameIDGRP1 = "GRP1"
 	frameIDMVNM = "MVNM"
 	frameIDMVIN = "MVIN"
@@ -353,7 +354,7 @@ var v22FrameIDs = map[string]string{
 	"TT1": "TIT1", "TT2": frameIDTIT2, "TT3": "TIT3", "TP1": "TPE1", "TP2": "TPE2",
 	"TAL": "TALB", "TYE": "TYER", "TRK": "TRCK", "TPA": "TPOS", "TCO": "TCON",
 	"TCM": "TCOM", "COM": frameIDCOMM, "TXX": frameIDTXXX, "GP1": frameIDGRP1, "MVN": frameIDMVNM,
-	"MVI": frameIDMVIN, "PIC": frameIDAPIC,
+	"MVI": frameIDMVIN, "PIC": frameIDAPIC, "ULT": frameIDUSLT,
 }
 
 // readFrameHeader reads the frame header at offset for the tag's version and
@@ -408,7 +409,7 @@ func isTextFrameID(id string) bool {
 // isMetadataFrame reports whether processFrame consumes this frame's payload.
 // Keep in sync with processFrame.
 func isMetadataFrame(id string) bool {
-	return isTextFrameID(id) || id == frameIDTXXX || id == frameIDCOMM || id == "CHAP"
+	return isTextFrameID(id) || id == frameIDTXXX || id == frameIDCOMM || id == frameIDUSLT || id == "CHAP"
 }
 
 // frameState accumulates results that are resolved after the whole tag is walked.
@@ -428,6 +429,8 @@ func processFrame(frame ID3v2Frame, file *types.File, st *frameState) {
 		parseTXXXFrame(frame, file)
 	case frame.ID == frameIDCOMM:
 		parseCommentFrame(frame, file, st)
+	case frame.ID == frameIDUSLT:
+		parseLyricsFrame(frame, file)
 	case frame.ID == "CHAP":
 		st.chapters = append(st.chapters, frame)
 	}
@@ -571,7 +574,9 @@ func setIfEmpty(field func(*types.Tags) *string) func(*types.File, string) {
 	}
 }
 
-// Format: [encoding][description\0][value].
+// parseTXXXFrame handles TXXX: [encoding][description\0][value{\0value}]. Every
+// value goes to the raw tags, and the first fills the typed field, if any. A
+// frame with no value keeps its raw key, holding "", so it can still be deleted.
 func parseTXXXFrame(frame ID3v2Frame, file *types.File) {
 	if len(frame.Data) < 2 {
 		return
@@ -586,15 +591,20 @@ func parseTXXXFrame(frame ID3v2Frame, file *types.File) {
 	}
 
 	description := decodeText(data[:nullIdx], encoding)
-	value := firstValue(decodeText(data[nullIdx+terminatorSize(encoding):], encoding))
+	values := splitTextValues(decodeText(data[nullIdx+terminatorSize(encoding):], encoding))
+	if len(values) == 0 {
+		values = []string{""}
+	}
 
 	// Raw key convention: the upper-cased TXXX description (matches Vorbis keys).
 	if description != "" {
-		file.Tags.AddRaw(strings.ToUpper(description), value)
+		for _, v := range values {
+			file.Tags.AddRaw(strings.ToUpper(description), v)
+		}
 	}
 
 	if handler, ok := txxxFieldHandlers[strings.ToLower(description)]; ok {
-		handler(file, value)
+		handler(file, values[0])
 	}
 }
 
@@ -604,30 +614,60 @@ func parseTXXXFrame(frame ID3v2Frame, file *types.File) {
 // description is the user comment; otherwise the first described one is kept
 // as a fallback.
 func parseCommentFrame(frame ID3v2Frame, file *types.File, st *frameState) {
-	if len(frame.Data) < 4 {
+	c, ok := parseLangText(frame.Data)
+	if !ok {
 		return
-	}
-	encoding := frame.Data[0]
-	data := frame.Data[4:] // skip encoding + language
-
-	var desc, text string
-	if nullIdx := findNullTerminator(data, encoding); nullIdx < 0 {
-		text = firstValue(decodeText(data, encoding)) // malformed: no description
-	} else {
-		desc = decodeText(data[:nullIdx], encoding)
-		text = firstValue(decodeText(data[nullIdx+terminatorSize(encoding):], encoding))
 	}
 
 	switch {
-	case text == "", strings.HasPrefix(desc, "iTun"):
+	case c.text == "", strings.HasPrefix(c.desc, "iTun"):
 		return
-	case desc == "":
+	case c.desc == "":
 		if file.Tags.Comment == "" {
-			file.Tags.Comment = text
+			file.Tags.Comment = c.text
 		}
 	case st.describedComment == "":
-		st.describedComment = text
+		st.describedComment = c.text
 	}
+}
+
+// parseLyricsFrame handles USLT, which has the layout of COMM. Every non-empty
+// text is recorded under the raw key USLT; the first one, whatever its
+// language or description, fills Lyrics.
+func parseLyricsFrame(frame ID3v2Frame, file *types.File) {
+	c, ok := parseLangText(frame.Data)
+	if !ok || c.text == "" {
+		return
+	}
+	file.Tags.AddRaw(frameIDUSLT, c.text)
+	if file.Tags.Lyrics == "" {
+		file.Tags.Lyrics = c.text
+	}
+}
+
+// langText is the content of a COMM or USLT frame. lang is the three stored
+// bytes, kept as they are.
+type langText struct {
+	lang, desc, text string
+}
+
+// parseLangText decodes a COMM or USLT body:
+// [encoding][language(3)][short description\0][text]. A body with no
+// terminator is malformed and read as text with no description. ok is false
+// when the body is too short to hold a language.
+func parseLangText(body []byte) (langText, bool) {
+	if len(body) < 4 {
+		return langText{}, false
+	}
+	encoding, data := body[0], body[4:]
+	c := langText{lang: string(body[1:4])}
+	if nullIdx := findNullTerminator(data, encoding); nullIdx < 0 {
+		c.text = firstValue(decodeText(data, encoding))
+	} else {
+		c.desc = decodeText(data[:nullIdx], encoding)
+		c.text = firstValue(decodeText(data[nullIdx+terminatorSize(encoding):], encoding))
+	}
+	return c, true
 }
 
 // parseChapterFrames parses CHAP frames and builds chapter list.

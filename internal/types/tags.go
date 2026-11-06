@@ -40,6 +40,11 @@ import (
 //     SERIES PART) and MVIN.
 //   - Grouping: ID3 GRP1 (or TIT1 when GRP1 is absent); M4A ©grp; Vorbis GROUPING.
 //   - Composers: ID3 TCOM; M4A ©wrt; Vorbis COMPOSER.
+//
+// Lyrics comes from ID3 USLT, M4A ©lyr or Vorbis LYRICS. An MP3 can hold several
+// USLT frames: Lyrics is the first with text, and the raw key USLT lists every
+// text. Writing Lyrics rewrites that one frame and keeps its language and
+// description; the raw key USLT can be deleted but not set.
 type Tags struct {
 	raw                 map[string][]string
 	format              Format // bound by BindFormat; zero = unbound (Set touches raw only)
@@ -183,6 +188,12 @@ func (t *Tags) GetBest(candidates ...string) string {
 // any other field: Set("TCOM", ...) changes Composers, not Narrator. On a zero
 // or caller-built Tags, Set changes only the raw map.
 // Changes are in memory; use File.WriteTo or Write to persist them.
+//
+// Writing refuses, with ErrUnsupportedWrite, a key no tag can hold: an empty
+// key on any format, and on MP3 a key that names, in any case, an ID3v2 frame
+// other than a writable text frame ("APIC", "COMM", "USLT", "tit2"), unless the
+// file has a TXXX frame of that description. Other MP3 keys are TXXX
+// descriptions.
 //
 // Example:
 //
