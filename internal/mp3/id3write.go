@@ -28,7 +28,6 @@ type wframe struct {
 	payload []byte // the frame body after its header, with unsynchronisation undone
 	header  []byte // the original header bytes, re-emitted verbatim; nil to encode a fresh one
 	flags   uint16 // frame flags in the output version's layout
-	edited  bool   // written fresh by an edit
 }
 
 // wtag is the frame list of a tag being rewritten.
