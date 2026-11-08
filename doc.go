@@ -2,10 +2,10 @@
 // format-agnostic API.
 //
 // It parses tags, technical audio properties, chapters and embedded artwork
-// from FLAC, MP3, M4A/M4B, Ogg Vorbis and Opus files. The format is detected
-// from the file's contents, so callers never pick a parser. [File.WriteTo] and
-// [Write] save edited tags and artwork; MP3, FLAC and M4A/M4B are currently the
-// writable formats.
+// from FLAC, MP3, M4A/M4B, Ogg Vorbis, Opus, WAV and AIFF files. The format is
+// detected from the file's contents, so callers never pick a parser.
+// [File.WriteTo] and [Write] save edited tags and artwork; every format but Ogg
+// Vorbis and Opus is writable.
 //
 // # Quick Start
 //
@@ -62,9 +62,13 @@
 //     refused.
 //   - Ogg Vorbis and Opus: Vorbis comments, METADATA_BLOCK_PICTURE artwork
 //     and CHAPTER comments.
-//
-// WAV and AIFF are recognized by [DetectFormat] but have no parser, so [Open]
-// returns an [*UnsupportedFormatError] for them.
+//   - WAV (RIFF, RIFX and RF64) and AIFF (AIFF and AIFF-C): an ID3v2 chunk,
+//     read as an MP3's tag is, with its APIC artwork and CHAP chapters, and
+//     the format's own text, the WAV LIST/INFO chunk or the AIFF NAME, AUTH,
+//     "(c) " and ANNO chunks, kept under their IDs. Where both hold a field,
+//     ID3 wins. Writing edits the ID3v2 chunk (adding an ID3v2.4 one when there
+//     is none) and keeps the native text of each edited field in step; every
+//     other chunk is copied byte for byte.
 //
 // # Writing Metadata
 //

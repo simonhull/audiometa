@@ -25,6 +25,8 @@ var lookupDigester = registry.GetDigester
 //     trailing tags.
 //   - M4A/M4B: the payload of every mdat atom, including the samples of a
 //     QuickTime chapter track.
+//   - WAV: the payload of the data chunk; AIFF: the samples of the SSND
+//     chunk, after its offset and block size.
 //   - Ogg Vorbis and Opus: the packets of the first logical stream after its
 //     header packets.
 //

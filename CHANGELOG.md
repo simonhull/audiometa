@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented here.
 
+## Unreleased
+
+### Added
+
+- WAV and AIFF files are read and written. WAV covers RIFF, RIFX and RF64 (the 64-bit sizes of its `ds64` chunk); AIFF covers AIFF and AIFF-C. Audio properties come from `fmt ` (PCM, IEEE float, `WAVE_FORMAT_EXTENSIBLE`, A-law, mu-law; a `fact` chunk for compressed formats) or `COMM`. Tags come from an ID3v2 chunk (`id3 ` or `ID3 `), with its artwork and chapters, and from the native text: WAV `LIST`/`INFO` subchunks and AIFF `NAME`, `AUTH`, `(c) ` and `ANNO` chunks, kept under their IDs as raw keys. ID3 wins where both hold a field. Chunk walking honours pad bytes; a last chunk cut short, a wrong or unset form size, chunks after the form's end and junk after it are warnings.
+- Writing WAV and AIFF: edits go to the ID3v2 chunk (an ID3v2.4 chunk is appended to a file without one), raw keys that are native text go to the native text, and a typed-field edit rewrites the native text holding that field when the file has some. Every other chunk is copied byte for byte. A file whose chunks are cut short is refused with a `CorruptedFileError`.
+- `File.AudioDigest` for WAV (the `data` chunk) and AIFF (the `SSND` samples).
+
+### Changed
+
+- `DetectFormat` reports RIFX and RF64 files as `FormatWAV`.
+- `Open` no longer returns an `UnsupportedFormatError` for WAV and AIFF files.
+
 ## v0.12.2 — 2026-11-05
 
 ### Added

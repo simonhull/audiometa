@@ -1,8 +1,11 @@
 package types
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
-var bindingFormats = []Format{FormatMP3, FormatFLAC, FormatOgg, FormatOpus, FormatM4A, FormatM4B}
+var bindingFormats = []Format{FormatMP3, FormatFLAC, FormatOgg, FormatOpus, FormatM4A, FormatM4B, FormatWAV, FormatAIFF}
 
 func TestFieldBindings_KeysAreNonEmpty(t *testing.T) {
 	for _, format := range bindingFormats {
@@ -29,10 +32,36 @@ func TestFieldBindings_KeysAreNonEmpty(t *testing.T) {
 			}
 		}
 	}
-	for _, format := range []Format{FormatUnknown, FormatWAV, FormatAIFF} {
-		if b := FieldBindings(format); b != nil {
-			t.Errorf("%s: bindings = %v, want nil", format, b)
+	if b := FieldBindings(FormatUnknown); b != nil {
+		t.Errorf("Unknown: bindings = %v, want nil", b)
+	}
+}
+
+// WAV and AIFF read the ID3v2 chunk as MP3 does, and their native text after it:
+// every MP3 key keeps its place, and the native key comes last.
+func TestFieldBindings_NativeTextAfterID3(t *testing.T) {
+	native := map[Format]map[Field]string{
+		FormatWAV:  {FieldTitle: "INAM", FieldArtist: "IART", FieldArtists: "IART", FieldAlbum: "IPRD", FieldGenres: "IGNR", FieldYear: "ICRD"},
+		FormatAIFF: {FieldTitle: "NAME", FieldArtist: "AUTH", FieldArtists: "AUTH"},
+	}
+	mp3 := FieldBindings(FormatMP3)
+	for format, want := range native {
+		got := FieldBindings(format)
+		if len(got) != len(mp3) {
+			t.Fatalf("%s: %d bindings, want MP3's %d", format, len(got), len(mp3))
 		}
+		for i, b := range got {
+			if b.Field != mp3[i].Field || !slices.Equal(b.Keys[:len(mp3[i].Keys)], mp3[i].Keys) {
+				t.Errorf("%s: %s keys %v do not start with MP3's %v", format, b.Field, b.Keys, mp3[i].Keys)
+			}
+			if key, ok := want[b.Field]; ok && b.Keys[len(b.Keys)-1] != key {
+				t.Errorf("%s: %s keys %v, want %q last", format, b.Field, b.Keys, key)
+			}
+		}
+	}
+	track := FieldBindings(FormatWAV)[9]
+	if track.Field != FieldTrackNumber || !slices.Equal(track.Keys, []string{"TRCK", "ITRK", "IPRT"}) {
+		t.Errorf("WAV track binding = %v", track)
 	}
 }
 

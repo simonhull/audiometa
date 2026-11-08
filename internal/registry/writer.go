@@ -14,7 +14,7 @@ type AudioDigester interface {
 	// Lyrics3v2 or footer-terminated ID3v2 tags. FLAC: after the last metadata
 	// block, before any such trailing tags. M4A: the concatenated payloads of
 	// every mdat atom. Ogg: the packet bytes of the first logical stream after
-	// its header packets.
+	// its header packets. WAV: the data chunk. AIFF: the SSND chunk's samples.
 	AudioDigest(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error)
 }
 

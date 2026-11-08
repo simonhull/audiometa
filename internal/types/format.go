@@ -61,7 +61,8 @@ func (f Format) Extensions() []string {
 
 // DetectFormat determines the audio file format by examining magic bytes.
 //
-// Supported formats: FLAC, MP3, M4A, M4B, Ogg Vorbis, Opus, WAV, AIFF
+// Supported formats: FLAC, MP3, M4A, M4B, Ogg Vorbis, Opus, WAV (RIFF, RIFX and
+// RF64), AIFF (AIFF and AIFF-C)
 //
 // Detection is based on file signatures (magic bytes) at the beginning of the file.
 // Format detection does not validate the entire file structure.
@@ -122,8 +123,8 @@ func DetectFormat(r io.ReaderAt, size int64, path string) (Format, error) { //no
 		return FormatOgg, nil
 	}
 
-	// Check for RIFF/WAV (RIFF....WAVE)
-	if string(magic) == "RIFF" && size >= 12 {
+	// Check for WAV (RIFF....WAVE), its big-endian twin RIFX and RF64.
+	if (string(magic) == "RIFF" || string(magic) == "RIFX" || string(magic) == "RF64") && size >= 12 {
 		waveTag := make([]byte, 4)
 		if err := sr.ReadAt(waveTag, 8, "WAVE tag"); err == nil {
 			if string(waveTag) == "WAVE" {

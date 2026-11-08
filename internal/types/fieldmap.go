@@ -131,6 +131,49 @@ var (
 	}
 )
 
+// WAV and AIFF raw keys: the ID3v2 chunk's, as for MP3, then the native text
+// tags that fill the same fields, which the ID3 frames outrank. Mirrors
+// internal/iff. A native comment (ICMT, ANNO) fills Comment only when there is
+// no ID3 comment, which is not a raw key, so Comment has no binding.
+var (
+	wavBindings  = withNative(mp3Bindings, nativeKeys(`Title INAM  Artist IART  Artists IART  Album IPRD  Genres IGNR  Year ICRD  TrackNumber ITRK  TrackNumber IPRT`))
+	aiffBindings = withNative(mp3Bindings, nativeKeys(`Title NAME  Artist AUTH  Artists AUTH`))
+)
+
+// nativeKeys parses a whitespace-separated "Field key" table, in order.
+func nativeKeys(s string) []FieldBinding {
+	words := strings.Fields(s)
+	var out []FieldBinding
+	for i := 0; i+1 < len(words); i += 2 {
+		for f := range AllFields() {
+			if f.String() == words[i] {
+				out = append(out, FieldBinding{Field: f, Keys: []string{words[i+1]}})
+			}
+		}
+	}
+	return out
+}
+
+// withNative returns base with each native key appended to its field's keys.
+func withNative(base, native []FieldBinding) []FieldBinding {
+	out := make([]FieldBinding, len(base))
+	for i, b := range base {
+		out[i] = FieldBinding{Field: b.Field, Keys: slices.Clone(b.Keys)}
+		for _, n := range native {
+			if n.Field == b.Field {
+				out[i].Keys = append(out[i].Keys, n.Keys...)
+			}
+		}
+	}
+	return out
+}
+
+// usesID3 reports whether format's tags are ID3v2 frames, whose readers take
+// years from 1900 to 2100 and MVIN as "N/count".
+func usesID3(format Format) bool {
+	return format == FormatMP3 || format == FormatWAV || format == FormatAIFF
+}
+
 // bindingsFor returns the shared (read-only) binding table for format.
 func bindingsFor(format Format) []FieldBinding {
 	switch format {
@@ -140,7 +183,11 @@ func bindingsFor(format Format) []FieldBinding {
 		return vorbisBindings
 	case FormatM4A, FormatM4B:
 		return m4aBindings
-	case FormatUnknown, FormatWAV, FormatAIFF:
+	case FormatWAV:
+		return wavBindings
+	case FormatAIFF:
+		return aiffBindings
+	case FormatUnknown:
 		return nil
 	default:
 		return nil
@@ -192,7 +239,7 @@ func decodeField(t *Tags, format Format, f Field, key string, values []string) b
 // only 1900-2100, as its parser does; other formats accept any positive year.
 func decodeYear(t *Tags, format Format, value string) bool {
 	year := leadingYear(value)
-	if year <= 0 || (format == FormatMP3 && (year < 1900 || year > 2100)) {
+	if year <= 0 || (usesID3(format) && (year < 1900 || year > 2100)) {
 		return false
 	}
 	t.Year = year
@@ -205,7 +252,7 @@ func decodeSeriesPart(t *Tags, format Format, key, value string) bool {
 	if key == keyM4AMovement && value == "0" {
 		return false
 	}
-	if format == FormatMP3 && key == keyMVIN {
+	if usesID3(format) && key == keyMVIN {
 		part, _, _ := strings.Cut(value, "/")
 		value = strings.TrimSpace(part)
 	}

@@ -11,8 +11,8 @@ import (
 // "FLAC" or "Ogg Vorbis".
 type Format = types.Format
 
-// Formats detected by [DetectFormat]. WAV and AIFF are detected but cannot be
-// parsed.
+// Formats detected by [DetectFormat]. FormatWAV covers RIFF, RIFX and RF64
+// files, FormatAIFF covers AIFF and AIFF-C.
 const (
 	FormatUnknown = types.FormatUnknown
 	FormatFLAC    = types.FormatFLAC
