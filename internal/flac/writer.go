@@ -46,7 +46,7 @@ type writer struct{}
 type fblock struct {
 	typ     uint8
 	payload []byte
-	off     int64 // payload offset in the source; -1 for a block the writer created
+	off     int64 // payload offset in the source, for error messages; unset for a block the writer created
 }
 
 // fmeta is the metadata block list of a file being rewritten.
@@ -250,7 +250,7 @@ func (m *fmeta) applyTags(edits *types.EditSet) error {
 		return nil
 	}
 	if len(v.comments) > 0 {
-		m.blocks = slices.Insert(m.blocks, m.newCommentIndex(), fblock{typ: blockTypeVorbisComment, payload: v.bytes(), off: -1})
+		m.blocks = slices.Insert(m.blocks, m.newCommentIndex(), fblock{typ: blockTypeVorbisComment, payload: v.bytes()})
 	}
 	return nil
 }
@@ -273,7 +273,7 @@ func (m *fmeta) applyArtwork(ops []types.ArtworkOp) error {
 			if err != nil {
 				return err
 			}
-			m.blocks = slices.Insert(m.blocks, m.pictureIndex(), fblock{typ: blockTypePicture, payload: payload, off: -1})
+			m.blocks = slices.Insert(m.blocks, m.pictureIndex(), fblock{typ: blockTypePicture, payload: payload})
 		case types.ArtworkOpRemove:
 			m.blocks = slices.DeleteFunc(m.blocks, func(b fblock) bool {
 				return b.typ == blockTypePicture && types.ArtworkTypeFromPictureType(pictureType(b.payload)) == op.Type
