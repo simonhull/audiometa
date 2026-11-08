@@ -111,6 +111,11 @@ func TestAudioDigest_PacketsSpanningPages(t *testing.T) {
 			splitAcrossPages(big, 0, 1),
 			[]pageSpec{pageOf(1, audio1)},
 		)...), wantDigest(big, audio1)},
+		{"header packet ended by a dropped continuation", buildOgg(
+			pageOf(1, opusHead),
+			pageSpec{serial: 1, lacing: []byte{255}, data: commentHeader(255)},
+			pageOf(1, audio1, audio2),
+		), wantDigest(audio1, audio2)},
 		{"header packet continued across pages", buildOgg(slices.Concat(
 			[]pageSpec{pageOf(1, opusHead)},
 			splitAcrossPages(commentHeader(70_000), 0, 1),

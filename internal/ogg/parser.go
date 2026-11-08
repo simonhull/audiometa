@@ -158,7 +158,8 @@ func readHeaderPackets(ctx context.Context, sr *binary.SafeReader, size int64, f
 	var pages []*Page
 	var serial uint32
 	var read int64
-	complete := 0 // packets terminated so far
+	var packets packetTracker
+	complete := 0 // packets ended so far
 	offset := int64(0)
 
 	for i := 0; offset < size && complete < 2; i++ {
@@ -195,8 +196,8 @@ func readHeaderPackets(ctx context.Context, sr *binary.SafeReader, size int64, f
 			break
 		}
 		pages = append(pages, page)
-		for _, lace := range page.laceValues() {
-			if lace < 255 {
+		for seg := range packets.segments(page) {
+			if seg.ends {
 				complete++
 			}
 		}

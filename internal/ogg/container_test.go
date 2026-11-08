@@ -97,6 +97,14 @@ func TestSplitPackets(t *testing.T) {
 			want: [][]byte{append(pk(255, 'a'), pk(10, 'b')...)},
 		},
 		{
+			name: "continuation dropped by the next page",
+			pages: []*Page{
+				{Lacing: []byte{255}, Data: pk(255, 'a')},
+				{Lacing: []byte{3}, Data: pk(3, 'b')},
+			},
+			want: [][]byte{pk(255, 'a'), pk(3, 'b')},
+		},
+		{
 			name:     "unterminated trailing packet",
 			pages:    []*Page{{Lacing: []byte{4, 255}, Data: append(pk(4, 'a'), pk(255, 'b')...)}},
 			want:     [][]byte{pk(4, 'a'), pk(255, 'b')},
@@ -289,5 +297,27 @@ func TestParseHeadersSharingOnePage(t *testing.T) {
 	}
 	if f.Tags.Title != "Shared" {
 		t.Errorf("title = %q, warnings %v", f.Tags.Title, f.Warnings)
+	}
+}
+
+func TestReadHeaderPacketsDroppedContinuation(t *testing.T) {
+	// The comment header's last segment is 255, but the next page does not
+	// continue it. The comment ends where that page begins, so it is read too,
+	// and reading stops before the audio page.
+	id := vorbisIDPacket()
+	comment := bytes.Repeat([]byte{3}, 255)
+	data := buildOgg(
+		pageSpec{headerType: 0x02, serial: 1, lacing: lacingFor(len(id)), data: id},
+		pageSpec{serial: 1, lacing: []byte{255}, data: comment},
+		pageSpec{serial: 1, lacing: []byte{4}, data: []byte("\x05set")},
+		pageSpec{serial: 1, lacing: []byte{1}, data: []byte{0}},
+	)
+	sr := binutil.NewSafeReader(bytes.NewReader(data), int64(len(data)), "x.ogg")
+	packets, err := readHeaderPackets(context.Background(), sr, int64(len(data)), &types.File{}, maxHeaderBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(packets) != 3 || !bytes.Equal(packets[1], comment) {
+		t.Errorf("packets = %d, want identification, comment and setup", len(packets))
 	}
 }

@@ -87,27 +87,27 @@ func headerPacketCount(codec string) (int, bool) {
 
 // headerSkip separates a logical stream's header packets from its audio.
 type headerSkip struct {
-	remaining int // header packets not yet ended
+	remaining int           // header packets not yet ended
+	packets   packetTracker // boundaries while header packets remain
 }
 
 // audio returns the part of page's payload after the stream's header packets,
 // counting down each header packet that ends on the page. It returns nil while
 // header packets are still incomplete.
 func (s *headerSkip) audio(page *Page) []byte {
+	if s.remaining == 0 {
+		return page.Data
+	}
 	pos := 0
-	for _, lace := range page.laceValues() {
-		if s.remaining == 0 {
-			break
-		}
-		pos += int(lace)
-		if lace < 255 {
-			s.remaining--
+	for seg := range s.packets.segments(page) {
+		pos += len(seg.data)
+		if seg.ends {
+			if s.remaining--; s.remaining == 0 {
+				return page.Data[pos:]
+			}
 		}
 	}
-	if s.remaining > 0 {
-		return nil
-	}
-	return page.Data[pos:]
+	return nil
 }
 
 func init() {
