@@ -58,8 +58,8 @@ func assertAudioAtOffsets(t *testing.T, out []byte) {
 func TestLayout_FitsInFree(t *testing.T) {
 	src := titled(true)
 	out := writeTags(t, src, growTitle(-3))
-	if l := layoutOf(t, src, growTitle(-3)); l.delta != 0 || l.free != 11 {
-		t.Errorf("delta = %d, free = %d; want 0 and 11", l.delta, l.free)
+	if l := layoutOf(t, src, growTitle(-3)); l.placement != placeFits || l.delta != 0 || l.free != 11 {
+		t.Errorf("placement = %d, delta = %d, free = %d; want fits, 0 and 11", l.placement, l.delta, l.free)
 	}
 	if len(out) != len(src) {
 		t.Errorf("length %d, want %d", len(out), len(src))
@@ -79,8 +79,8 @@ func TestLayout_FitsInFree(t *testing.T) {
 func TestLayout_ExactFit(t *testing.T) {
 	src := titled(true)
 	out := writeTags(t, src, growTitle(8))
-	if l := layoutOf(t, src, growTitle(8)); l.delta != 0 || l.free != 0 {
-		t.Errorf("delta = %d, free = %d; want 0 and 0", l.delta, l.free)
+	if l := layoutOf(t, src, growTitle(8)); l.placement != placeFits || l.delta != 0 || l.free != 0 {
+		t.Errorf("placement = %d, delta = %d, free = %d; want fits, 0 and 0", l.placement, l.delta, l.free)
 	}
 	if got := topTypes(t, out); !slices.Equal(got, []string{"ftyp", atomMoov, atomMdat}) {
 		t.Errorf("top level = %v", got)
@@ -97,8 +97,8 @@ func TestLayout_GrowShiftsOffsets(t *testing.T) {
 	before := chunkOffsets(t, src)
 	l := layoutOf(t, src, growTitle(100))
 	region := int64(topAtomOf(t, src, atomMdat).start - topAtomOf(t, src, atomMoov).start)
-	if want := int64(len(l.moov)) + growFree - region; l.delta != want || l.delta <= 0 {
-		t.Fatalf("delta = %d, want %d", l.delta, want)
+	if want := int64(len(l.moov)) + growFree - region; l.placement != placeShift || l.delta != want || l.delta <= 0 {
+		t.Fatalf("placement = %d, delta = %d; want shift and %d", l.placement, l.delta, want)
 	}
 	out := writeTags(t, src, growTitle(100))
 	after := chunkOffsets(t, out)
@@ -122,14 +122,17 @@ func TestLayout_GrowShiftsOffsets(t *testing.T) {
 func TestLayout_Remainder1to7Grows(t *testing.T) {
 	src := titled(true)
 	l := layoutOf(t, src, growTitle(5)) // 8 bytes of free, 5 used: 3 left
-	if l.delta != growFree-3 || l.free != growFree {
-		t.Errorf("delta = %d, free = %d; want %d and %d", l.delta, l.free, growFree-3, growFree)
+	if l.placement != placeShift || l.delta != growFree-3 || l.free != growFree {
+		t.Errorf("placement = %d, delta = %d, free = %d; want shift, %d and %d", l.placement, l.delta, l.free, growFree-3, growFree)
 	}
 	assertAudioAtOffsets(t, writeTags(t, src, growTitle(5)))
 }
 
 func TestLayout_MoovLast(t *testing.T) {
 	src := titled(false)
+	if l := layoutOf(t, src, growTitle(100)); l.placement != placeAtEnd || l.delta != 0 || l.free != 0 {
+		t.Errorf("placement = %d, delta = %d, free = %d; want at end, 0 and 0", l.placement, l.delta, l.free)
+	}
 	out := writeTags(t, src, growTitle(100))
 	if got := topTypes(t, out); !slices.Equal(got, []string{"ftyp", atomMdat, atomMoov}) {
 		t.Errorf("top level = %v", got)

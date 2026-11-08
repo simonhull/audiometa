@@ -50,13 +50,28 @@ type topLevel struct {
 	moov  int
 }
 
+// placement is where a rewritten moov goes, as chosen by layout.place.
+type placement int
+
+const (
+	// placeFits: the new moov fits in the old moov region, padded with one
+	// free atom when shorter. Nothing else moves, so it can be patched in place.
+	placeFits placement = iota
+	// placeAtEnd: moov is the last atom and grows into the end of the file.
+	placeAtEnd
+	// placeShift: moov grows, is followed by a growFree-byte free atom, and
+	// everything after the old region moves by delta.
+	placeShift
+)
+
 // layout is one planned rewrite of moov.
 type layout struct {
-	moovStart int64  // offset of the old moov
-	rEnd      int64  // end of the old moov and the free/skip run after it
-	moov      []byte // the new moov
-	free      int64  // size of the free atom after the new moov; 0 for none
-	delta     int64  // how far everything from rEnd moves
+	moovStart int64     // offset of the old moov
+	rEnd      int64     // end of the old moov and the free/skip run after it
+	moov      []byte    // the new moov
+	placement placement // which case of the layout applies
+	free      int64     // size of the free atom after the new moov; 0 for none
+	delta     int64     // how far everything from rEnd moves; nonzero only for placeShift
 }
 
 // WriteFile streams src with edits applied to out.
@@ -143,7 +158,7 @@ func (w *writer) InPlacePatch(ctx context.Context, src io.ReaderAt, size int64, 
 		return 0, nil, false, err
 	}
 	region := l.rEnd - l.moovStart
-	if l.delta != 0 || int64(len(l.moov))+l.free != region || region > binutil.MaxAllocBytes {
+	if l.placement != placeFits || region > binutil.MaxAllocBytes {
 		return 0, nil, false, nil
 	}
 	patch := make([]byte, 0, region)
@@ -192,13 +207,14 @@ func planWrite(ctx context.Context, sr *binutil.SafeReader, size int64, edits *t
 func (l *layout) place(root *matom, size int64) error {
 	n, region := int64(len(l.moov)), l.rEnd-l.moovStart
 	switch {
-	case n == region || region-n >= 8: // fits: pad with one free atom
-		l.free = region - n
+	case n == region || region-n >= 8: // pad the rest with one free atom
+		l.placement, l.free = placeFits, region-n
 		return nil
-	case l.rEnd == size: // moov is last: grow into the end of the file
+	case l.rEnd == size:
+		l.placement = placeAtEnd
 		return nil
 	}
-	l.free = growFree
+	l.placement, l.free = placeShift, growFree
 	l.delta = n + growFree - region
 	if err := shiftChunkOffsets(root, l.moovStart, l.rEnd, l.delta); err != nil {
 		return err
