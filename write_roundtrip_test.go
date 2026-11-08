@@ -41,6 +41,12 @@ var roundTripCorpus = []roundTripCase{
 	{"testdata/bench/book.mp3", true}, // 50 chapters, rich tags
 	{"testdata/bench/book.flac", true},
 	{"testdata/bench/book.m4b", true},
+	{"testdata/sample.wav", true},     // LIST/INFO only
+	{"testdata/sample_id3.wav", true}, // LIST/INFO and an ID3v2.3 chunk with a cover
+	{"testdata/sample_ext.wav", true},
+	{"testdata/sample_rf64.wav", true},
+	{"testdata/sample.aiff", true}, // NAME, (c), ANNO and an ID3v2.4 chunk with a cover
+	{"testdata/sample.aifc", true},
 	{"testdata/bench/book.opus", false}, // deferred format: stays false
 	{"testdata/sample.ogg", false},      // deferred format: stays false
 	{"testdata/sample.opus", false},     // deferred format: stays false
@@ -71,7 +77,7 @@ var roundTripEdits = []tagEdit{
 	{
 		name:    "set REPLAYGAIN_TRACK_GAIN",
 		apply:   func(f *audiometa.File) error { f.Tags.Set("REPLAYGAIN_TRACK_GAIN", "-6.00 dB"); return nil },
-		formats: []audiometa.Format{audiometa.FormatMP3, audiometa.FormatFLAC, audiometa.FormatM4A, audiometa.FormatM4B},
+		formats: []audiometa.Format{audiometa.FormatMP3, audiometa.FormatFLAC, audiometa.FormatM4A, audiometa.FormatM4B, audiometa.FormatWAV, audiometa.FormatAIFF},
 		check: func(t *testing.T, f *audiometa.File) {
 			if rg := f.Audio.ReplayGain; rg == nil || rg.TrackGain != -6.0 {
 				t.Errorf("ReplayGain = %+v, want TrackGain -6", rg)
@@ -172,6 +178,90 @@ var roundTripMP3Edits = []tagEdit{
 		},
 	},
 }
+
+// iffFormats are the formats whose tags live in an ID3 chunk beside native text.
+var iffFormats = []audiometa.Format{audiometa.FormatWAV, audiometa.FormatAIFF}
+
+// nativeTitle is the native text that holds the title, per format.
+var nativeTitle = map[audiometa.Format]string{audiometa.FormatWAV: "INAM", audiometa.FormatAIFF: "NAME"}
+
+// roundTripIFFEdits are edits of WAV and AIFF files: their ID3 chunk, and the
+// native text kept beside it.
+var roundTripIFFEdits = []tagEdit{
+	{
+		name:    "set lyrics",
+		fields:  []string{"Lyrics"},
+		apply:   func(f *audiometa.File) error { f.Tags.Lyrics = "la la"; return nil },
+		formats: iffFormats,
+		check: func(t *testing.T, f *audiometa.File) {
+			if f.Tags.Lyrics != "la la" {
+				t.Errorf("Lyrics = %q, want la la", f.Tags.Lyrics)
+			}
+		},
+	},
+	{
+		name:    "set NARRATOR",
+		fields:  []string{"Narrator"},
+		apply:   func(f *audiometa.File) error { f.Tags.Set("NARRATOR", "Reader"); return nil },
+		formats: iffFormats,
+		check: func(t *testing.T, f *audiometa.File) {
+			if f.Tags.Narrator != "Reader" || f.Tags.GetFirst("NARRATOR") != "Reader" {
+				t.Errorf("Narrator = %q, want Reader", f.Tags.Narrator)
+			}
+		},
+	},
+	{
+		name:    "set track 3/12",
+		fields:  []string{"TrackNumber", "TrackTotal"},
+		apply:   func(f *audiometa.File) error { f.Tags.TrackNumber, f.Tags.TrackTotal = 3, 12; return nil },
+		formats: iffFormats,
+		check: func(t *testing.T, f *audiometa.File) {
+			if f.Tags.TrackNumber != 3 || f.Tags.TrackTotal != 12 || f.Tags.GetFirst("TRCK") != "3/12" {
+				t.Errorf("track %d/%d, TRCK %q", f.Tags.TrackNumber, f.Tags.TrackTotal, f.Tags.GetFirst("TRCK"))
+			}
+		},
+	},
+	{
+		// The title mirrors into the native text the file has; ID3 holds it too.
+		name:    "title mirrors native text",
+		fields:  []string{"Title"},
+		apply:   func(f *audiometa.File) error { f.Tags.Title = "Mirrored"; return nil },
+		formats: iffFormats,
+		check: func(t *testing.T, f *audiometa.File) {
+			native := f.Tags.Get(nativeTitle[f.Format])
+			if f.Tags.GetFirst("TIT2") != "Mirrored" || (native != nil && !slices.Equal(native, []string{"Mirrored"})) {
+				t.Errorf("TIT2 %q, %s %q", f.Tags.Get("TIT2"), nativeTitle[f.Format], native)
+			}
+		},
+	},
+	{
+		// A native key is written as native text, never as an ID3 TXXX frame.
+		name:    "set native copyright",
+		apply:   func(f *audiometa.File) error { f.Tags.Set(nativeCopyright[f.Format], "(C) Kitsune"); return nil },
+		formats: iffFormats,
+		check: func(t *testing.T, f *audiometa.File) {
+			key := nativeCopyright[f.Format]
+			if !slices.Equal(f.Tags.Get(key), []string{"(C) Kitsune"}) {
+				t.Errorf("%q = %q", key, f.Tags.Get(key))
+			}
+		},
+	},
+	{
+		// Deleting the ID3 title leaves the native one, which then fills Title.
+		name:    "delete TIT2",
+		fields:  []string{"Title"},
+		apply:   func(f *audiometa.File) error { f.Tags.Delete("TIT2"); return nil },
+		formats: iffFormats,
+		check: func(t *testing.T, f *audiometa.File) {
+			if f.Tags.Get("TIT2") != nil || f.Tags.Title != f.Tags.GetFirst(nativeTitle[f.Format]) {
+				t.Errorf("TIT2 %q, Title %q", f.Tags.Get("TIT2"), f.Tags.Title)
+			}
+		},
+	},
+}
+
+// nativeCopyright is the native copyright key, per format.
+var nativeCopyright = map[audiometa.Format]string{audiometa.FormatWAV: "ICOP", audiometa.FormatAIFF: "(c) "}
 
 // roundTripFLACEdits are edits of Vorbis comment keys and fields only the
 // FLAC harness checks.
@@ -309,7 +399,7 @@ func TestWriteRoundTrip_Corpus(t *testing.T) {
 				t.Error("no-edit WriteTo is not byte-identical to the source")
 			}
 
-			for _, e := range slices.Concat(roundTripEdits, roundTripMP3Edits, roundTripFLACEdits, roundTripM4AEdits, roundTripArtworkEdits) {
+			for _, e := range slices.Concat(roundTripEdits, roundTripMP3Edits, roundTripIFFEdits, roundTripFLACEdits, roundTripM4AEdits, roundTripArtworkEdits) {
 				t.Run(e.name, func(t *testing.T) { runRoundTrip(t, tc.path, src, e) })
 			}
 			t.Run("delete keys", func(t *testing.T) { runDeleteRoundTrip(t, tc.path, src) })
@@ -359,6 +449,8 @@ var customKeys = map[audiometa.Format]string{
 	audiometa.FormatFLAC: "AUDIOMETA_TEST", // Vorbis comment
 	audiometa.FormatM4A:  "AUDIOMETA_TEST", // iTunes freeform atom
 	audiometa.FormatM4B:  "AUDIOMETA_TEST",
+	audiometa.FormatWAV:  "AUDIOMETA_TEST", // TXXX description in the ID3 chunk
+	audiometa.FormatAIFF: "AUDIOMETA_TEST",
 }
 
 // titleKeys is the raw key Title is read from, per format family.
@@ -367,6 +459,8 @@ var titleKeys = map[audiometa.Format]string{
 	audiometa.FormatFLAC: "TITLE",
 	audiometa.FormatM4A:  "\xA9nam",
 	audiometa.FormatM4B:  "\xA9nam",
+	audiometa.FormatWAV:  "TIT2",
+	audiometa.FormatAIFF: "TIT2",
 }
 
 // runDeleteRoundTrip injects a key with no typed field, then deletes it and the
@@ -435,6 +529,11 @@ func assertPreserved(t *testing.T, orig, edited, reopened *audiometa.File, src, 
 			t.Errorf("top-level atoms = %v, want %v", got, want)
 		}
 	}
+	if format == audiometa.FormatWAV || format == audiometa.FormatAIFF {
+		if got, want := iffChunkIDs(t, written), iffChunkIDs(t, src); !slices.Equal(got, want) {
+			t.Errorf("chunks = %v, want %v", got, want)
+		}
+	}
 
 	changedFields, changedKeys := editScope(format, fields)
 	for k, v := range edited.Tags.All() { // keys edited through Set/Delete
@@ -482,6 +581,11 @@ func editScope(format audiometa.Format, fields []string) (map[string]bool, map[s
 			}
 		}
 	}
+	// The native comment of WAV and AIFF is kept in step with Comment, which no
+	// raw key binds: ID3 keeps COMM out of the raw tags.
+	if changedFields["Comment"] {
+		changedKeys[nativeComment[format]] = true
+	}
 	for _, b := range bindings {
 		if slices.ContainsFunc(b.Keys, func(k string) bool { return changedKeys[k] }) {
 			changedFields[b.Field.String()] = true
@@ -489,6 +593,9 @@ func editScope(format audiometa.Format, fields []string) (map[string]bool, map[s
 	}
 	return changedFields, changedKeys
 }
+
+// nativeComment is the native text kept in step with Comment, per format.
+var nativeComment = map[audiometa.Format]string{audiometa.FormatWAV: "ICMT", audiometa.FormatAIFF: "ANNO"}
 
 // rawKeys returns the union of both files' raw keys.
 func rawKeys(a, b *audiometa.File) map[string]bool {
@@ -742,16 +849,23 @@ func precedenceValue(field string, i int) string {
 	switch field {
 	case "Year":
 		return strconv.Itoa(2000 + i)
-	case "TrackTotal", "DiscTotal", "SeriesPart":
+	case "TrackNumber", "TrackTotal", "DiscTotal", "SeriesPart":
 		return strconv.Itoa(10 + i)
 	default:
 		return "v" + strconv.Itoa(i)
 	}
 }
 
-// fieldString reads the typed field name of tags as a string ("" when zero).
+// fieldString reads the typed field name of tags as a string ("" when zero),
+// and a list field by its first value.
 func fieldString(tags *audiometa.Tags, name string) string {
 	v := reflect.ValueOf(tags).Elem().FieldByName(name)
+	if v.Kind() == reflect.Slice {
+		if v.Len() == 0 {
+			return ""
+		}
+		v = v.Index(0)
+	}
 	if v.Kind() == reflect.Int {
 		if v.Int() == 0 {
 			return ""
@@ -770,6 +884,7 @@ func TestReadPrecedence_MatchesBindings(t *testing.T) {
 		"testdata/sample.flac", "testdata/sample_upper.flac",
 		"testdata/sample.mp3", "testdata/sample_v24.mp3",
 		"testdata/sample.m4a", "testdata/sample.m4b",
+		"testdata/sample.wav", "testdata/sample_id3.wav", "testdata/sample.aiff",
 	} {
 		format := openFile(t, path).Format
 		for _, b := range types.FieldBindings(format) {
@@ -855,7 +970,7 @@ func writeTempCopy(t *testing.T, src string) string {
 }
 
 func TestWrite_EmptyKeyRefusedOnEveryFormat(t *testing.T) {
-	for _, path := range []string{"testdata/sample.mp3", "testdata/sample_v24.mp3", "testdata/sample.flac", "testdata/sample.m4a", "testdata/sample.m4b", "testdata/sample.ogg", "testdata/sample.opus"} {
+	for _, path := range []string{"testdata/sample.mp3", "testdata/sample_v24.mp3", "testdata/sample.flac", "testdata/sample.m4a", "testdata/sample.m4b", "testdata/sample.ogg", "testdata/sample.opus", "testdata/sample.wav", "testdata/sample.aiff"} {
 		t.Run(path, func(t *testing.T) {
 			f := openFile(t, path)
 			f.Tags.Set("", "x")

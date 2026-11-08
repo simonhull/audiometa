@@ -28,6 +28,15 @@ var sampleDigests = map[string]string{
 	"testdata/sample.m4b":           "32c09dba8ffe6553de1858ac36334245f3e0691e607f0245f1d881ed7c0a1b4f",
 	"testdata/sample.ogg":           "86c0ebbc7226d63535820ddb54ad2dc768f163862a54b5f0e905a5f720081df0",
 	"testdata/sample.opus":          "e835192e34f8a97dc5d65811a107f2334821ddd51d2fde45179caad9a8e2ca88",
+	// WAV: the data chunk; AIFF: the SSND chunk after its offset and block size.
+	// The fixtures are silence, so the same samples give the same digest.
+	"testdata/sample.wav":       "fc19b1997119425765295aeab72d76faa6927d4f83985d328c26f20468d6cc76",
+	"testdata/sample_id3.wav":   "fc19b1997119425765295aeab72d76faa6927d4f83985d328c26f20468d6cc76",
+	"testdata/sample_rf64.wav":  "fc19b1997119425765295aeab72d76faa6927d4f83985d328c26f20468d6cc76",
+	"testdata/sample.aiff":      "fc19b1997119425765295aeab72d76faa6927d4f83985d328c26f20468d6cc76",
+	"testdata/sample_ext.wav":   "24ddaa4710480313757f965c38d60208a334556cb244f830d5006a893edd8da7",
+	"testdata/sample_float.wav": "5a312281df4bd8dfbb4d4a94ad0bf44d01bb8cfced1206b90e21b4ca0568cdb1",
+	"testdata/sample.aifc":      "5a312281df4bd8dfbb4d4a94ad0bf44d01bb8cfced1206b90e21b4ca0568cdb1",
 }
 
 func TestAudioDigest_KnownValues(t *testing.T) {
@@ -165,6 +174,7 @@ func TestAudioDigest_UnchangedByWrite(t *testing.T) {
 	for _, path := range []string{
 		"testdata/sample.mp3", "testdata/sample_v24.mp3", "testdata/sample.flac",
 		"testdata/sample.m4a", "testdata/sample.m4b", "testdata/sample_faststart.m4a",
+		"testdata/sample.wav", "testdata/sample_id3.wav", "testdata/sample_rf64.wav", "testdata/sample.aiff",
 	} {
 		t.Run(path, func(t *testing.T) {
 			t.Parallel()

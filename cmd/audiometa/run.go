@@ -15,7 +15,7 @@ const (
 	exitUsage = 2
 )
 
-const usageText = `audiometa - read audio file metadata (FLAC, MP3, M4A/M4B, Ogg Vorbis, Opus)
+const usageText = `audiometa - read audio file metadata (FLAC, MP3, M4A/M4B, Ogg Vorbis, Opus, WAV, AIFF)
 
 Usage:
   audiometa [inspect] [--json] FILE...     show format, audio properties, tags, chapters, warnings

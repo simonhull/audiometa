@@ -76,28 +76,28 @@ func TestDetectFormat_MP3_FrameSync(t *testing.T) {
 }
 
 func TestDetectFormat_WAV(t *testing.T) {
-	data := []byte("RIFF\x00\x00\x00\x00WAVE")
-
-	r := bytes.NewReader(data)
-	format, err := DetectFormat(r, int64(len(data)), "test.wav")
-	if err != nil {
-		t.Fatalf("DetectFormat() error = %v", err)
-	}
-	if format != FormatWAV {
-		t.Errorf("DetectFormat() = %v, want FormatWAV", format)
+	for _, magic := range []string{"RIFF", "RIFX", "RF64"} {
+		data := []byte(magic + "\x00\x00\x00\x00WAVE")
+		format, err := DetectFormat(bytes.NewReader(data), int64(len(data)), "test.wav")
+		if err != nil {
+			t.Fatalf("%s: DetectFormat() error = %v", magic, err)
+		}
+		if format != FormatWAV {
+			t.Errorf("%s: DetectFormat() = %v, want FormatWAV", magic, format)
+		}
 	}
 }
 
 func TestDetectFormat_AIFF(t *testing.T) {
-	data := []byte("FORM\x00\x00\x00\x00AIFF")
-
-	r := bytes.NewReader(data)
-	format, err := DetectFormat(r, int64(len(data)), "test.aiff")
-	if err != nil {
-		t.Fatalf("DetectFormat() error = %v", err)
-	}
-	if format != FormatAIFF {
-		t.Errorf("DetectFormat() = %v, want FormatAIFF", format)
+	for _, form := range []string{"AIFF", "AIFC"} {
+		data := []byte("FORM\x00\x00\x00\x00" + form)
+		format, err := DetectFormat(bytes.NewReader(data), int64(len(data)), "test.aiff")
+		if err != nil {
+			t.Fatalf("%s: DetectFormat() error = %v", form, err)
+		}
+		if format != FormatAIFF {
+			t.Errorf("%s: DetectFormat() = %v, want FormatAIFF", form, format)
+		}
 	}
 }
 

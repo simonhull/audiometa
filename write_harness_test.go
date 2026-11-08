@@ -131,6 +131,72 @@ func m4aTopLevelTypes(t *testing.T, data []byte) []string {
 	return types
 }
 
+// iffChunk is one top-level chunk of a WAV or AIFF file.
+type iffChunk struct {
+	id         string
+	start, end int // payload
+}
+
+// iffChunks walks the chunks of a RIFF, RIFX, RF64 or FORM file. An RF64 data
+// chunk takes its size from the ds64 chunk.
+func iffChunks(t *testing.T, data []byte) []iffChunk {
+	t.Helper()
+	if len(data) < 12 {
+		t.Fatal("iff: no container header")
+	}
+	var order binary.ByteOrder = binary.BigEndian
+	if magic := string(data[:4]); magic == "RIFF" || magic == "RF64" {
+		order = binary.LittleEndian
+	}
+	var chunks []iffChunk
+	for off := 12; off+8 <= len(data); {
+		id := string(data[off : off+4])
+		size64 := uint64(order.Uint32(data[off+4:]))
+		if string(data[:4]) == "RF64" && size64 == 0xFFFFFFFF && id == "data" {
+			size64 = binary.LittleEndian.Uint64(data[28:]) // ds64's data size
+		}
+		if size64 > uint64(len(data)-off-8) {
+			t.Fatalf("iff: chunk %q at %d runs past EOF", id, off)
+		}
+		size := int(size64)
+		chunks = append(chunks, iffChunk{id: id, start: off + 8, end: off + 8 + size})
+		off += 8 + size + size%2
+	}
+	return chunks
+}
+
+// iffAudioDigest hashes the samples: the WAV data chunk, or the AIFF SSND chunk
+// after its offset and block size.
+func iffAudioDigest(t *testing.T, data []byte) [32]byte {
+	t.Helper()
+	for _, c := range iffChunks(t, data) {
+		switch c.id {
+		case "data":
+			return sha256.Sum256(data[c.start:c.end])
+		case "SSND":
+			return sha256.Sum256(data[c.start+8 : c.end])
+		}
+	}
+	t.Fatal("iff: no data or SSND chunk")
+	return [32]byte{}
+}
+
+// iffChunkIDs lists the chunk IDs in order, except the tag chunks a writer may
+// rewrite, add or drop. Writers must preserve this list.
+func iffChunkIDs(t *testing.T, data []byte) []string {
+	t.Helper()
+	var ids []string
+	for _, c := range iffChunks(t, data) {
+		switch {
+		case c.id == "id3 " || c.id == "ID3 " || c.id == "NAME" || c.id == "AUTH" || c.id == "(c) " || c.id == "ANNO":
+		case c.id == "LIST" && string(data[c.start:c.start+4]) == "INFO":
+		default:
+			ids = append(ids, c.id)
+		}
+	}
+	return ids
+}
+
 // audioDigest dispatches to the oracle for format.
 func audioDigest(t *testing.T, format audiometa.Format, data []byte) [32]byte {
 	t.Helper()
@@ -141,7 +207,9 @@ func audioDigest(t *testing.T, format audiometa.Format, data []byte) [32]byte {
 		return flacAudioDigest(t, data)
 	case audiometa.FormatM4A, audiometa.FormatM4B:
 		return m4aAudioDigest(t, data)
-	case audiometa.FormatUnknown, audiometa.FormatOgg, audiometa.FormatOpus, audiometa.FormatWAV, audiometa.FormatAIFF:
+	case audiometa.FormatWAV, audiometa.FormatAIFF:
+		return iffAudioDigest(t, data)
+	case audiometa.FormatUnknown, audiometa.FormatOgg, audiometa.FormatOpus:
 		t.Fatalf("no audio oracle for %s", format)
 		return [32]byte{}
 	default:

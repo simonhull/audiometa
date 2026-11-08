@@ -15,8 +15,7 @@ import (
 type OutOfBoundsError = types.OutOfBoundsError
 
 // UnsupportedFormatError reports that a file is not in a format audiometa can
-// parse: its contents match no known signature, its header cannot be read, or
-// it is a recognized format without a parser (WAV, AIFF).
+// parse: its contents match no known signature, or its header cannot be read.
 //
 // Path names the file and Reason says why. [Open] and [DetectFormat] return
 // it; match it with [errors.As].

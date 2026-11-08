@@ -16,6 +16,7 @@ import (
 
 	// Register built-in format parsers.
 	_ "github.com/simonhull/audiometa/internal/flac"
+	_ "github.com/simonhull/audiometa/internal/iff"
 	_ "github.com/simonhull/audiometa/internal/m4a"
 	_ "github.com/simonhull/audiometa/internal/mp3"
 	_ "github.com/simonhull/audiometa/internal/ogg"
@@ -61,7 +62,7 @@ type File struct {
 // Open opens the audio file at path and parses its metadata.
 //
 // The format is detected from the file's contents. Supported formats are FLAC,
-// MP3, M4A, M4B, Ogg Vorbis and Opus. Only metadata is read: audio data is
+// MP3, M4A, M4B, Ogg Vorbis, Opus, WAV and AIFF. Only metadata is read: audio data is
 // never loaded, and artwork is read later by [File.ExtractArtwork]. The
 // caller must [File.Close] the returned File.
 //

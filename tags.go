@@ -25,6 +25,9 @@ import (
 //     ("TITLE", "ENCODER").
 //   - MP3: the ID3v2 frame ID ("TIT2", "TSSE"); TXXX frames are stored under
 //     their upper-cased description.
+//   - WAV and AIFF: the ID3v2 frame ID, as for MP3, and the ID of a native
+//     text tag: a WAV LIST/INFO subchunk ("INAM", "ISFT") or an AIFF text
+//     chunk ("NAME", "AUTH", "(c) ", "ANNO").
 //   - M4A/M4B: the ilst atom name ("\xa9nam" for ©nam, "aART"); freeform
 //     (----) atoms are stored under their upper-cased name.
 //

@@ -6,7 +6,7 @@
 
 audiometa is a fast, format-agnostic audio metadata reader for Go. One call reads tags,
 technical audio properties, chapters and embedded artwork from FLAC, MP3, M4A/M4B,
-Ogg Vorbis and Opus files, with first-class support for audiobooks.
+Ogg Vorbis, Opus, WAV and AIFF files, with first-class support for audiobooks.
 
 ## Why audiometa?
 There are several really great tagging libraries for Go. With special thanks to David Howden and his excellent [Tag](https://github.com/dhowden/tag) Library.
@@ -19,7 +19,7 @@ AudioMeta includes the following:
 - **🎯 Simple API**: `audiometa.Open()` just works - the format is detected from the file's contents
 - **🎨 Modern Go**: iterators, generics, `context` cancellation throughout
 - **💪 Robust**: graceful degradation with warnings; bounds-checked reads, allocation caps and panic recovery for hostile files
-- **📦 Format Support**: FLAC, MP3, M4A/M4B, Ogg Vorbis, Opus
+- **📦 Format Support**: FLAC, MP3, M4A/M4B, Ogg Vorbis, Opus, WAV, AIFF
 - **🔍 Complete Metadata**: tags, raw tags, technical info, artwork and chapters in every supported format
 
 ## Quick Start
@@ -66,7 +66,7 @@ signature bytes, not its extension.
 
 ```go
 file, _ := audiometa.Open("mystery_file")
-// Works for FLAC, MP3, M4A, M4B, Ogg Vorbis and Opus
+// Works for FLAC, MP3, M4A, M4B, Ogg Vorbis, Opus, WAV and AIFF
 fmt.Println(file.Format) // e.g. "Opus"
 ```
 
@@ -118,7 +118,7 @@ with `errors.Is` / `errors.As` (or `errors.AsType`):
 | Error | When |
 |-------|------|
 | `*os.PathError` (e.g. `fs.ErrNotExist`) | the file cannot be opened |
-| `*audiometa.UnsupportedFormatError` | unknown format, unreadable header, or a detected format without a parser (WAV, AIFF) |
+| `*audiometa.UnsupportedFormatError` | unknown format or unreadable header |
 | `*audiometa.CorruptedFileError` | invalid container structure, or a recovered parser panic |
 | `*audiometa.OutOfBoundsError` | a required read runs past the end of the file (truncation, corrupt length) |
 | `context.Canceled` / `context.DeadlineExceeded` | the context passed to `OpenContext` / `OpenMany` is done |
@@ -217,15 +217,24 @@ Raw keys are format-specific:
 | M4B         | ✓    | ✓     | ✓       | ✓        | ✓              |
 | Ogg Vorbis  | ✓    | -     | ✓       | ✓        | ✓              |
 | Opus        | ✓    | -     | ✓       | ✓        | ✓              |
+| WAV         | ✓    | ✓     | ✓       | ✓        | ✓              |
+| AIFF        | ✓    | ✓     | ✓       | ✓        | ✓              |
 
 Ogg Vorbis and Opus writing is not supported yet (see
-[docs/design/020-write-support-design.md](docs/design/020-write-support-design.md)). WAV and AIFF
-are detected but not parsed. See [Writing metadata](#writing-metadata) for what writing does
+[docs/design/020-write-support-design.md](docs/design/020-write-support-design.md)). WAV covers
+RIFF, its big-endian twin RIFX, and RF64; AIFF covers AIFF and AIFF-C. Their artwork and
+chapters come from the ID3v2 chunk. See [Writing metadata](#writing-metadata) for what writing does
 and does not touch.
 
 Tag formats:
 
 - **FLAC**: Vorbis comments, PICTURE blocks
+- **WAV and AIFF**: an ID3v2 chunk (`id3 ` or `ID3 `), read as MP3's ID3v2 tag is, and the
+  format's own text: WAV's `LIST`/`INFO` chunk (`INAM`, `IART`, `IPRD`, `ICRD`, `ITRK`, `ICMT`,
+  `ISFT`, ...) and AIFF's `NAME`, `AUTH`, `(c) ` and `ANNO` chunks, each under its ID as a raw
+  key. Where both hold a field, ID3 wins. Audio properties come from `fmt ` (PCM, IEEE float,
+  `WAVE_FORMAT_EXTENSIBLE`, A-law, mu-law) or `COMM`. A last chunk cut short, a wrong form size
+  and junk after the form are warnings, not failures.
 - **MP3**: ID3v2.2, ID3v2.3 and ID3v2.4 (unsynchronisation undone; compressed or encrypted
   frames skipped with a warning), falling back to an ID3v1 tag when ID3v2 gives no title
   or artist
@@ -302,6 +311,13 @@ _, err := f.WriteTo(w) // any io.Writer; WriteToContext takes a context
   `tit2`), unless the file already has a `TXXX` of that description. Write lyrics through
   `Tags.Lyrics`: on MP3 that keeps the frame's language and description, and a new frame gets
   the language `XXX` (unknown).
+- **WAV and AIFF.** Edits go to the ID3v2 chunk, which keeps its version; a file without one
+  gets an ID3v2.4 chunk at the end. A raw key that is native text (an INFO ID, or an AIFF text
+  chunk) is written there instead. Setting or clearing a typed field also rewrites the native
+  text holding it (`INAM`, `IART`, `IPRD`, `IGNR`, `ICRD`, `ITRK`/`IPRT`, `ICMT`; `NAME`,
+  `AUTH`, `ANNO`) when the file has native text, so no reader sees a stale value. Every other
+  chunk, the audio included, is copied byte for byte. A file whose chunks are cut short is
+  refused with a `CorruptedFileError`.
 - **Artwork.** `AddArtwork`, `ReplaceArtwork`, `RemoveArtwork` and `RemoveAllArtwork`.
   M4A cover art has no picture type (only front cover or other).
 - **DRM.** Encrypted files (FairPlay, CENC, AAX, ID3 encrypted frames) return
@@ -313,7 +329,7 @@ Typed fields a format has no native place for return `ErrUnsupportedWrite`:
 
 | Format | Typed fields that cannot be written |
 |--------|-------------------------------------|
-| MP3 | `Date`, `OriginalDate`, `Performers`, `Copyright`, `Label`, `CatalogNumber`, `Barcode`, `ISRC`, `MusicBrainz*` |
+| MP3, WAV, AIFF | `Date`, `OriginalDate`, `Performers`, `Copyright`, `Label`, `CatalogNumber`, `Barcode`, `ISRC`, `MusicBrainz*` |
 | M4A/M4B | `OriginalDate`, `Performers`, `Label`, `CatalogNumber`, `Barcode`, `ISRC`, `MusicBrainz*` |
 | FLAC | none |
 
@@ -440,7 +456,7 @@ audiometa/
 
 ### Format Parser Registration
 
-All supported format parsers (FLAC, MP3, M4A, M4B, Ogg Vorbis, Opus) are automatically
+All supported format parsers (FLAC, MP3, M4A, M4B, Ogg Vorbis, Opus, WAV, AIFF) are automatically
 registered when you import the audiometa package. No additional imports or initialization
 code is required.
 
