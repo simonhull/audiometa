@@ -61,36 +61,23 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		Audio:  types.AudioInfo{},
 	}
 
-	// Parse metadata blocks
 	var vorbisComments []string
-	audioStart := int64(-1)
-	offset := int64(4) // After "fLaC"
-	for i := 0; offset < size; i++ {
-		if err := binary.Canceled(ctx, i); err != nil {
-			return nil, err
-		}
-
-		// Read metadata block header (4 bytes)
-		header, err := sr.Read[uint32](offset, "metadata block header")
+	var audioStart int64 // first audio byte; 0 until the chain's last block is read
+	for b, err := range blocks(ctx, sr, size) {
 		if err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, ctxErr
+			}
 			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 				Stage:   types.StageMetadata,
-				Message: fmt.Sprintf("failed to read metadata block header at offset %d: %v", offset, err),
+				Message: fmt.Sprintf("metadata block chain at offset %d: %v", b.off, err),
 				Err:     err,
-				Offset:  offset,
+				Offset:  b.off,
 			})
 			break
 		}
-
-		// Parse header
-		isLast := (header >> 31) == 1
-		blockType := uint8((header >> 24) & 0x7F)
-		blockLength := int64(header & 0x00FFFFFF)
-
-		offset += 4 // Move past header
-
-		// Parse block based on type
-		switch blockType {
+		offset, blockLength := b.payload(), b.n
+		switch b.typ {
 		case blockTypeStreamInfo:
 			if err := parseStreamInfo(sr, offset, blockLength, file); err != nil {
 				file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
@@ -130,7 +117,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 			// Seek table is not needed for metadata extraction
 
 		case blockTypeCueSheet:
-			if err := parseCueSheet(sr, offset, uint32(blockLength), file); err != nil {
+			if err := parseCueSheet(sr, offset, blockLength, file); err != nil {
 				file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 					Stage:   types.StageChapters,
 					Message: fmt.Sprintf("failed to parse CUESHEET: %v", err),
@@ -143,13 +130,8 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 			// Unknown block type - skip it
 		}
 
-		// Move to next block
-		offset += blockLength
-
-		// If this was the last metadata block, we're done
-		if isLast {
-			audioStart = offset // first byte after the metadata blocks = first audio frame
-			break
+		if b.last {
+			audioStart = b.end()
 		}
 	}
 
@@ -185,39 +167,19 @@ func (p *parser) ExtractArtwork(ctx context.Context, r io.ReaderAt, size int64, 
 
 	var artwork []types.Artwork
 
-	// Skip FLAC magic
-	offset := int64(4)
-
-	// Scan for PICTURE blocks
-	for i := 0; offset < size; i++ {
-		if err := binary.Canceled(ctx, i); err != nil {
-			return nil, err
-		}
-
-		// Read metadata block header
-		header, err := sr.Read[uint32](offset, "metadata block header")
+	for b, err := range blocks(ctx, sr, size) {
 		if err != nil {
-			break
-		}
-
-		isLast := (header >> 31) == 1
-		blockType := uint8((header >> 24) & 0x7F)
-		blockLength := int64(header & 0x00FFFFFF)
-
-		offset += 4
-
-		// If this is a PICTURE block, parse it
-		if blockType == blockTypePicture {
-			// An unparseable picture is skipped; the block chain is still followed normally.
-			if pic, err := parsePicture(sr, offset, blockLength); err == nil {
-				artwork = append(artwork, pic)
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, ctxErr
 			}
+			break // a broken chain ends the scan; the parser reports it
 		}
-
-		offset += blockLength
-
-		if isLast {
-			break
+		if b.typ != blockTypePicture {
+			continue
+		}
+		// An unparseable picture is skipped; the block chain is still followed normally.
+		if pic, err := parsePicture(sr, b.payload(), b.n); err == nil {
+			artwork = append(artwork, pic)
 		}
 	}
 
