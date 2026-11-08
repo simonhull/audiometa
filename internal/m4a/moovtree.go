@@ -35,16 +35,31 @@ var structuralContainers = map[string]bool{atomMoov: true, atomTrak: true, "mdia
 var otherContainers = map[string]bool{atomUdta: true, "edts": true, "dinf": true, "tref": true, atomMeta: true, atomIlst: true}
 
 // matom is one atom of an in-memory moov tree. A container holds its
-// children; a leaf holds its payload byte for byte. Serializing recomputes
-// every size, so only edited leaves and their ancestors change.
+// children in box; a leaf holds its payload byte for byte. Serializing
+// recomputes every size, so only edited leaves and their ancestors change.
 type matom struct {
-	typ       string
-	ext       bool     // the source used a 16-byte (64-bit size) header
-	container bool     // children (and full, tail) are used instead of payload
-	full      []byte   // a full container's version and flags (meta: 4 bytes)
-	children  []*matom // container children, in order
-	tail      []byte   // trailing bytes too short to be an atom (a QuickTime udta's 0 terminator)
-	payload   []byte   // leaf payload, after the header
+	typ     string
+	ext     bool   // the source used a 16-byte (64-bit size) header
+	box     *mbox  // a container's content; nil for a leaf
+	payload []byte // a leaf's payload, after the header; nil for a container
+}
+
+// mbox is the content of a container atom.
+type mbox struct {
+	full     []byte   // a full container's version and flags (meta: 4 bytes)
+	children []*matom // in order
+	tail     []byte   // trailing bytes too short to be an atom (a QuickTime udta's 0 terminator)
+}
+
+// isContainer reports whether a holds child atoms rather than a payload.
+func (a *matom) isContainer() bool { return a.box != nil }
+
+// children returns a container's children, or nil for a leaf.
+func (a *matom) children() []*matom {
+	if a.box == nil {
+		return nil
+	}
+	return a.box.children
 }
 
 // readMoovTree reads moovAtom into memory and parses it into a tree.
@@ -135,17 +150,17 @@ func (a *matom) parseChildren(sr *binutil.SafeReader, at int64, depth int) error
 	if err != nil {
 		return err
 	}
-	a.container, a.full, a.children, a.tail, a.payload = true, full, children, tail, nil
+	a.box, a.payload = &mbox{full: full, children: children, tail: tail}, nil
 	return nil
 }
 
 // bodySize returns the size of a's content after its header.
 func (a *matom) bodySize() uint64 {
-	if !a.container {
+	if !a.isContainer() {
 		return uint64(len(a.payload))
 	}
-	n := uint64(len(a.full) + len(a.tail))
-	for _, c := range a.children {
+	n := uint64(len(a.box.full) + len(a.box.tail))
+	for _, c := range a.children() {
 		n += c.size()
 	}
 	return n
@@ -185,19 +200,19 @@ func (a *matom) appendTo(b []byte) []byte {
 		b = binary.BigEndian.AppendUint32(b, uint32(body+8)) //nolint:gosec // G115: extHeader is false, so body+8 fits in 32 bits
 		b = append(b, a.typ...)
 	}
-	if !a.container {
+	if !a.isContainer() {
 		return append(b, a.payload...)
 	}
-	b = append(b, a.full...)
-	for _, c := range a.children {
+	b = append(b, a.box.full...)
+	for _, c := range a.children() {
 		b = c.appendTo(b)
 	}
-	return append(b, a.tail...)
+	return append(b, a.box.tail...)
 }
 
-// child returns a's first container child of type typ, or nil.
+// child returns a's first child of type typ, or nil.
 func (a *matom) child(typ string) *matom {
-	for _, c := range a.children {
+	for _, c := range a.children() {
 		if c.typ == typ {
 			return c
 		}
@@ -211,7 +226,7 @@ func (a *matom) child(typ string) *matom {
 func findPath(root *matom, path ...string) *matom {
 	a := root
 	for _, typ := range path {
-		if a == nil || !a.container {
+		if a == nil || !a.isContainer() {
 			return nil
 		}
 		a = a.child(typ)
@@ -222,8 +237,8 @@ func findPath(root *matom, path ...string) *matom {
 // traks returns the trak children of moov.
 func traks(root *matom) []*matom {
 	var out []*matom
-	for _, c := range root.children {
-		if c.typ == atomTrak && c.container {
+	for _, c := range root.children() {
+		if c.typ == atomTrak && c.isContainer() {
 			out = append(out, c)
 		}
 	}
@@ -235,7 +250,7 @@ func (a *matom) walk(fn func(*matom) error) error {
 	if err := fn(a); err != nil {
 		return err
 	}
-	for _, c := range a.children {
+	for _, c := range a.children() {
 		if err := c.walk(fn); err != nil {
 			return err
 		}

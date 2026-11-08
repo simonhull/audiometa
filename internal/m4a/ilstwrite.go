@@ -100,7 +100,7 @@ func applyIlstEdits(root *matom, edits *types.EditSet) error {
 		return err
 	}
 	e := &ilstEditor{ilst: ilst, origTypes: map[string]bool{}, edits: edits}
-	for _, it := range ilst.children {
+	for _, it := range ilst.children() {
 		if it.typ != itemFreeform {
 			e.origTypes[it.typ] = true
 		}
@@ -118,7 +118,7 @@ func applyIlstEdits(root *matom, edits *types.EditSet) error {
 	if err := applyCovr(ilst, edits.Artwork); err != nil {
 		return err
 	}
-	if len(ilst.children) == 0 && undo != nil {
+	if len(ilst.children()) == 0 && undo != nil {
 		undo()
 	}
 	return nil
@@ -134,15 +134,15 @@ func ensureIlst(root *matom) (ilst *matom, undo func(), err error) {
 			a = newContainer(typ)
 			if undo == nil {
 				p := parent
-				undo = func() { p.children = slices.DeleteFunc(p.children, func(c *matom) bool { return c == a }) }
+				undo = func() { p.box.children = slices.DeleteFunc(p.children(), func(c *matom) bool { return c == a }) }
 			}
-			parent.children = append(parent.children, a)
+			parent.box.children = append(parent.children(), a)
 		}
-		if !a.container {
+		if !a.isContainer() {
 			return nil, nil, fmt.Errorf("%w: malformed %s atom", types.ErrUnsupportedWrite, typ)
 		}
 		if typ != atomIlst {
-			a.children = slices.DeleteFunc(a.children, func(c *matom) bool { return c.typ == atomFree || c.typ == atomSkip })
+			a.box.children = slices.DeleteFunc(a.children(), func(c *matom) bool { return c.typ == atomFree || c.typ == atomSkip })
 		}
 		parent = a
 	}
@@ -152,10 +152,10 @@ func ensureIlst(root *matom) (ilst *matom, undo func(), err error) {
 // newContainer returns an empty container atom; a meta gets version and
 // flags 0 and an iTunes (mdir) hdlr.
 func newContainer(typ string) *matom {
-	a := &matom{typ: typ, container: true}
+	a := &matom{typ: typ, box: &mbox{}}
 	if typ == atomMeta {
-		a.full = []byte{0, 0, 0, 0}
-		a.children = []*matom{{typ: "hdlr", payload: slices.Clone(mdirHdlr[8:])}}
+		a.box.full = []byte{0, 0, 0, 0}
+		a.box.children = []*matom{{typ: "hdlr", payload: slices.Clone(mdirHdlr[8:])}}
 	}
 	return a
 }
@@ -198,8 +198,8 @@ func (e *ilstEditor) isItemKey(key string) bool {
 // dropped item had in the resulting list, or -1 when none was dropped.
 func (e *ilstEditor) remove(match func(*matom) bool) int {
 	at := -1
-	kept := make([]*matom, 0, len(e.ilst.children))
-	for _, it := range e.ilst.children {
+	kept := make([]*matom, 0, len(e.ilst.children()))
+	for _, it := range e.ilst.children() {
 		if match(it) {
 			if at < 0 {
 				at = len(kept)
@@ -208,17 +208,17 @@ func (e *ilstEditor) remove(match func(*matom) bool) int {
 		}
 		kept = append(kept, it)
 	}
-	e.ilst.children = kept
+	e.ilst.box.children = kept
 	return at
 }
 
 // insert puts item at index at, or appends it when at is negative.
 func (e *ilstEditor) insert(at int, item *matom) {
 	if at < 0 {
-		e.ilst.children = append(e.ilst.children, item)
+		e.ilst.box.children = append(e.ilst.children(), item)
 		return
 	}
-	e.ilst.children = slices.Insert(e.ilst.children, at, item)
+	e.ilst.box.children = slices.Insert(e.ilst.children(), at, item)
 }
 
 // replaceItems removes every item of type typ and puts payload (when not
@@ -239,8 +239,8 @@ func (e *ilstEditor) setItem(typ string, values []string) error {
 		return nil
 	}
 	spec, isInt := knownIntItems[typ]
-	if i := slices.IndexFunc(e.ilst.children, func(it *matom) bool { return it.typ == typ }); i >= 0 {
-		if dt, value, ok := firstData(e.ilst.children[i].payload); ok {
+	if i := slices.IndexFunc(e.ilst.children(), func(it *matom) bool { return it.typ == typ }); i >= 0 {
+		if dt, value, ok := firstData(e.ilst.children()[i].payload); ok {
 			switch dt {
 			case dataTypeImplicit, dataTypeUTF8:
 				isInt = false
@@ -495,11 +495,11 @@ func applyCovr(ilst *matom, ops []types.ArtworkOp) error {
 		return nil
 	}
 	e := &ilstEditor{ilst: ilst}
-	idx := slices.IndexFunc(ilst.children, func(it *matom) bool { return it.typ == itemCovr })
+	idx := slices.IndexFunc(ilst.children(), func(it *matom) bool { return it.typ == itemCovr })
 	var children []subAtom
 	if idx >= 0 {
 		var ok bool
-		if children, ok = subAtoms(ilst.children[idx].payload); !ok {
+		if children, ok = subAtoms(ilst.children()[idx].payload); !ok {
 			return fmt.Errorf("%w: malformed covr item", types.ErrUnsupportedWrite)
 		}
 	}
@@ -533,7 +533,7 @@ func applyCovr(ilst *matom, ops []types.ArtworkOp) error {
 		return nil
 	}
 	if idx >= 0 {
-		ilst.children[idx] = &matom{typ: itemCovr, ext: ilst.children[idx].ext, payload: payload}
+		ilst.box.children[idx] = &matom{typ: itemCovr, ext: ilst.children()[idx].ext, payload: payload}
 		return nil
 	}
 	e.insert(-1, &matom{typ: itemCovr, payload: payload})

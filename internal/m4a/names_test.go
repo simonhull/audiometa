@@ -17,7 +17,7 @@ const (
 func freeformNames(t *testing.T, data []byte) []string {
 	t.Helper()
 	var out []string
-	for _, it := range moovTreeOf(t, data).child(atomUdta).child(atomMeta).child(atomIlst).children {
+	for _, it := range moovTreeOf(t, data).child(atomUdta).child(atomMeta).child(atomIlst).children() {
 		if it.typ != itemFreeform {
 			continue
 		}

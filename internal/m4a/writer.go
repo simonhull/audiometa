@@ -236,7 +236,7 @@ func (l *layout) place(root *matom, size int64) error {
 // not fit in 32 bits cannot be stored: both return ErrUnsupportedWrite.
 func shiftChunkOffsets(root *matom, moovStart, rEnd, delta int64) error {
 	return root.walk(func(a *matom) error {
-		if a.container || (a.typ != atomStco && a.typ != atomCo64) {
+		if a.isContainer() || (a.typ != atomStco && a.typ != atomCo64) {
 			return nil
 		}
 		width := 4
@@ -364,7 +364,7 @@ func checkTracks(sr *binutil.SafeReader, root *matom) error {
 	}
 	for _, trak := range traks(root) {
 		stsd := findPath(trak, "mdia", "minf", "stbl", "stsd")
-		if stsd == nil || stsd.container {
+		if stsd == nil || stsd.isContainer() {
 			continue
 		}
 		entries, err := sampleEntryTypes(stsd.payload)
