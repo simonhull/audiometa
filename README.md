@@ -355,6 +355,8 @@ The parsers are written to read untrusted files:
 - length fields from the file cannot drive allocations past the file size or a fixed
   256 MiB ceiling;
 - a file records at most 100 warnings;
+- a file records at most 65,536 tag values, and an OverDrive MediaMarkers document is read
+  only up to 1 MiB;
 - a panic inside a parser is recovered and returned as a `*CorruptedFileError`;
 - parse loops check the `context`, so `OpenContext` and `OpenMany` stop promptly;
 - every parser, the writers, format detection and the CLI atom walker have fuzz targets
