@@ -21,6 +21,7 @@ All notable changes to this project are documented here.
 - Ogg: when a page does not continue the header packet the previous page left open, `AudioDigest` now ends that packet there, as `Open` already did. It used to count the next page's first packet as part of the headers and leave it out of the digest, so the digest of such a damaged file changes.
 - CLI: audiometa artwork --force no longer writes through a symlink at the destination. The image goes to a temporary file in the output directory that is renamed over the destination, so a link there is replaced and its target left alone. Two inputs whose pictures would get the same output name (a/song.mp3 and b/song.flac both make song.jpg) now fail for the second input instead of the second picture silently replacing the first under --force.
 - `Write`, `File.WriteTo`, `File.AudioDigest` and `File.ExtractArtwork` no longer use the exported `File.Size`, `File.Format` and `File.Path` fields, which callers can change: they use the values `Open` found. An edit callback that changed `f.Size` used to make `Write` replace the file with a truncated copy and report success, and changing `f.Format` sent the file to another format's writer.
+- `Write` no longer fails with "file name too long" on files whose names are longer than about 229 bytes. Its temporary file is named after at most the first 100 bytes of the original's name (`.<name>.audiometa-<digits>.tmp`), which the `Write` documentation now states so leftovers from a crash can be found.
 
 ## v0.14.0 — 2026-11-08
 
