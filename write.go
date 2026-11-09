@@ -146,6 +146,9 @@ func WriteContext(ctx context.Context, path string, edit func(f *File) error, op
 	if err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
+	if !st0.Mode().IsRegular() {
+		return notRegular(path)
+	}
 
 	f, err := OpenContext(ctx, target)
 	if err != nil {

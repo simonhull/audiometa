@@ -79,7 +79,8 @@ type File struct {
 // Open returns an error, and no File, when:
 //
 //   - the file cannot be opened or stat'ed: the error wraps the [*os.PathError];
-//   - the format is unknown or has no parser: [*UnsupportedFormatError];
+//   - the path is not a regular file (a directory, FIFO, socket or device), or
+//     the format is unknown or has no parser: [*UnsupportedFormatError];
 //   - the container structure is unusable: often a [*CorruptedFileError],
 //     or an [*OutOfBoundsError] for a required read past the end of the file;
 //   - [WithStrictParsing] is set and parsing produced a warning.
@@ -97,17 +98,9 @@ func openWithContext(ctx context.Context, path string, opts ...Option) (*File, e
 		opt(options)
 	}
 
-	// Open file
-	f, err := os.Open(path)
+	f, stat, err := openRegular(path)
 	if err != nil {
-		return nil, fmt.Errorf("open file: %w", err)
-	}
-
-	// Get file size
-	stat, err := f.Stat()
-	if err != nil {
-		_ = f.Close()
-		return nil, fmt.Errorf("stat file: %w", err)
+		return nil, err
 	}
 	size := stat.Size()
 
@@ -146,6 +139,36 @@ func openWithContext(ctx context.Context, path string, opts ...Option) (*File, e
 		return nil, err
 	}
 	return file, nil
+}
+
+// openRegular opens path for reading and returns the handle and its
+// FileInfo. Anything but a regular file (a directory, FIFO, socket or
+// device) is refused with an UnsupportedFormatError: first by a stat, so it
+// is not even opened, then on the open handle, so a path swapped in between
+// is caught too; openFlags keeps that open from blocking.
+func openRegular(path string) (*os.File, os.FileInfo, error) {
+	if st, err := os.Stat(path); err == nil && !st.Mode().IsRegular() {
+		return nil, nil, notRegular(path)
+	}
+	f, err := os.OpenFile(path, openFlags, 0)
+	if err != nil {
+		return nil, nil, fmt.Errorf("open file: %w", err)
+	}
+	st, err := f.Stat()
+	if err != nil {
+		_ = f.Close()
+		return nil, nil, fmt.Errorf("stat file: %w", err)
+	}
+	if !st.Mode().IsRegular() {
+		_ = f.Close()
+		return nil, nil, notRegular(path)
+	}
+	return f, st, nil
+}
+
+// notRegular is the error for a path that is not a regular file.
+func notRegular(path string) error {
+	return &UnsupportedFormatError{Path: path, Reason: "not a regular file"}
 }
 
 // strictParsingError reports that WithStrictParsing rejected a file. Its message
