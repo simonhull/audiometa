@@ -56,7 +56,16 @@ func createMetadataItem(itemType []byte, value string) []byte {
 	return buf.Bytes()
 }
 
-func TestParseMetadataTag_String(t *testing.T) {
+// firstMetadataValue returns the first value of the item atom, or "" when it has none.
+func firstMetadataValue(sr *audiobinary.SafeReader, atom *Atom) (string, error) {
+	values, err := parseMetadataValues(sr, atom, &types.File{})
+	if len(values) == 0 {
+		return "", err
+	}
+	return values[0], err
+}
+
+func TestParseMetadataValues_String(t *testing.T) {
 	// Create ©nam (title) item - 0xA9 = © in MP4 tags
 	data := createMetadataItem([]byte{0xA9, 'n', 'a', 'm'}, "Test Title")
 
@@ -68,7 +77,7 @@ func TestParseMetadataTag_String(t *testing.T) {
 
 	t.Logf("Atom type: %s, size: %d, data size: %d", atom.Type, atom.Size, atom.DataSize())
 
-	value, err := parseMetadataTag(t.Context(), sr, atom)
+	value, err := firstMetadataValue(sr, atom)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -78,7 +87,7 @@ func TestParseMetadataTag_String(t *testing.T) {
 	}
 }
 
-func TestParseMetadataTag_EmptyData(t *testing.T) {
+func TestParseMetadataValues_EmptyData(t *testing.T) {
 	// Create item with no data atom
 	buf := &bytes.Buffer{}
 	itemSize := uint32(8) // just header
@@ -89,7 +98,7 @@ func TestParseMetadataTag_EmptyData(t *testing.T) {
 	sr := audiobinary.NewSafeReader(bytes.NewReader(data), int64(len(data)), "test.m4b")
 	atom, _ := readAtomHeader(sr, 0, int64(len(data)))
 
-	value, err := parseMetadataTag(t.Context(), sr, atom)
+	value, err := firstMetadataValue(sr, atom)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -308,7 +317,7 @@ func runIlst(t *testing.T, items ...[]byte) *types.File {
 	return file
 }
 
-func TestParseMetadataTag_Integer(t *testing.T) {
+func TestParseMetadataValues_Integer(t *testing.T) {
 	tests := []struct {
 		name    string
 		typ     uint32
@@ -328,7 +337,7 @@ func TestParseMetadataTag_Integer(t *testing.T) {
 			item := createTypedMetadataItem([]byte{0xA9, 'm', 'v', 'i'}, tt.typ, tt.payload)
 			sr := audiobinary.NewSafeReader(bytes.NewReader(item), int64(len(item)), "test.m4b")
 			atom, _ := readAtomHeader(sr, 0, int64(len(item)))
-			got, err := parseMetadataTag(t.Context(), sr, atom)
+			got, err := firstMetadataValue(sr, atom)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}

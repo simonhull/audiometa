@@ -2,6 +2,7 @@ package m4a
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/simonhull/audiometa/internal/binary"
@@ -16,27 +17,26 @@ const (
 )
 
 // extractArtwork extracts embedded cover art from M4A/M4B files.
-// Navigates: moov → udta → meta → ilst → covr → data atoms.
+// Navigates: moov → udta → meta → ilst → covr → data atoms. A missing atom on
+// that path means no artwork; a corrupt one is an error.
 func extractArtwork(ctx context.Context, sr *binary.SafeReader, size int64) ([]types.Artwork, error) {
 	var artwork []types.Artwork
 
 	// Find moov atom (movie container)
 	moovAtom, err := findAtom(ctx, sr, 0, size, "moov")
+	if errors.Is(err, errAtomNotFound) {
+		return nil, nil // no moov = no metadata = no artwork
+	}
 	if err != nil {
-		// No moov = no metadata = no artwork
-		return nil, nil
+		return nil, err
 	}
 
-	ilstAtom, err := findIlst(ctx, sr, moovAtom)
-	if err != nil {
-		return nil, nil
+	covrAtom, err := moovAtom.path(ctx, sr, atomUdta, atomMeta, atomIlst, "covr")
+	if errors.Is(err, errAtomNotFound) {
+		return nil, nil // no covr atom = no artwork
 	}
-
-	// Find covr atom inside ilst
-	covrAtom, err := ilstAtom.child(ctx, sr, "covr")
 	if err != nil {
-		// No covr atom = no artwork (not an error)
-		return nil, nil
+		return nil, err
 	}
 
 	// Parse all data atoms inside covr
@@ -57,7 +57,6 @@ func extractArtwork(ctx context.Context, sr *binary.SafeReader, size int64) ([]t
 		if dataAtom.Type == "data" {
 			art, err := parseCovrData(sr, dataAtom)
 			if err != nil {
-				// Log but continue to next data atom
 				// Graceful degradation: some artwork is better than none
 				offset += dataAtom.Size
 				continue

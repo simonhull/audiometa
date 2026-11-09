@@ -391,9 +391,9 @@ func parseStsd(ctx context.Context, sr *binary.SafeReader, stsdAtom *Atom, file 
 	file.Audio.Codec = codec
 	file.Audio.Lossless = codec == codecALAC || codec == codecFLAC
 
-	// Parse enhanced codec details (non-fatal if it fails)
+	// Parse enhanced codec details (a failure adds a warning, not an error)
 	entry := offset - 8 // the offset of the entry's size field
-	_ = parseCodecDetails(sr, entry, entrySize, codec, file)
+	parseCodecDetails(sr, entry, entrySize, codec, file)
 
 	source, err := parseSoundSampleEntry(sr, entry, file)
 	if err != nil {

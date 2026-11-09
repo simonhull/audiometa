@@ -48,38 +48,18 @@ func decodeBEInteger(b []byte, signed bool) string {
 	return strconv.FormatInt(int64(u<<shift)>>shift, 10) //nolint:gosec // G115: deliberate two's-complement reinterpretation; the arithmetic shift sign-extends the len(b)-byte value
 }
 
-// parseMetadataTag extracts the string value of the first data atom of an
-// iTunes metadata tag atom.
-func parseMetadataTag(ctx context.Context, sr *binary.SafeReader, tagAtom *Atom) (string, error) {
-	// Tag atoms contain a "data" atom with the actual value
-	// Format: tag atom → data atom → version/flags → value
-
-	if tagAtom.DataSize() == 0 {
-		return "", nil
-	}
-
-	// Find data atom inside tag
-	dataAtom, err := tagAtom.child(ctx, sr, atomData)
-	if err != nil {
-		// No data atom found - return empty
-		return "", nil
-	}
-	return parseDataValue(sr, dataAtom)
-}
-
 // parseMetadataValues returns the non-empty text or integer value of every
 // data atom of an iTunes metadata tag atom, in order. Data atoms of other
-// types (images, UTF-16, floats) are skipped, and a malformed child atom
-// ends the list. Values past the file's tag value cap are not collected.
+// types (images, UTF-16, floats) are skipped. A malformed child atom ends the
+// list with its error, and the values before it are returned with it. Values
+// past the file's tag value cap are not collected.
 func parseMetadataValues(sr *binary.SafeReader, tagAtom *Atom, file *types.File) ([]string, error) {
 	var values []string
 	off, end := tagAtom.DataOffset(), tagAtom.DataOffset()+tagAtom.DataSize()
 	for off < end {
 		child, err := readAtomHeader(sr, off, end)
 		if err != nil {
-			// Like parseMetadataTag, a malformed child ends the item silently,
-			// keeping the values before it.
-			return values, nil
+			return values, err
 		}
 		if child.Type == atomData {
 			value, err := parseItemValue(sr, tagAtom, child)
@@ -296,16 +276,17 @@ func mapTagToField(tag string, value string, file *types.File) {
 }
 
 // mapTextItem reads every value of a text or integer ilst item and maps it:
-// the first through mapTagToField, the rest through mapExtraValue.
+// the first through mapTagToField, the rest through mapExtraValue. A damaged
+// item adds a warning and still maps the values read before the damage.
 func mapTextItem(sr *binary.SafeReader, tagAtom *Atom, file *types.File) {
 	values, err := parseMetadataValues(sr, tagAtom, file)
 	if err != nil {
+		// Keep the values read before the damage.
 		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 			Stage:   types.StageMetadata,
 			Message: fmt.Sprintf("failed to parse tag %s: %v", tagAtom.Type, err),
 			Err:     err,
 		})
-		return
 	}
 	if len(values) == 0 {
 		return

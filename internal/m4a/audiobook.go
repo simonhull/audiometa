@@ -9,12 +9,15 @@ import (
 )
 
 // parseAudiobookTags extracts narrator, series, publisher, etc. from custom atoms.
+// A malformed atom header ends the scan of its container; what was read before
+// it is applied, and the first such error is returned.
 func parseAudiobookTags(ctx context.Context, sr *binary.SafeReader, ilstAtom *Atom, file *types.File) error {
 	offset := ilstAtom.DataOffset()
 	end := offset + ilstAtom.DataSize()
 
 	// Collect all custom tags for series part resolution
 	customTags := make(map[string]string)
+	var firstErr error
 
 	// Scan through ilst for custom atoms (----)
 	for i := 0; offset < end; i++ {
@@ -24,7 +27,9 @@ func parseAudiobookTags(ctx context.Context, sr *binary.SafeReader, ilstAtom *At
 
 		atom, err := readAtomHeader(sr, offset, end)
 		if err != nil {
-			// Skip corrupted atoms
+			if firstErr == nil {
+				firstErr = err
+			}
 			break
 		}
 
@@ -32,9 +37,11 @@ func parseAudiobookTags(ctx context.Context, sr *binary.SafeReader, ilstAtom *At
 		// Type: 0x2D2D2D2D = "----"
 		if atom.Type == "----" {
 			// Parse custom atom and collect tags
-			if fieldName, value, err := parseCustomAtomWithTags(sr, atom, file); err == nil {
-				customTags[fieldName] = value
+			fieldName, value, err := parseCustomAtomWithTags(sr, atom, file)
+			if firstErr == nil {
+				firstErr = err
 			}
+			customTags[fieldName] = value
 		}
 
 		offset += atom.Size
@@ -43,7 +50,7 @@ func parseAudiobookTags(ctx context.Context, sr *binary.SafeReader, ilstAtom *At
 	// Series part comes only from explicit custom atoms; nothing is inferred.
 	applyExplicitSeriesPart(file, customTags)
 
-	return nil
+	return firstErr
 }
 
 // recordFreeformRaw stores the values of a ---- atom in the raw tag map under
@@ -60,18 +67,22 @@ func recordFreeformRaw(file *types.File, name string, values []string) {
 
 // parseCustomAtomWithTags parses a ---- custom atom and returns the field name
 // and its first value. Every non-empty value of its data atoms goes to the raw
-// tags; like a repeated atom, only the first can fill a typed field.
+// tags; like a repeated atom, only the first can fill a typed field. A
+// malformed child header ends the scan: what was read before it is applied and
+// returned, with the error.
 func parseCustomAtomWithTags(sr *binary.SafeReader, customAtom *Atom, file *types.File) (string, string, error) {
 	offset := customAtom.DataOffset()
 	end := offset + customAtom.DataSize()
 
 	var namespace, fieldName string
 	var values []string
+	var headerErr error
 
 	// Parse child atoms (mean, name, data)
 	for offset < end {
 		atom, err := readAtomHeader(sr, offset, end)
 		if err != nil {
+			headerErr = err
 			break
 		}
 
@@ -102,7 +113,7 @@ func parseCustomAtomWithTags(sr *binary.SafeReader, customAtom *Atom, file *type
 	mapAudiobookField(fieldName, first, file)
 	recordFreeformRaw(file, fieldName, values)
 
-	return fieldName, first, nil
+	return fieldName, first, headerErr
 }
 
 // readAtomText returns an atom's content after skip bytes, or "" when there is
