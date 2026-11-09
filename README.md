@@ -223,8 +223,8 @@ a file Picard tagged gives `MusicBrainz Album Id` for the key `MUSICBRAINZ ALBUM
 | WAV         | ✓    | ✓     | ✓       | ✓        | ✓              |
 | AIFF        | ✓    | ✓     | ✓       | ✓        | ✓              |
 
-Ogg Vorbis and Opus writing is not supported yet (see
-[docs/design/020-write-support-design.md](docs/design/020-write-support-design.md)). WAV covers
+Ogg Vorbis and Opus writing is not supported yet: their comment header shares pages with the codec
+setup header, so a writer must re-page the stream. WAV covers
 RIFF, its big-endian twin RIFX, and RF64; AIFF covers AIFF and AIFF-C. Their artwork and
 chapters come from the ID3v2 chunk. See [Writing metadata](#writing-metadata) for what writing does
 and does not touch.
@@ -455,8 +455,7 @@ audiometa/
 │   └── imagemeta/    # Image type and dimension sniffing
 ├── cmd/audiometa/    # Command-line tool
 ├── examples/         # Example programs
-├── testdata/         # Sample files and benchmark fixtures
-└── docs/design/      # Design documents
+└── testdata/         # Sample files and benchmark fixtures
 ```
 
 ## Architecture
