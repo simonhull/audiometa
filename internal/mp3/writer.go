@@ -2,9 +2,12 @@ package mp3
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"fmt"
 	"io"
+	"slices"
+	"strings"
 
 	binutil "github.com/simonhull/audiometa/internal/binary"
 	"github.com/simonhull/audiometa/internal/registry"
@@ -40,6 +43,10 @@ func (w *writer) WriteFile(ctx context.Context, out io.Writer, src io.ReaderAt, 
 		return 0, err
 	}
 	sr := binutil.NewSafeReader(src, size, "")
+	edits, err := withID3v1Seed(ctx, sr, size, edits)
+	if err != nil {
+		return 0, err
+	}
 	t, tag, err := buildTag(ctx, sr, size, edits)
 	if err != nil {
 		return 0, err
@@ -108,7 +115,12 @@ func (w *writer) InPlacePatch(ctx context.Context, src io.ReaderAt, size int64, 
 	if err := ctx.Err(); err != nil {
 		return 0, nil, false, err
 	}
-	t, tag, err := buildTag(ctx, binutil.NewSafeReader(src, size, ""), size, edits)
+	sr := binutil.NewSafeReader(src, size, "")
+	edits, err := withID3v1Seed(ctx, sr, size, edits)
+	if err != nil {
+		return 0, nil, false, err
+	}
+	t, tag, err := buildTag(ctx, sr, size, edits)
 	if err != nil {
 		return 0, nil, false, err
 	}
@@ -172,3 +184,44 @@ func audioRange(sr *binutil.SafeReader, size int64) (start, end int64, hasV1 boo
 }
 
 func init() { registry.RegisterWriter(types.FormatMP3, &writer{}) }
+
+// withID3v1Seed returns edits plus a FieldEdit for every value the reader takes
+// from the ID3v1 trailer and edits leaves alone, so that a new or rewritten
+// ID3v2 tag keeps them. It returns edits unchanged when the reader would not
+// fall back to ID3v1. It never modifies edits.
+func withID3v1Seed(ctx context.Context, sr *binutil.SafeReader, size int64, edits *types.EditSet) (*types.EditSet, error) {
+	v1, ok := readID3v1(sr, size)
+	if !ok {
+		return edits, nil
+	}
+	// The reader also falls back after an ID3v2 error, so only a canceled
+	// context stops the seed.
+	scratch := &types.File{}
+	_, _ = parseID3v2(ctx, sr, scratch)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if !id3v1Fallback(&scratch.Tags) {
+		return edits, nil
+	}
+
+	bindings := types.FieldBindings(types.FormatMP3)
+	edited := func(f types.Field) bool {
+		if slices.ContainsFunc(edits.Fields, func(e types.FieldEdit) bool { return e.Field == f }) {
+			return true
+		}
+		return slices.ContainsFunc(bindings, func(b types.FieldBinding) bool {
+			return b.Field == f && slices.ContainsFunc(b.Keys, func(k string) bool {
+				return slices.ContainsFunc(edits.Keys, func(e types.KeyEdit) bool { return strings.EqualFold(e.Key, k) })
+			})
+		})
+	}
+	fills := slices.DeleteFunc(id3v1Fills(&scratch.Tags, v1), func(e types.FieldEdit) bool { return edited(e.Field) })
+	if len(fills) == 0 {
+		return edits, nil
+	}
+
+	fields := append(slices.Clone(edits.Fields), fills...)
+	slices.SortFunc(fields, func(a, b types.FieldEdit) int { return cmp.Compare(a.Field, b.Field) })
+	return &types.EditSet{Keys: edits.Keys, Fields: fields, Artwork: edits.Artwork, Orig: edits.Orig, Final: edits.Final}, nil
+}

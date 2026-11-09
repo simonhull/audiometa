@@ -90,7 +90,7 @@ func applyID3v1(file *types.File, tag id3v1Tag) {
 	t := &file.Tags
 	for _, f := range id3v1Fills(t, tag) {
 		v := f.Values[0]
-		switch f.Field {
+		switch f.Field { //nolint:exhaustive // id3v1Fills yields only the six ID3v1 fields
 		case types.FieldTitle:
 			t.Title = v
 		case types.FieldArtist:
@@ -110,6 +110,6 @@ func applyID3v1(file *types.File, tag id3v1Tag) {
 
 // atoi parses a decimal string produced by [strconv.Itoa].
 func atoi(s string) int {
-	n, _ := strconv.Atoi(s) //nolint:errcheck // the input comes from strconv.Itoa
+	n, _ := strconv.Atoi(s)
 	return n
 }

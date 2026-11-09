@@ -688,6 +688,45 @@ func TestWriteRoundTrip_MP3ID3v1Preserved(t *testing.T) {
 	}
 }
 
+func TestWriteRoundTrip_MP3ID3v1OnlyKeepsTags(t *testing.T) {
+	src := readTestdata(t, "testdata/sample.mp3")
+	if string(src[:3]) != "ID3" {
+		t.Fatal("sample.mp3 has no ID3v2 tag")
+	}
+	skip := 10 + (int(src[6])<<21 | int(src[7])<<14 | int(src[8])<<7 | int(src[9]))
+	if src[5]&0x10 != 0 {
+		skip += 10
+	}
+	trailer := make([]byte, 128)
+	copy(trailer, "TAG")
+	copy(trailer[3:], "Old Title")
+	copy(trailer[33:], "Some Artist")
+	copy(trailer[63:], "Some Album")
+	v1Only := append(bytes.Clone(src[skip:]), trailer...)
+
+	for name, opts := range map[string][]audiometa.WriteOption{
+		"atomic":   nil,
+		"in-place": {audiometa.WithInPlace()},
+	} {
+		t.Run(name, func(t *testing.T) {
+			p := filepath.Join(t.TempDir(), "v1only.mp3")
+			if err := os.WriteFile(p, v1Only, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := audiometa.Write(p, func(f *audiometa.File) error {
+				f.Tags.Title = "New"
+				return nil
+			}, opts...); err != nil {
+				t.Fatalf("Write: %v", err)
+			}
+			got := openFile(t, p)
+			if got.Tags.Title != "New" || got.Tags.Artist != "Some Artist" || got.Tags.Album != "Some Album" {
+				t.Errorf("Title, Artist, Album = %q, %q, %q", got.Tags.Title, got.Tags.Artist, got.Tags.Album)
+			}
+		})
+	}
+}
+
 // Deleting every raw key leaves a valid file with no raw tags, the same audio
 // and the same chapters. The ID3v2 tag is kept (with the non-key frames such
 // as APIC and CHAP, and padding).
