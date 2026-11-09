@@ -158,5 +158,10 @@ $FF $SHORT -i "$TMP/cover.jpg" -map 0:a -map 1:v -c:v copy -disposition:v attach
 $FF -f lavfi -t 0.1 -i anullsrc=r=8000:cl=mono -c:a pcm_f32be -metadata title="Test Title" \
 	-f aiff "$OUT/sample.aifc"
 
+# MPEG-2.5 (8 kHz) MP3: a 440 Hz tone, so a false frame sync inside the audio
+# would show.
+$FF -f lavfi -t 2 -i "sine=frequency=440:sample_rate=8000" -c:a libmp3lame -b:a 8k \
+	-metadata title="Test Title" "$OUT/sample_mpeg25.mp3"
+
 echo "Generated:"
 ls -l "$OUT"
