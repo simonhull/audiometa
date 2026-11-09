@@ -98,21 +98,3 @@ func TestExtractArtwork_PictureDataPastBlockIsNotRead(t *testing.T) {
 		t.Errorf("got %d artworks of %d bytes, want 0", len(art), len(art[0].Data))
 	}
 }
-
-func TestDecodePicture(t *testing.T) {
-	payload := picturePayload(3, "image/png", []byte{1, 2, 3})
-	payload = append(payload, 9, 9) // bytes after the data are ignored
-	got, err := decodePicture(payload)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.MIMEType != "image/png" || got.Type != types.ArtworkFrontCover || got.Width != 1 || got.Height != 1 ||
-		string(got.Data) != "\x01\x02\x03" || got.Description != "" {
-		t.Errorf("decodePicture = %+v", got)
-	}
-	for cut := range len(payload) - 2 { // every truncation before the end of the data fails
-		if _, err := decodePicture(payload[:cut]); err == nil {
-			t.Errorf("cut at %d: no error", cut)
-		}
-	}
-}

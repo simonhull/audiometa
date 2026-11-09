@@ -3,12 +3,11 @@ package ogg
 import (
 	"context"
 	"encoding/base64"
-	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 	"strings"
 
+	"github.com/simonhull/audiometa/internal/picture"
 	"github.com/simonhull/audiometa/internal/types"
 )
 
@@ -67,100 +66,12 @@ func (p *parser) ExtractArtwork(ctx context.Context, r io.ReaderAt, size int64, 
 	return artwork, nil
 }
 
-// parseMetadataBlockPicture decodes a METADATA_BLOCK_PICTURE value.
-//
-// The value is base64-encoded data containing a FLAC picture block:
-//   - 4 bytes: picture type (uint32 BE)
-//   - 4 bytes: MIME type length
-//   - N bytes: MIME type string
-//   - 4 bytes: description length
-//   - N bytes: description string (UTF-8)
-//   - 4 bytes: width
-//   - 4 bytes: height
-//   - 4 bytes: color depth
-//   - 4 bytes: colors used (0 for non-indexed)
-//   - 4 bytes: image data length
-//   - N bytes: image data
+// parseMetadataBlockPicture decodes a METADATA_BLOCK_PICTURE value: the base64 encoding of a
+// FLAC PICTURE block, decoded by [picture.Decode].
 func parseMetadataBlockPicture(base64Value string) (types.Artwork, error) {
-	// Decode base64
 	data, err := base64.StdEncoding.DecodeString(base64Value)
 	if err != nil {
 		return types.Artwork{}, fmt.Errorf("invalid base64: %w", err)
 	}
-
-	// Minimum size: 4 + 4 + 0 + 4 + 0 + 4 + 4 + 4 + 4 + 4 + 0 = 32 bytes
-	if len(data) < 32 {
-		return types.Artwork{}, fmt.Errorf("picture block too small: %d bytes", len(data))
-	}
-
-	offset := 0
-
-	// Read picture type (32-bit big-endian)
-	pictureType := binary.BigEndian.Uint32(data[offset:])
-	offset += 4
-
-	// Read MIME type length
-	mimeLength := binary.BigEndian.Uint32(data[offset:])
-	offset += 4
-
-	if offset+int(mimeLength) > len(data) {
-		return types.Artwork{}, errors.New("MIME type length exceeds data")
-	}
-
-	// Read MIME type
-	mimeType := string(data[offset : offset+int(mimeLength)])
-	offset += int(mimeLength)
-
-	// Read description length
-	if offset+4 > len(data) {
-		return types.Artwork{}, errors.New("unexpected end of data")
-	}
-	descLength := binary.BigEndian.Uint32(data[offset:])
-	offset += 4
-
-	if offset+int(descLength) > len(data) {
-		return types.Artwork{}, errors.New("description length exceeds data")
-	}
-
-	// Read description
-	description := string(data[offset : offset+int(descLength)])
-	offset += int(descLength)
-
-	// Read width, height (skip color depth and indexed colors)
-	if offset+16 > len(data) {
-		return types.Artwork{}, errors.New("unexpected end of data")
-	}
-	width := binary.BigEndian.Uint32(data[offset:])
-	offset += 4
-	height := binary.BigEndian.Uint32(data[offset:])
-	offset += 4
-
-	// Skip color depth and indexed colors
-	offset += 8
-
-	// Read picture data length
-	if offset+4 > len(data) {
-		return types.Artwork{}, errors.New("unexpected end of data")
-	}
-	dataLength := binary.BigEndian.Uint32(data[offset:])
-	offset += 4
-
-	if offset+int(dataLength) > len(data) {
-		return types.Artwork{}, errors.New("picture data length exceeds data")
-	}
-
-	// Read picture data
-	pictureData := data[offset : offset+int(dataLength)]
-
-	// Map FLAC picture type to types.ArtworkType
-	artType := types.ArtworkTypeFromPictureType(pictureType)
-
-	return types.Artwork{
-		Data:        pictureData,
-		MIMEType:    mimeType,
-		Type:        artType,
-		Description: description,
-		Width:       int(width),
-		Height:      int(height),
-	}, nil
+	return picture.Decode(data)
 }

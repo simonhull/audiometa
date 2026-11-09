@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/simonhull/audiometa/internal/binary"
+	"github.com/simonhull/audiometa/internal/picture"
 	"github.com/simonhull/audiometa/internal/registry"
 	"github.com/simonhull/audiometa/internal/replaygain"
 	"github.com/simonhull/audiometa/internal/trailer"
@@ -201,7 +202,7 @@ func (p *parser) ExtractArtwork(ctx context.Context, r io.ReaderAt, size int64, 
 		if err != nil {
 			continue
 		}
-		if pic, err := decodePicture(payload); err == nil {
+		if pic, err := picture.Decode(payload); err == nil {
 			artwork = append(artwork, pic)
 		}
 	}

@@ -3,15 +3,13 @@ package flac
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"slices"
-	"unicode/utf8"
 
 	binutil "github.com/simonhull/audiometa/internal/binary"
+	"github.com/simonhull/audiometa/internal/picture"
 	"github.com/simonhull/audiometa/internal/registry"
 	"github.com/simonhull/audiometa/internal/trailer"
 	"github.com/simonhull/audiometa/internal/types"
@@ -288,14 +286,17 @@ func (m *fmeta) applyArtwork(ops []types.ArtworkOp) error {
 	for _, op := range ops {
 		switch op.Kind {
 		case types.ArtworkOpAdd:
-			payload, err := encodePicture(op.Art)
+			if err := checkBlockLen(picture.EncodedLen(op.Art)); err != nil {
+				return fmt.Errorf("%w: PICTURE block", err)
+			}
+			payload, err := picture.Encode(op.Art)
 			if err != nil {
 				return err
 			}
 			m.blocks = slices.Insert(m.blocks, m.pictureIndex(), fblock{typ: blockTypePicture, payload: payload})
 		case types.ArtworkOpRemove:
 			m.blocks = slices.DeleteFunc(m.blocks, func(b fblock) bool {
-				return b.typ == blockTypePicture && types.ArtworkTypeFromPictureType(pictureType(b.payload)) == op.Type
+				return b.typ == blockTypePicture && types.ArtworkTypeFromPictureType(picture.Type(b.payload)) == op.Type
 			})
 		case types.ArtworkOpRemoveAll:
 			m.blocks = slices.DeleteFunc(m.blocks, func(b fblock) bool { return b.typ == blockTypePicture })
@@ -323,55 +324,6 @@ func (m *fmeta) lastIndex(match func(fblock) bool) int {
 		}
 	}
 	return -1
-}
-
-// pictureType returns a PICTURE payload's picture type: its first four bytes,
-// big-endian. A payload too short to hold one reads as 0 (Other).
-func pictureType(payload []byte) uint32 {
-	if len(payload) < 4 {
-		return 0
-	}
-	return binary.BigEndian.Uint32(payload)
-}
-
-// encodePicture builds a PICTURE payload: type, MIME, description, width,
-// height, depth (0), colors (0) and data, with big-endian 32-bit lengths.
-func encodePicture(a types.Artwork) ([]byte, error) {
-	for _, c := range []byte(a.MIMEType) {
-		if c < 0x20 || c > 0x7E {
-			return nil, fmt.Errorf("%w: MIME type %q is not printable ASCII", types.ErrUnsupportedWrite, a.MIMEType)
-		}
-	}
-	if a.Type < types.ArtworkOther || a.Type > types.ArtworkPublisherLogotype {
-		return nil, fmt.Errorf("%w: picture type %d", types.ErrUnsupportedWrite, a.Type)
-	}
-	if !utf8.ValidString(a.Description) {
-		return nil, fmt.Errorf("%w: artwork description is not valid UTF-8", types.ErrUnsupportedWrite)
-	}
-	if err := checkBlockLen(32 + len(a.MIMEType) + len(a.Description) + len(a.Data)); err != nil {
-		return nil, fmt.Errorf("%w: PICTURE block", err)
-	}
-	out := make([]byte, 0, 32+len(a.MIMEType)+len(a.Description)+len(a.Data))
-	out = binary.BigEndian.AppendUint32(out, uint32(a.Type))
-	out = appendBytes(out, []byte(a.MIMEType))
-	out = appendBytes(out, []byte(a.Description))
-	out = binary.BigEndian.AppendUint32(out, dimension(a.Width))
-	out = binary.BigEndian.AppendUint32(out, dimension(a.Height))
-	out = binary.BigEndian.AppendUint32(out, 0) // color depth: unknown
-	out = binary.BigEndian.AppendUint32(out, 0) // colors used: not indexed
-	return appendBytes(out, a.Data), nil
-}
-
-// appendBytes appends b preceded by its big-endian 32-bit length. Callers
-// bound len(b) by maxBlockLen first.
-func appendBytes(out, b []byte) []byte {
-	out = binary.BigEndian.AppendUint32(out, uint32(len(b))) //nolint:gosec // G115: callers bound len(b) by maxBlockLen
-	return append(out, b...)
-}
-
-// dimension clamps an image dimension to the uint32 range (negative is 0).
-func dimension(n int) uint32 {
-	return uint32(min(max(int64(n), 0), math.MaxUint32))
 }
 
 // serialize encodes the blocks (without the "fLaC" marker), applying the
