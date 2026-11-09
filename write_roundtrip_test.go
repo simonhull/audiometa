@@ -410,6 +410,18 @@ func openFile(t *testing.T, path string) *audiometa.File {
 	return f
 }
 
+// tagsOf returns a copy of path's tags and closes the file again, so a
+// following Write can replace it (Windows refuses to rename over an open file).
+func tagsOf(t *testing.T, path string) *audiometa.Tags {
+	t.Helper()
+	f, err := audiometa.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	return f.Tags.Clone()
+}
+
 func TestWriteRoundTrip_Corpus(t *testing.T) {
 	for _, tc := range roundTripCorpus {
 		t.Run(filepath.Base(tc.path), func(t *testing.T) {
@@ -902,7 +914,13 @@ func TestWrite_InPlaceRealWriters(t *testing.T) {
 		t.Run(filepath.Base(tc.path), func(t *testing.T) {
 			path := writeTempCopy(t, tc.path)
 			src := readTestdata(t, path)
-			before, err := os.Stat(path)
+			// Stat the open handle: on Windows only a handle stat carries the file's identity.
+			held, err := os.Open(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			before, err := held.Stat()
+			_ = held.Close()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1060,7 +1078,7 @@ func TestWrite_FLACTotalTracksFirst(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if got := openFile(t, file).Tags.TrackTotal; got != 7 {
+	if got := tagsOf(t, file).TrackTotal; got != 7 {
 		t.Fatalf("TrackTotal = %d, want 7 (TRACKTOTAL outranks TOTALTRACKS)", got)
 	}
 	if err := audiometa.Write(file, func(f *audiometa.File) error {
@@ -1069,7 +1087,7 @@ func TestWrite_FLACTotalTracksFirst(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if got := openFile(t, file).Tags.TrackTotal; got != 12 {
+	if got := tagsOf(t, file).TrackTotal; got != 12 {
 		t.Errorf("TrackTotal after Set = %d, want 12", got)
 	}
 }

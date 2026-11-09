@@ -162,7 +162,12 @@ func TestAudioDigest_NoDigester(t *testing.T) { //nolint:paralleltest // swaps l
 
 func digestFile(t *testing.T, path string) [sha256.Size]byte {
 	t.Helper()
-	sum, err := openSample(t, path).AudioDigest()
+	f, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	sum, err := f.AudioDigest()
 	if err != nil {
 		t.Fatalf("AudioDigest(%s): %v", path, err)
 	}
