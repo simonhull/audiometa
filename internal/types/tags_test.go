@@ -688,6 +688,18 @@ func TestDelete_MultipleAndMissingKeys(t *testing.T) {
 	}
 }
 
+func TestSet_VorbisTrackNumberSyncsSuffixTotal(t *testing.T) {
+	tags := boundTags(FormatFLAC)
+	tags.Set("TRACKNUMBER", "3/12")
+	if tags.TrackNumber != 3 || tags.TrackTotal != 12 {
+		t.Fatalf("after Set: %d/%d, want 3/12", tags.TrackNumber, tags.TrackTotal)
+	}
+	tags.Set("TRACKNUMBER", "4")
+	if tags.TrackNumber != 4 || tags.TrackTotal != 0 {
+		t.Errorf("after Set without total: %d/%d, want 4/0", tags.TrackNumber, tags.TrackTotal)
+	}
+}
+
 func TestDelete_ReDerivesFromRemainingKey(t *testing.T) {
 	tags := boundTags(FormatFLAC)
 	tags.Set("SERIES", "A")

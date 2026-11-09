@@ -66,16 +66,24 @@ func ParseComment(comment string, file *types.File) error { //nolint:gocyclo // 
 	case "ORIGINALDATE":
 		setFirst(&tags.OriginalDate, value)
 	case "TRACKNUMBER":
+		number, total, _ := strings.Cut(value, "/")
 		if tags.TrackNumber == 0 {
-			_, _ = fmt.Sscanf(value, "%d", &tags.TrackNumber)
+			_, _ = fmt.Sscanf(number, "%d", &tags.TrackNumber)
+		}
+		if tags.TrackTotal == 0 {
+			_, _ = fmt.Sscanf(total, "%d", &tags.TrackTotal)
 		}
 	case "TRACKTOTAL", "TOTALTRACKS":
 		if tags.TrackTotal == 0 {
 			_, _ = fmt.Sscanf(value, "%d", &tags.TrackTotal)
 		}
 	case "DISCNUMBER":
+		number, total, _ := strings.Cut(value, "/")
 		if tags.DiscNumber == 0 {
-			_, _ = fmt.Sscanf(value, "%d", &tags.DiscNumber)
+			_, _ = fmt.Sscanf(number, "%d", &tags.DiscNumber)
+		}
+		if tags.DiscTotal == 0 {
+			_, _ = fmt.Sscanf(total, "%d", &tags.DiscTotal)
 		}
 	case "DISCTOTAL", "TOTALDISCS":
 		if tags.DiscTotal == 0 {

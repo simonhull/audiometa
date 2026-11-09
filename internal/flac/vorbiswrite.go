@@ -180,8 +180,13 @@ func isChapterKey(key string) bool {
 // applyField writes one typed-field edit. Setting writes the
 // highest-precedence bound key present in the block, or the field's first
 // bound key when none is; clearing deletes every bound key. No other key is
-// touched.
+// touched. The track and disc number and total fields go through
+// [vcomment.applyNumberField], because TRACKNUMBER and DISCNUMBER can also
+// hold the total.
 func (v *vcomment) applyField(e types.FieldEdit, edits *types.EditSet) error {
+	if keys, _, ok := numberKeysFor(e.Field); ok {
+		return v.applyNumberField(e, edits, keys)
+	}
 	var keys []string
 	for _, b := range types.FieldBindings(types.FormatFLAC) {
 		if b.Field == e.Field {
@@ -211,6 +216,99 @@ func (v *vcomment) applyField(e types.FieldEdit, edits *types.EditSet) error {
 		return nil
 	}
 	return v.applyKey(target, values)
+}
+
+// numberKeys describes where a track or disc number and total live.
+type numberKeys struct {
+	number string   // TRACKNUMBER or DISCNUMBER; may hold "N/Total"
+	totals []string // explicit total keys, in precedence order
+	final  func(*types.Tags) (number, total int)
+}
+
+var (
+	trackKeys = numberKeys{"TRACKNUMBER", []string{"TRACKTOTAL", "TOTALTRACKS"},
+		func(t *types.Tags) (int, int) { return t.TrackNumber, t.TrackTotal }}
+	discKeys = numberKeys{"DISCNUMBER", []string{"DISCTOTAL", "TOTALDISCS"},
+		func(t *types.Tags) (int, int) { return t.DiscNumber, t.DiscTotal }}
+)
+
+// numberKeysFor returns the keys of a track or disc field and whether f is
+// the total (rather than the number). ok is false for any other field.
+func numberKeysFor(f types.Field) (keys numberKeys, isTotal, ok bool) {
+	if f == types.FieldTrackNumber || f == types.FieldTrackTotal {
+		return trackKeys, f == types.FieldTrackTotal, true
+	}
+	if f == types.FieldDiscNumber || f == types.FieldDiscTotal {
+		return discKeys, f == types.FieldDiscTotal, true
+	}
+	return numberKeys{}, false, false
+}
+
+// applyNumberField writes a track or disc number or total edit.
+//
+// A file may store the total as a "/Total" suffix of TRACKNUMBER (resp.
+// DISCNUMBER) with no explicit total key; that is suffix mode, and both
+// fields rewrite the number key, so the total stays where the file kept it.
+// Otherwise the number goes to the number key and the total to the first
+// present explicit total key, or the first one when none is present. Clearing
+// a total deletes every explicit total key and strips a stale "/Total" suffix
+// from the number key; it never deletes the number.
+func (v *vcomment) applyNumberField(e types.FieldEdit, edits *types.EditSet, keys numberKeys) error {
+	_, isTotal, _ := numberKeysFor(e.Field)
+	number, total := keys.final(edits.Final)
+	edited := 0 // no values: the field is being cleared
+	if len(e.Values) > 0 {
+		edited, _ = strconv.Atoi(e.Values[0])
+	}
+	if isTotal {
+		total = edited
+	} else {
+		number = edited
+	}
+
+	var presentTotals []string
+	for _, k := range keys.totals {
+		if v.has(k) {
+			presentTotals = append(presentTotals, k)
+		}
+	}
+	old, _ := v.first(keys.number)
+	hasSuffix := strings.Contains(old, "/")
+
+	switch {
+	case hasSuffix && len(presentTotals) == 0:
+		return v.applyKey(keys.number, numberTotal(number, total))
+	case !isTotal:
+		return v.applyKey(keys.number, slices.Clone(e.Values))
+	case len(e.Values) > 0:
+		target := keys.totals[0]
+		if len(presentTotals) > 0 {
+			target = presentTotals[0]
+		}
+		return v.applyKey(target, slices.Clone(e.Values))
+	}
+	for _, k := range presentTotals {
+		if err := v.applyKey(k, nil); err != nil {
+			return err
+		}
+	}
+	if hasSuffix {
+		return v.applyKey(keys.number, numberTotal(number, 0))
+	}
+	return nil
+}
+
+// numberTotal encodes a "N/Total" value: "n", "n/t", or nil when both are 0.
+// internal/mp3 applies the same rule to TRCK and TPOS.
+func numberTotal(n, total int) []string {
+	switch {
+	case n == 0 && total == 0:
+		return nil
+	case total == 0:
+		return []string{strconv.Itoa(n)}
+	default:
+		return []string{strconv.Itoa(n) + "/" + strconv.Itoa(total)}
+	}
 }
 
 // fieldValues returns the values a field edit writes to key; nil deletes it.

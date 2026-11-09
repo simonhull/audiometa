@@ -367,3 +367,35 @@ func TestPrecedence_BeatsFileOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestParseComment_NumberWithTotal(t *testing.T) {
+	tests := []struct {
+		name     string
+		comments []string
+		track    [2]int // number, total
+		disc     [2]int
+	}{
+		{"slash totals", []string{"TRACKNUMBER=3/12", "DISCNUMBER=1/2"}, [2]int{3, 12}, [2]int{1, 2}},
+		{"explicit total after", []string{"TRACKNUMBER=3/12", "TRACKTOTAL=10"}, [2]int{3, 10}, [2]int{}},
+		{"explicit total before", []string{"TOTALTRACKS=10", "TRACKNUMBER=3/12"}, [2]int{3, 10}, [2]int{}},
+		{"no total", []string{"TRACKNUMBER=3"}, [2]int{3, 0}, [2]int{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var file types.File
+			for _, c := range tt.comments {
+				if err := ParseComment(c, &file); err != nil {
+					t.Fatal(err)
+				}
+			}
+			types.BindFormat(&file.Tags, types.FormatFLAC)
+			g := file.Tags
+			if got := [2]int{g.TrackNumber, g.TrackTotal}; got != tt.track {
+				t.Errorf("track = %v, want %v", got, tt.track)
+			}
+			if got := [2]int{g.DiscNumber, g.DiscTotal}; got != tt.disc {
+				t.Errorf("disc = %v, want %v", got, tt.disc)
+			}
+		})
+	}
+}
