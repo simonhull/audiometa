@@ -47,7 +47,8 @@ import (
 // description; the raw key USLT can be deleted but not set.
 type Tags struct {
 	raw                 map[string][]string
-	format              Format // bound by BindFormat; zero = unbound (Set touches raw only)
+	names               map[string]string // raw key → stored spelling, where it differs from the key
+	format              Format            // bound by BindFormat; zero = unbound (Set touches raw only)
 	MusicBrainzAlbumID  string
 	Narrator            string
 	AlbumArtist         string
@@ -117,12 +118,16 @@ func (t *Tags) All() iter.Seq2[string, []string] {
 //   - FLAC, Ogg Vorbis and Opus: the Vorbis comment field name, stored
 //     upper-cased, so look it up as "TITLE", not "title".
 //   - MP3: the ID3v2 frame ID ("TIT2"); TXXX frames use their upper-cased
-//     description.
+//     description, and UFID frames "UFID:" followed by their owner
+//     ("UFID:http://musicbrainz.org").
 //   - M4A/M4B: the ilst atom name ("\xa9nam" for ©nam); freeform (----)
 //     atoms use their upper-cased name.
 //
-// Lookups are exact-match. Get returns a copy of the values, or nil if the
-// key doesn't exist.
+// Lookups are exact-match on the raw key. Because TXXX descriptions and
+// freeform names are upper-cased into their keys, a tag stored as
+// "MusicBrainz Album Id" is found as "MUSICBRAINZ ALBUM ID" whatever its case
+// in the file; [Tags.Name] reports that case. Get returns a copy of the
+// values, or nil if the key doesn't exist.
 //
 // For standard fields, prefer accessing struct fields directly
 // (Title, Artist, etc.) as they provide format-agnostic access.
@@ -206,10 +211,56 @@ func (t *Tags) Set(key string, values ...string) {
 
 	if len(values) == 0 {
 		delete(t.raw, key)
+		delete(t.names, key)
 	} else {
 		t.raw[key] = slices.Clone(values)
 	}
 	t.syncKey(key)
+}
+
+// SetNamed sets the tag called name, whose raw key is name upper-cased: an ID3
+// TXXX description or an M4A freeform name, spelled the way the tag should be
+// stored when it is new. For example, SetNamed("MusicBrainz Album Id", id)
+// sets the raw key "MUSICBRAINZ ALBUM ID", and a TXXX frame or freeform item
+// written for it is named "MusicBrainz Album Id".
+//
+// The spelling applies only to a tag the Tags does not hold yet. A tag that
+// exists keeps its spelling: a file tagged "MUSICBRAINZ ALBUM ID" keeps that
+// name, and one tagged "MusicBrainz Album Id" keeps that one, so writing never
+// adds a second frame or item whose name differs only in case. Vorbis comment
+// field names are written as their raw key. Otherwise SetNamed behaves as
+// [Tags.Set] with the upper-cased key; empty values remove the tag.
+func (t *Tags) SetNamed(name string, values ...string) {
+	key := strings.ToUpper(name)
+	created := len(values) > 0 && t.raw[key] == nil
+	t.Set(key, values...)
+	if created {
+		t.setName(key, name)
+	}
+}
+
+// Name returns the name of the tag held under raw key as it is spelled in the
+// file, or as [Tags.SetNamed] spelled a new one: "MusicBrainz Album Id" for the
+// key "MUSICBRAINZ ALBUM ID" of a file Picard tagged. When several TXXX frames
+// or freeform items share the key, it is the first one's spelling. For any
+// other key, including one whose name is spelled as its key and one that is
+// not present, Name returns key.
+func (t *Tags) Name(key string) string {
+	if name, ok := t.names[key]; ok {
+		return name
+	}
+	return key
+}
+
+// setName records name as the spelling of key, unless it is spelled as key.
+func (t *Tags) setName(key, name string) {
+	if name == key {
+		return
+	}
+	if t.names == nil {
+		t.names = make(map[string]string)
+	}
+	t.names[key] = name
 }
 
 // Delete removes the raw tags with the given format-native keys (see Get).
@@ -229,6 +280,7 @@ func (t *Tags) Delete(keys ...string) {
 			continue
 		}
 		delete(t.raw, key)
+		delete(t.names, key)
 		t.syncKey(key)
 	}
 }
@@ -288,6 +340,18 @@ func (t *Tags) AddRaw(key, value string) {
 		t.raw = make(map[string][]string)
 	}
 	t.raw[key] = append(t.raw[key], value)
+}
+
+// AddRawNamed is [Tags.AddRaw] for a tag found under name, a TXXX description
+// or freeform name whose raw key is name upper-cased. The first name recorded
+// for a key is the spelling [Tags.Name] reports; format parsers use it to keep
+// the spelling a file has.
+func (t *Tags) AddRawNamed(name, value string) {
+	key := strings.ToUpper(name)
+	if t.raw[key] == nil {
+		t.setName(key, name)
+	}
+	t.AddRaw(key, value)
 }
 
 // Merge merges tags from another Tags object.
@@ -413,6 +477,10 @@ func (t *Tags) Merge(other *Tags) { //nolint:gocyclo // Merging requires checkin
 	}
 	for key, values := range other.raw {
 		t.raw[key] = slices.Clone(values)
+		delete(t.names, key)
+		if name, ok := other.names[key]; ok {
+			t.setName(key, name)
+		}
 	}
 }
 
@@ -476,13 +544,15 @@ func (t *Tags) Clone() *Tags {
 			clone.raw[key] = slices.Clone(values)
 		}
 	}
+	clone.names = maps.Clone(t.names)
 
 	return clone
 }
 
 // Equal checks if two Tags are equal.
 //
-// Compares all standard fields and raw tags for equality.
+// Compares all standard fields, raw tags and the spelling of their names
+// ([Tags.Name]) for equality.
 //
 // Example:
 //
@@ -540,8 +610,8 @@ func (t *Tags) Equal(other *Tags) bool { //nolint:gocyclo // Equality check requ
 		return false
 	}
 
-	// Compare raw tags (uses maps.Equal from Go 1.21+)
-	return maps.EqualFunc(t.raw, other.raw, slices.Equal)
+	// Compare raw tags and the spelling of their names.
+	return maps.EqualFunc(t.raw, other.raw, slices.Equal) && maps.Equal(t.names, other.names)
 }
 
 // Filter returns an iterator over tags matching a predicate.

@@ -75,6 +75,37 @@ var longComment = strings.Repeat("0123456789abcdef", 256) // 4096 characters
 
 var roundTripEdits = []tagEdit{
 	{
+		name: "set MusicBrainz IDs as Picard names them",
+		apply: func(f *audiometa.File) error {
+			f.Tags.SetNamed("MusicBrainz Album Id", "f3c0fd5e-ba3e-4a2c-8fd3-6e4a6f0c1b2d")
+			if f.Format == audiometa.FormatM4A || f.Format == audiometa.FormatM4B {
+				f.Tags.SetNamed("MusicBrainz Track Id", "8f3471b5-7e6a-48da-86a9-c1c07a0f47ae")
+			} else {
+				f.Tags.Set("UFID:http://musicbrainz.org", "8f3471b5-7e6a-48da-86a9-c1c07a0f47ae")
+			}
+			return nil
+		},
+		formats: []audiometa.Format{audiometa.FormatMP3, audiometa.FormatM4A, audiometa.FormatM4B, audiometa.FormatWAV, audiometa.FormatAIFF},
+		check: func(t *testing.T, f *audiometa.File) {
+			if got := f.Tags.GetFirst("MUSICBRAINZ ALBUM ID"); got != "f3c0fd5e-ba3e-4a2c-8fd3-6e4a6f0c1b2d" {
+				t.Errorf("album ID = %q", got)
+			}
+			if got := f.Tags.Name("MUSICBRAINZ ALBUM ID"); got != "MusicBrainz Album Id" {
+				t.Errorf("album ID name = %q, want MusicBrainz Album Id", got)
+			}
+			recording := "UFID:http://musicbrainz.org"
+			if f.Format == audiometa.FormatM4A || f.Format == audiometa.FormatM4B {
+				recording = "MUSICBRAINZ TRACK ID"
+				if got := f.Tags.Name(recording); got != "MusicBrainz Track Id" {
+					t.Errorf("recording ID name = %q, want MusicBrainz Track Id", got)
+				}
+			}
+			if got := f.Tags.GetFirst(recording); got != "8f3471b5-7e6a-48da-86a9-c1c07a0f47ae" {
+				t.Errorf("%s = %q", recording, got)
+			}
+		},
+	},
+	{
 		name:    "set REPLAYGAIN_TRACK_GAIN",
 		apply:   func(f *audiometa.File) error { f.Tags.Set("REPLAYGAIN_TRACK_GAIN", "-6.00 dB"); return nil },
 		formats: []audiometa.Format{audiometa.FormatMP3, audiometa.FormatFLAC, audiometa.FormatM4A, audiometa.FormatM4B, audiometa.FormatWAV, audiometa.FormatAIFF},

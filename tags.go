@@ -24,12 +24,17 @@ import (
 //   - FLAC, Ogg Vorbis and Opus: the Vorbis comment field name, upper-cased
 //     ("TITLE", "ENCODER").
 //   - MP3: the ID3v2 frame ID ("TIT2", "TSSE"); TXXX frames are stored under
-//     their upper-cased description.
+//     their upper-cased description, and UFID frames under "UFID:" and their
+//     owner ("UFID:http://musicbrainz.org").
 //   - WAV and AIFF: the ID3v2 frame ID, as for MP3, and the ID of a native
 //     text tag: a WAV LIST/INFO subchunk ("INAM", "ISFT") or an AIFF text
 //     chunk ("NAME", "AUTH", "(c) ", "ANNO").
 //   - M4A/M4B: the ilst atom name ("\xa9nam" for ©nam, "aART"); freeform
 //     (----) atoms are stored under their upper-cased name.
+//
+// A TXXX description or freeform name keeps its spelling: Tags.Name reports
+// it ("MusicBrainz Album Id" for the key "MUSICBRAINZ ALBUM ID"), writing a
+// tag that exists keeps it, and Tags.SetNamed spells a new one.
 //
 // Every field and method is documented on the aliased type, [types.Tags].
 type Tags = types.Tags

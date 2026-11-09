@@ -37,6 +37,9 @@ type wtag struct {
 	oldTotal   int64 // on-disk size of the source tag (header, body and footer); 0 when untagged
 	inVersion  byte  // source ID3v2 major version; 0 when untagged
 	outVersion byte  // 3 or 4
+	// final is the caller's tags, which spell the name of a new TXXX frame
+	// ([types.Tags.Name]); nil until apply.
+	final *types.Tags
 }
 
 // v22ToV24 maps ID3v2.2 frame IDs to their ID3v2.4 equivalents. Frames not

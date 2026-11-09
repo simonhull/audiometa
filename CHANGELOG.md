@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented here.
 
+## Unreleased
+
+This release changes the API and is a minor version: v0.14.0.
+
+### Added
+
+- `Tags.Name` reports how a TXXX description or M4A freeform name is spelled in the file: `MusicBrainz Album Id` for the raw key `MUSICBRAINZ ALBUM ID` of a file MusicBrainz Picard tagged. Raw keys stay upper-cased, so every lookup that works today still does.
+- `Tags.SetNamed` sets a tag by its name and spells a new TXXX frame or freeform item that way, so `SetNamed("MusicBrainz Album Id", id)` writes the mixed-case names Picard writes, which some readers (beets' MP4 freeform lookup among them) match case-sensitively. A tag that exists keeps its spelling. `Tags.AddRawNamed` is its counterpart for parsers.
+- MP3, WAV and AIFF: `UFID` frames are read and written under the raw key `UFID:<owner>`, so the MusicBrainz recording ID is `UFID:http://musicbrainz.org`, where Picard stores it. A UFID whose identifier is not text is kept but not reported. Writing takes one identifier of 1 to 64 bytes and a printable ASCII owner, replaces that owner's frame in place and leaves other owners' frames alone. ID3v2.2 `UFI` frames are read too.
+
+### Changed
+
+- Writing a raw key whose TXXX frames or freeform items differ only in case (`MUSICBRAINZ ALBUM ID` and `MusicBrainz Album Id`) makes them one frame or item, named as the first in the file and put where it was. It already did; it is now documented and tested.
+- `Tags.Equal` compares how names are spelled, and `Tags.Clone` and `Tags.Merge` carry the spelling.
+- MP3: the raw key `UFID:<owner>` writes a UFID frame. It used to write a TXXX frame of that description, which reads back under its upper-cased key.
+
 ## v0.13.0 — 2026-11-08
 
 ### Added
