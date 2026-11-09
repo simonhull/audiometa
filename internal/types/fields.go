@@ -187,7 +187,7 @@ func intField(t *Tags, f Field) *int {
 // fieldValues returns field f of t in a uniform encoding: nil when the field
 // is empty or zero, a one-element slice for string and int fields, and a copy
 // of the values for slice fields.
-func fieldValues(t *Tags, f Field) []string {
+func fieldValues(t *Tags, f Field) []string { //nolint:revive // confusing-naming: FieldValues (fieldplan.go) plans one edit, this reads a Tags
 	if p := stringField(t, f); p != nil {
 		if *p == "" {
 			return nil

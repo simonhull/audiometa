@@ -122,19 +122,10 @@ func (v *vcomment) applyField(e types.FieldEdit, edits *types.EditSet) error {
 	if len(keys) == 0 {
 		return fmt.Errorf("%w: %s cannot be written to FLAC", types.ErrUnsupportedWrite, e.Field)
 	}
-	target := keys[0]
-	var present []string
-	for _, k := range keys {
-		if v.has(k) {
-			present = append(present, k)
-		}
-	}
-	if len(present) > 0 {
-		target = present[0]
-	}
-	values := v.fieldValues(e, target, edits)
+	target := types.FieldTargets(types.FormatFLAC, e, edits, keys[0], true)[0]
+	values := types.FieldValues(e, target, edits)
 	if len(values) == 0 {
-		for _, k := range present {
+		for _, k := range types.FieldTargets(types.FormatFLAC, e, edits, keys[0], false) {
 			if err := v.applyKey(k, nil); err != nil {
 				return err
 			}
@@ -235,53 +226,4 @@ func numberTotal(n, total int) []string {
 	default:
 		return []string{strconv.Itoa(n) + "/" + strconv.Itoa(total)}
 	}
-}
-
-// fieldValues returns the values a field edit writes to key; nil deletes it.
-func (v *vcomment) fieldValues(e types.FieldEdit, key string, edits *types.EditSet) []string {
-	if e.Field == types.FieldYear {
-		if len(e.Values) == 0 {
-			return nil
-		}
-		year, err := strconv.Atoi(e.Values[0])
-		if err != nil || year == 0 {
-			return nil
-		}
-		old, _ := v.first(key)
-		return []string{yearValue(year, old)}
-	}
-	if e.Field == types.FieldArtists {
-		return slices.Clone(edits.Final.Artists)
-	}
-	if e.Field == types.FieldArtist {
-		if edits.Final.Artist == "" {
-			return nil
-		}
-		values := []string{edits.Final.Artist}
-		if len(edits.Orig.Artists) > 1 {
-			values = append(values, edits.Orig.Artists[1:]...)
-		}
-		return values
-	}
-	return slices.Clone(e.Values)
-}
-
-// yearValue writes year into the existing date old: a longer date such as
-// "2021-05-03" keeps everything after its 4-digit year.
-func yearValue(year int, old string) string {
-	y := fmt.Sprintf("%04d", year)
-	if len(old) > 4 && isDigits(old[:4]) {
-		return y + old[4:]
-	}
-	return y
-}
-
-// isDigits reports whether s is all ASCII digits.
-func isDigits(s string) bool {
-	for _, c := range []byte(s) {
-		if c < '0' || c > '9' {
-			return false
-		}
-	}
-	return true
 }

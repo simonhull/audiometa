@@ -17,6 +17,7 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- MP3 and M4A: clearing a typed field in the same write that also sets one of its lower-precedence raw keys (for example clearing `Language` while setting the raw key `LANG` on a file that has `LANGUAGE`) now removes that key too, as FLAC already did; the field used to come back from that key on the next read.
 - Ogg: on 32-bit platforms, a `METADATA_BLOCK_PICTURE` with a length field close to 4 GiB made `ExtractArtwork` fail with a `*CorruptedFileError`; such a picture is now skipped like any other malformed one.
 - Ogg Vorbis and Opus: on 32-bit platforms, a comment header whose vendor or comment length is close to 4 GiB made `Open` fail with a `*CorruptedFileError` (a recovered panic). It is now reported as a truncated comment header, as on 64-bit platforms.
 - M4A: Apple Lossless and FLAC-in-MP4 files report `Lossless`, their `BitDepth`, channels and true sample rate, read from the codec's configuration box. A 96 kHz ALAC file used to report 48000 Hz, 0 bits and lossy. Sample rates above 65535 Hz on other codecs come from the track's media header, since the sample entry cannot hold them.

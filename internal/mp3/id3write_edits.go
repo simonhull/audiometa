@@ -438,24 +438,7 @@ func (t *wtag) fieldTargetKeys(e types.FieldEdit, edits *types.EditSet) ([]strin
 	if !ok {
 		return nil, fmt.Errorf("%w: %s cannot be written to MP3", types.ErrUnsupportedWrite, e.Field)
 	}
-	var present []string
-	for _, b := range types.FieldBindings(types.FormatMP3) {
-		if b.Field != e.Field {
-			continue
-		}
-		for _, k := range b.Keys {
-			if edits.Orig.Get(k) != nil {
-				present = append(present, k)
-			}
-		}
-	}
-	if !isSetting(e, edits) {
-		return present, nil
-	}
-	if len(present) > 0 {
-		return present[:1], nil
-	}
-	return []string{canonical}, nil
+	return types.FieldTargets(types.FormatMP3, e, edits, canonical, isSetting(e, edits)), nil
 }
 
 // isSetting reports whether a field edit leaves a value to write. Track and
@@ -481,57 +464,19 @@ func isDiscField(f types.Field) bool {
 	return f == types.FieldDiscNumber || f == types.FieldDiscTotal
 }
 
-// fieldKeyValues returns the values a field edit writes to key; nil deletes it.
+// fieldKeyValues returns the values a field edit writes to key; nil deletes it. A track or
+// disc edit writes the number and total together; every other field goes through
+// [types.FieldValues].
 func fieldKeyValues(e types.FieldEdit, key string, edits *types.EditSet) []string {
 	final := edits.Final
 	switch {
-	case e.Field == types.FieldYear:
-		if len(e.Values) == 0 {
-			return nil
-		}
-		year, err := strconv.Atoi(e.Values[0])
-		if err != nil || year == 0 {
-			return nil
-		}
-		return []string{yearValue(year, edits.Orig.GetFirst(key))}
 	case isTrackField(e.Field):
 		return numberTotal(final.TrackNumber, final.TrackTotal)
 	case isDiscField(e.Field):
 		return numberTotal(final.DiscNumber, final.DiscTotal)
-	case e.Field == types.FieldArtists:
-		return slices.Clone(final.Artists)
-	case e.Field == types.FieldArtist:
-		if final.Artist == "" {
-			return nil
-		}
-		values := []string{final.Artist}
-		if len(edits.Orig.Artists) > 1 {
-			values = append(values, edits.Orig.Artists[1:]...)
-		}
-		return values
 	default:
-		return slices.Clone(e.Values)
+		return types.FieldValues(e, key, edits)
 	}
-}
-
-// yearValue writes year into the existing value old: a longer date such as
-// "2021-05-03" keeps everything after its 4-digit year.
-func yearValue(year int, old string) string {
-	y := fmt.Sprintf("%04d", year)
-	if len(old) > 4 && isDigits(old[:4]) {
-		return y + old[4:]
-	}
-	return y
-}
-
-// isDigits reports whether s is all ASCII digits.
-func isDigits(s string) bool {
-	for _, c := range []byte(s) {
-		if c < '0' || c > '9' {
-			return false
-		}
-	}
-	return true
 }
 
 // numberTotal encodes a TRCK/TPOS value: "n", "n/t", or nil when both are 0.
