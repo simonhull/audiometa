@@ -27,7 +27,7 @@ func parseVorbisIdentification(data []byte, file *types.File) error {
 	}
 
 	// Verify "vorbis" magic marker
-	if string(data[1:7]) != codecVorbis {
+	if string(data[1:7]) != vorbisMagic {
 		return fmt.Errorf("invalid vorbis magic: %q", string(data[1:7]))
 	}
 
@@ -81,7 +81,7 @@ func parseVorbisComment(ctx context.Context, data []byte, file *types.File) erro
 	}
 
 	// Verify "vorbis" magic marker
-	if string(data[1:7]) != codecVorbis {
+	if string(data[1:7]) != vorbisMagic {
 		return fmt.Errorf("invalid vorbis magic: %q", string(data[1:7]))
 	}
 

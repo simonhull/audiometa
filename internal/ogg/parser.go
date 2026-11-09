@@ -13,17 +13,13 @@ import (
 	"github.com/simonhull/audiometa/internal/types"
 )
 
-const (
-	codecVorbis  = "vorbis"
-	codecOpus    = "opus"
-	containerOgg = "Ogg"
-)
+const containerOgg = "Ogg"
 
-// parser implements the audiometa.FormatParser interface for Ogg Vorbis files.
+// parser implements the audiometa.FormatParser interface for Ogg Vorbis and Opus files.
 type parser struct{}
 
-// Parse parses an Ogg Vorbis file and extracts metadata.
-func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path string) (*types.File, error) { //nolint:gocyclo // Multiple codec types and error handling require branching
+// Parse parses an Ogg Vorbis or Opus file and extracts metadata.
+func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path string) (*types.File, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -68,61 +64,20 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		return nil, fmt.Errorf("not enough packets found (need at least 2, got %d)", len(packets))
 	}
 
-	// Detect codec (Vorbis or Opus) from first packet
-	codec := detectOggCodec(packets[0])
+	c := detectCodec(packets[0])
+	if c == nil {
+		return nil, errUnknownCodec
+	}
+	file.Format = c.format
 
-	switch codec {
-	case codecVorbis:
-		file.Format = types.FormatOgg
-		// Parse Vorbis identification header (packet 0)
-		if err := parseVorbisIdentification(packets[0], file); err != nil {
-			return nil, fmt.Errorf("failed to parse Vorbis identification header: %w", err)
-		}
+	if err := c.parseID(packets[0], file); err != nil {
+		return nil, fmt.Errorf("failed to parse %s: %w", c.idName, err)
+	}
 
-		// Duration first: the comment parser derives the last chapter's end time from it.
-		// Calculate duration from the first stream's last granule position
-		if file.Audio.SampleRate > 0 {
-			duration, err := calculateDuration(ctx, sr, size, h, file.Audio.SampleRate)
-			if err != nil {
-				// Non-fatal - add warning
-				file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-					Stage:   types.StageTechnical,
-					Message: fmt.Sprintf("failed to calculate duration: %v", err),
-					Err:     err,
-				})
-			} else {
-				file.Audio.Duration = duration
-			}
-		}
-
-		// An unset nominal bitrate leaves the estimate from the audio pages.
-		if file.Audio.Bitrate == 0 {
-			file.Audio.Bitrate = types.AverageBitrate(audioBytes(h, size), file.Audio.Duration)
-		}
-
-		// Parse Vorbis comment header (packet 1)
-		if err := parseVorbisComment(ctx, packets[1], file); err != nil {
-			if ctxErr := ctx.Err(); ctxErr != nil {
-				return nil, ctxErr
-			}
-			// Non-fatal - add warning
-			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-				Stage:   types.StageMetadata,
-				Message: fmt.Sprintf("failed to parse Vorbis comment header: %v", err),
-				Err:     err,
-			})
-		}
-
-	case codecOpus:
-		file.Format = types.FormatOpus
-		// Parse OpusHead identification header (packet 0)
-		if err := parseOpusHead(packets[0], file); err != nil {
-			return nil, fmt.Errorf("failed to parse OpusHead header: %w", err)
-		}
-
-		// Duration first: the comment parser derives the last chapter's end time from it.
-		// Calculate duration (Opus always at 48kHz)
-		duration, err := calculateDuration(ctx, sr, size, h, 48000)
+	// Duration first: the comment parser derives the last chapter's end time from it.
+	// It comes from the last granule position and the sample rate the identification header gave.
+	if file.Audio.SampleRate > 0 {
+		duration, err := calculateDuration(ctx, sr, size, h, file.Audio.SampleRate)
 		if err != nil {
 			// Non-fatal - add warning
 			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
@@ -133,25 +88,23 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		} else {
 			file.Audio.Duration = duration
 		}
+	}
 
-		// Parse OpusTags comment header (packet 1)
-		if err := parseOpusTags(ctx, packets[1], file); err != nil {
-			if ctxErr := ctx.Err(); ctxErr != nil {
-				return nil, ctxErr
-			}
-			// Non-fatal - add warning
-			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-				Stage:   types.StageMetadata,
-				Message: fmt.Sprintf("failed to parse OpusTags header: %v", err),
-				Err:     err,
-			})
-		}
-
-		// Opus has no nominal bitrate in its header: estimate from the audio pages.
+	// An unset nominal bitrate (Opus has none) leaves the estimate from the audio pages.
+	if file.Audio.Bitrate == 0 {
 		file.Audio.Bitrate = types.AverageBitrate(audioBytes(h, size), file.Audio.Duration)
+	}
 
-	default:
-		return nil, fmt.Errorf("unknown or unsupported Ogg codec: %q", codec)
+	if err := c.parseComments(ctx, packets[1], file); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		// Non-fatal - add warning
+		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
+			Stage:   types.StageMetadata,
+			Message: fmt.Sprintf("failed to parse %s: %v", c.commentName, err),
+			Err:     err,
+		})
 	}
 
 	replaygain.Apply(file)
@@ -234,8 +187,8 @@ func readHeaderPackets(ctx context.Context, r io.ReaderAt, size int64, path stri
 		}
 		if i == 0 {
 			serial = page.SerialNumber
-			if n, ok := headerPacketCount(detectOggCodec(page.Data)); ok {
-				want = n
+			if c := detectCodec(page.Data); c != nil {
+				want = c.headerPackets
 			}
 		} else if page.SerialNumber != serial {
 			continue // another multiplexed stream
@@ -265,27 +218,6 @@ func audioBytes(h headers, size int64) int64 {
 		return 0
 	}
 	return size - h.audioStart
-}
-
-// detectOggCodec determines whether this is Vorbis or Opus
-// by examining the magic marker in the first packet.
-//
-// Returns:
-//   - "vorbis" for Ogg Vorbis files
-//   - "opus" for Ogg Opus files
-//   - "unknown" for unrecognized codecs
-func detectOggCodec(firstPacket []byte) string {
-	// Check for OpusHead (8 bytes)
-	if len(firstPacket) >= 8 && string(firstPacket[0:8]) == "OpusHead" {
-		return codecOpus
-	}
-
-	// Check for Vorbis (7 bytes: 0x01 + "vorbis")
-	if len(firstPacket) >= 7 && firstPacket[0] == 0x01 && string(firstPacket[1:7]) == codecVorbis {
-		return codecVorbis
-	}
-
-	return "unknown"
 }
 
 // calculateDuration returns the duration of the first logical stream, h.serial:
