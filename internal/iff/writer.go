@@ -364,6 +364,9 @@ func (rw *rewrite) pieces() ([]piece, int, error) {
 			b := make([]byte, chunkHeaderSize+8)
 			copyHeader(b, ch, rw.c.order)
 			pieces = append(pieces, piece{b: b}, piece{off: ch.data() + 8, n: ch.size - 8})
+			if ch.size%2 == 1 {
+				pieces = append(pieces, piece{b: []byte{0}})
+			}
 		default:
 			pieces = append(pieces, verbatim(ch)...)
 		}

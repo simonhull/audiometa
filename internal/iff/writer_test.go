@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -88,6 +89,26 @@ func TestWalk_DS64Table(t *testing.T) {
 	junk, ok := c.first("junk")
 	if !ok || junk.size != 3 || c.broken || len(c.warnings) > 0 {
 		t.Errorf("junk = %+v (found %v), broken %v, warnings %v; want size 3 from ds64", junk, ok, c.broken, c.warnings)
+	}
+}
+
+func TestWriteFile_OddDS64KeepsItsPad(t *testing.T) {
+	t.Parallel()
+	le := binary.LittleEndian
+	data := rf64(make([]byte, ds64MinSize+1), "fmt ", pcmFmt(le), "data", strings.Repeat("\x00", 1600))
+	out, err := rewriteWith(t, types.FormatWAV, data, func(tags *types.Tags) { tags.Title = "Odd" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := (&parser{format: types.FormatWAV}).Parse(t.Context(), bytes.NewReader(out), int64(len(out)), "out")
+	if err != nil {
+		t.Fatalf("output does not parse: %v", err)
+	}
+	if f.Tags.Title != "Odd" || f.Audio.Duration != 100*time.Millisecond || len(f.Warnings) > 0 {
+		t.Errorf("Title %q, Duration %v, Warnings %v", f.Tags.Title, f.Audio.Duration, f.Warnings)
+	}
+	if !bytes.Equal(preserved(t, types.FormatWAV, out), preserved(t, types.FormatWAV, data)) {
+		t.Error("preserved digest changed")
 	}
 }
 
