@@ -50,7 +50,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	}
 
 	// Find moov atom (movie container)
-	moovAtom, err := findAtom(ctx, sr, 0, size, "moov")
+	moovAtom, err := findTopAtom(ctx, sr, size, "moov")
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, ctxErr

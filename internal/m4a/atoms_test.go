@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"testing"
+	"time"
 
 	audiobinary "github.com/simonhull/audiometa/internal/binary"
 )
@@ -227,6 +228,78 @@ func TestReadAtomHeader_ExtendedSizeBeyondInt64(t *testing.T) {
 		if err == nil {
 			t.Fatalf("size %#x: got atom %+v, want error", size, atom)
 		}
+	}
+}
+
+func TestDecodeAtomHeader(t *testing.T) {
+	ext := func(size uint64) []byte { return binary.BigEndian.AppendUint64(append(u32be(1), "free"...), size) }
+	tests := []struct {
+		name     string
+		b        []byte
+		room     int64
+		zero     SizeZero
+		wantSize int64
+		wantHdr  int64
+		wantErr  bool
+	}{
+		{"plain", append(u32be(16), "free"...), 100, SizeZeroInvalid, 16, 8, false},
+		{"extended", ext(40), 100, SizeZeroInvalid, 40, 16, false},
+		{"zero at top level runs to the end", append(u32be(0), "mdat"...), 100, SizeZeroToEnd, 100, 8, false},
+		{"zero inside a container", append(u32be(0), "mdat"...), 100, SizeZeroInvalid, 0, 0, true},
+		{"smaller than its header", append(u32be(4), "free"...), 100, SizeZeroInvalid, 0, 0, true},
+		{"larger than the room", append(u32be(200), "free"...), 100, SizeZeroInvalid, 0, 0, true},
+		{"extended overflow", ext(^uint64(0)), 100, SizeZeroInvalid, 0, 0, true},
+		{"truncated header", []byte{0, 0, 0}, 100, SizeZeroInvalid, 0, 0, true},
+		{"truncated extended size", append(u32be(1), "free"...), 100, SizeZeroInvalid, 0, 0, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h, err := DecodeAtomHeader(tt.b, tt.room, tt.zero)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err != nil {
+				return
+			}
+			if h.Size != tt.wantSize || h.HeaderLen != tt.wantHdr || h.Type != string(tt.b[4:8]) {
+				t.Errorf("header = %+v, want size %d, header length %d, type %q", h, tt.wantSize, tt.wantHdr, tt.b[4:8])
+			}
+		})
+	}
+
+	t.Run("size errors carry the declared size", func(t *testing.T) {
+		for _, tc := range []struct {
+			b    []byte
+			want uint64
+		}{
+			{append(u32be(4), "free"...), 4},
+			{ext(^uint64(0)), ^uint64(0)},
+		} {
+			_, err := DecodeAtomHeader(tc.b, 100, SizeZeroInvalid)
+			var sizeErr *AtomSizeError
+			if !errors.As(err, &sizeErr) || sizeErr.Size != tc.want {
+				t.Errorf("err = %v, want an *AtomSizeError with size %d", err, tc.want)
+			}
+		}
+	})
+	t.Run("short input is errAtomHeaderTruncated", func(t *testing.T) {
+		if _, err := DecodeAtomHeader([]byte{0, 0, 0}, 100, SizeZeroInvalid); !errors.Is(err, errAtomHeaderTruncated) {
+			t.Errorf("err = %v, want errAtomHeaderTruncated", err)
+		}
+	})
+}
+
+func TestParse_TopLevelMoovWithSizeZeroRunsToEnd(t *testing.T) {
+	moov := createMockAtom("moov", createMvhdAtom(0, 1000, 10000))
+	copy(moov, u32be(0)) // the size field of the last top-level atom, as the format allows
+
+	file := parseBytes(t, append(m4bFtyp(), moov...))
+
+	if file.Audio.Duration != 10*time.Second {
+		t.Errorf("duration = %v, want 10s", file.Audio.Duration)
+	}
+	if len(file.Warnings) != 0 {
+		t.Errorf("warnings = %+v, want none", file.Warnings)
 	}
 }
 

@@ -23,7 +23,7 @@ func extractArtwork(ctx context.Context, sr *binary.SafeReader, size int64) ([]t
 	var artwork []types.Artwork
 
 	// Find moov atom (movie container)
-	moovAtom, err := findAtom(ctx, sr, 0, size, "moov")
+	moovAtom, err := findTopAtom(ctx, sr, size, "moov")
 	if errors.Is(err, errAtomNotFound) {
 		return nil, nil // no moov = no metadata = no artwork
 	}

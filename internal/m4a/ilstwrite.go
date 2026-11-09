@@ -537,21 +537,12 @@ func subAtoms(b []byte) ([]subAtom, bool) {
 	var out []subAtom
 	for off := 0; off < len(b); {
 		rest := b[off:]
-		if len(rest) < 8 {
+		h, err := DecodeAtomHeader(rest, int64(len(rest)), SizeZeroInvalid)
+		if err != nil {
 			return nil, false
 		}
-		size, hdr := uint64(binary.BigEndian.Uint32(rest)), uint64(8)
-		if size == 1 {
-			if len(rest) < 16 {
-				return nil, false
-			}
-			size, hdr = binary.BigEndian.Uint64(rest[8:]), 16
-		}
-		if size < hdr || size > uint64(len(rest)) {
-			return nil, false
-		}
-		out = append(out, subAtom{typ: string(rest[4:8]), raw: rest[:size], body: rest[hdr:size]})
-		off += int(size) //nolint:gosec // G115: size <= len(rest)
+		out = append(out, subAtom{typ: h.Type, raw: rest[:h.Size], body: rest[h.HeaderLen:h.Size]})
+		off += int(h.Size)
 	}
 	return out, true
 }

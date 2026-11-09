@@ -107,21 +107,13 @@ func parseAtoms(sr *binutil.SafeReader, b []byte, base int64, parent string, dep
 
 // parseAtom parses the atom at the start of b and returns it with its size.
 func parseAtom(sr *binutil.SafeReader, b []byte, at int64, parent string, depth int) (*matom, int, error) {
-	size, hdr := uint64(binary.BigEndian.Uint32(b)), 8
-	a := &matom{typ: string(b[4:8])}
-	switch size {
-	case 0:
-		return nil, 0, corrupted(sr, at, fmt.Sprintf("atom %q inside moov has size 0", a.typ))
-	case 1:
-		if len(b) < 16 {
-			return nil, 0, corrupted(sr, at, fmt.Sprintf("atom %q: truncated extended size", a.typ))
-		}
-		size, hdr, a.ext = binary.BigEndian.Uint64(b[8:16]), 16, true
+	h, err := DecodeAtomHeader(b, int64(len(b)), SizeZeroInvalid)
+	if err != nil {
+		return nil, 0, corrupted(sr, at, err.Error())
 	}
-	if size < uint64(hdr) || size > uint64(len(b)) {
-		return nil, 0, corrupted(sr, at, fmt.Sprintf("atom %q size %d exceeds its container (%d bytes remain)", a.typ, size, len(b)))
-	}
-	n := int(size) //nolint:gosec // G115: size <= len(b)
+	a := &matom{typ: h.Type, ext: h.HeaderLen == 16}
+	hdr := int(h.HeaderLen)
+	n := int(h.Size)
 	a.payload = b[hdr:n]
 	if parent == atomIlst || (!structuralContainers[a.typ] && !otherContainers[a.typ]) {
 		return a, n, nil
