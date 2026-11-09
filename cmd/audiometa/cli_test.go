@@ -422,3 +422,80 @@ func TestAtomsRealFile(t *testing.T) {
 		t.Fatalf("code=%d out=%q", code, out)
 	}
 }
+
+func TestArtworkForceReplacesSymlink(t *testing.T) {
+	root := t.TempDir()
+	victim := filepath.Join(root, "victim")
+	if err := os.WriteFile(victim, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(root, "out")
+	if err := os.Mkdir(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "sample.jpg")
+	if err := os.Symlink(victim, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if code, _, errs := runCLI(t, "artwork", "--force", "--out", dir, mp3Fixture); code != exitOK {
+		t.Fatalf("code=%d err=%q", code, errs)
+	}
+	if b, _ := os.ReadFile(victim); string(b) != "keep" {
+		t.Errorf("symlink target was overwritten: %q", b)
+	}
+	st, err := os.Lstat(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.Mode().IsRegular() {
+		t.Errorf("dest mode = %v, want a regular file", st.Mode())
+	}
+	if b, _ := os.ReadFile(link); !bytes.HasPrefix(b, []byte{0xFF, 0xD8}) {
+		t.Errorf("dest holds %d bytes, want the JPEG", len(b))
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 1 {
+		t.Errorf("out dir holds %v, want only sample.jpg (no temp file left)", entries)
+	}
+}
+
+func TestArtworkForceRefusesDirectory(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "sample.jpg"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, errs := runCLI(t, "artwork", "--force", "--out", dir, mp3Fixture); code != exitFail || errs == "" {
+		t.Fatalf("code=%d err=%q, want a failure", code, errs)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 1 {
+		t.Errorf("out dir holds %v, want only the directory (no temp file left)", entries)
+	}
+}
+
+func TestArtworkNameCollision(t *testing.T) {
+	root := t.TempDir()
+	data, err := os.ReadFile(mp3Fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var inputs []string
+	for _, sub := range []string{"a", "b"} {
+		p := filepath.Join(root, sub, "song.mp3")
+		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		inputs = append(inputs, p)
+	}
+	for _, force := range []bool{false, true} {
+		args := []string{"artwork", "--out", filepath.Join(root, fmt.Sprintf("out-%v", force))}
+		if force {
+			args = append(args, "--force")
+		}
+		code, out, errs := runCLI(t, append(args, inputs...)...)
+		if code != exitFail || strings.Count(out, "wrote") != 1 || !strings.Contains(errs, "already written from "+inputs[0]) {
+			t.Errorf("force=%v: code=%d out=%q err=%q; want the second input refused", force, code, out, errs)
+		}
+	}
+}

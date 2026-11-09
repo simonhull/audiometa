@@ -70,8 +70,9 @@ func runArtwork(args []string, stdout, stderr io.Writer) int {
 	}
 	out := &printer{w: stdout}
 	code := exitOK
+	written := map[string]string{}
 	for _, path := range fs.Args() {
-		if err := extractArtwork(path, *outDir, *force, out); err != nil {
+		if err := extractArtwork(path, *outDir, *force, written, out); err != nil {
 			fmt.Fprintf(stderr, "%s: %v\n", path, err)
 			code = exitFail
 		}
@@ -83,7 +84,10 @@ func runArtwork(args []string, stdout, stderr io.Writer) int {
 	return code
 }
 
-func extractArtwork(path, dir string, force bool, out *printer) (err error) {
+// extractArtwork writes the pictures of the file at path into dir. written
+// maps the output names this run has used, case-folded, to the input that
+// used them; a second input wanting one is refused, even with force.
+func extractArtwork(path, dir string, force bool, written map[string]string, out *printer) (err error) {
 	f, err := audiometa.Open(path)
 	if err != nil {
 		return err
@@ -101,31 +105,53 @@ func extractArtwork(path, dir string, force bool, out *printer) (err error) {
 			name = fmt.Sprintf("%s_%d", base, i)
 		}
 		dest := filepath.Join(dir, name+artworkExt(img.MIMEType))
+		key := strings.ToLower(dest)
+		if prev, ok := written[key]; ok {
+			return fmt.Errorf("%s was already written from %s in this run; extract files with the same name into different directories", dest, prev)
+		}
 		if err := writeNew(dest, img.Data, force); err != nil {
 			return err
 		}
+		written[key] = path
 		out.printf("wrote %s (%s)\n", dest, cleanText(img.String()))
 	}
 	return nil
 }
 
 // writeNew writes data to dest, refusing to replace an existing file unless
-// force is set. Creation is exclusive so an existing symlink is never followed.
-func writeNew(dest string, data []byte, force bool) (err error) {
-	flags := os.O_WRONLY | os.O_CREATE
+// force is set. Without force, creation is exclusive, so nothing at dest is
+// followed or replaced. With force, data goes to a temporary file in the same
+// directory that is then renamed over dest: a symlink at dest is replaced, not
+// followed, and a directory at dest makes the rename fail.
+func writeNew(dest string, data []byte, force bool) error {
 	if force {
-		flags |= os.O_TRUNC
-	} else {
-		flags |= os.O_EXCL
+		return replaceFile(dest, data)
 	}
-	f, err := os.OpenFile(dest, flags, 0o600)
+	f, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		if errors.Is(err, os.ErrExist) {
 			return fmt.Errorf("%s exists (use --force to overwrite)", dest)
 		}
 		return err
 	}
-	defer func() { err = errors.Join(err, f.Close()) }()
 	_, err = f.Write(data)
-	return err
+	return errors.Join(err, f.Close())
+}
+
+// replaceFile writes data to a new file beside dest and renames it to dest.
+func replaceFile(dest string, data []byte) (err error) {
+	tmp, err := os.CreateTemp(filepath.Dir(dest), ".audiometa-artwork-*.tmp")
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, os.Remove(tmp.Name()))
+		}
+	}()
+	_, err = tmp.Write(data)
+	if err = errors.Join(err, tmp.Close()); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), dest)
 }

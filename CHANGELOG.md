@@ -11,6 +11,7 @@ All notable changes to this project are documented here.
 ### Fixed
 
 - Ogg: when a page does not continue the header packet the previous page left open, `AudioDigest` now ends that packet there, as `Open` already did. It used to count the next page's first packet as part of the headers and leave it out of the digest, so the digest of such a damaged file changes.
+- CLI: audiometa artwork --force no longer writes through a symlink at the destination. The image goes to a temporary file in the output directory that is renamed over the destination, so a link there is replaced and its target left alone. Two inputs whose pictures would get the same output name (a/song.mp3 and b/song.flac both make song.jpg) now fail for the second input instead of the second picture silently replacing the first under --force.
 
 ## v0.14.0 — 2026-11-08
 
