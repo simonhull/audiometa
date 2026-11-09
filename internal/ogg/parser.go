@@ -75,9 +75,9 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		}
 
 		// Duration first: the comment parser derives the last chapter's end time from it.
-		// Calculate duration from last page's granule position
+		// Calculate duration from the first stream's last granule position
 		if file.Audio.SampleRate > 0 {
-			duration, err := calculateDuration(sr, size, file.Audio.SampleRate)
+			duration, err := calculateDuration(ctx, sr, size, h, file.Audio.SampleRate)
 			if err != nil {
 				// Non-fatal - add warning
 				file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
@@ -114,7 +114,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 
 		// Duration first: the comment parser derives the last chapter's end time from it.
 		// Calculate duration (Opus always at 48kHz)
-		duration, err := calculateDuration(sr, size, 48000)
+		duration, err := calculateDuration(ctx, sr, size, h, 48000)
 		if err != nil {
 			// Non-fatal - add warning
 			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
@@ -163,6 +163,7 @@ const maxHeaderPages = 1 << 16
 // headers is what readHeaderPackets found at the start of the first logical stream.
 type headers struct {
 	packets    [][]byte
+	serial     uint32
 	audioStart int64 // offset of the page after the one ending the last header packet; 0 if not reached
 }
 
@@ -242,7 +243,7 @@ func readHeaderPackets(ctx context.Context, sr *binary.SafeReader, size int64, f
 	if len(pages) == 0 {
 		return headers{}, errors.New("no Ogg pages found")
 	}
-	return headers{packets: extractPackets(pages), audioStart: audioStart}, nil
+	return headers{packets: extractPackets(pages), serial: serial, audioStart: audioStart}, nil
 }
 
 // audioBytes estimates the bytes of audio pages: everything after the
@@ -275,14 +276,15 @@ func detectOggCodec(firstPacket []byte) string {
 	return "unknown"
 }
 
-// Duration = granule_position / sample_rate.
-func calculateDuration(sr *binary.SafeReader, fileSize int64, sampleRate int) (time.Duration, error) {
+// calculateDuration returns the duration of the first logical stream, h.serial:
+// its last granule position divided by sampleRate.
+func calculateDuration(ctx context.Context, sr *binary.SafeReader, fileSize int64, h headers, sampleRate int) (time.Duration, error) {
 	if sampleRate == 0 {
 		return 0, errors.New("sample rate is zero")
 	}
 
 	// Find last page's granule position
-	granule, err := findLastGranulePosition(sr, fileSize)
+	granule, err := lastGranule(ctx, sr, fileSize, h)
 	if err != nil {
 		return 0, err
 	}

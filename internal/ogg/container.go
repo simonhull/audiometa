@@ -2,12 +2,14 @@
 //
 // It walks Ogg pages, reassembles the identification and comment header
 // packets, reads Vorbis comments (including CHAPTER comments and
-// METADATA_BLOCK_PICTURE artwork) and derives duration from the last
-// granule position. It registers itself for [types.FormatOgg] and
-// [types.FormatOpus].
+// METADATA_BLOCK_PICTURE artwork) and derives duration from the last granule
+// position of the first logical stream. It registers itself for
+// [types.FormatOgg] and [types.FormatOpus].
 package ogg
 
 import (
+	"context"
+	ebinary "encoding/binary"
 	"errors"
 	"fmt"
 	"iter"
@@ -221,39 +223,90 @@ func plausiblePageAt(buf []byte, i int) bool {
 	return i+total <= len(buf)
 }
 
-// findLastGranulePosition searches backwards from the end of file
-// to find the last Ogg page's granule position.
-//
-// This is used to calculate the duration of the audio stream.
-func findLastGranulePosition(sr *binary.SafeReader, fileSize int64) (int64, error) {
-	// Search last 64KB for final page (typical max page size)
-	searchStart := max(fileSize-65536, 0)
+// tailSize is how much of the file's end lastGranule searches first; a page is
+// at most 65307 bytes.
+const tailSize = 65536
 
-	searchSize := fileSize - searchStart
-	buf := make([]byte, searchSize)
-	if err := sr.ReadAt(buf, searchStart, "search region"); err != nil {
+// pageHeader is the fixed part of an Ogg page header, without the payload.
+type pageHeader struct {
+	granule    int64
+	serial     uint32
+	headerType byte
+	next       int64 // offset of the following page
+}
+
+// readPageHeader reads the header and segment table of the page at off and
+// computes where the next page starts, without reading the payload.
+func readPageHeader(sr *binary.SafeReader, off int64) (pageHeader, error) {
+	var fixed [27]byte
+	if err := sr.ReadAt(fixed[:], off, "Ogg page header"); err != nil {
+		return pageHeader{}, err
+	}
+	if string(fixed[:4]) != capturePattern || fixed[4] != 0 {
+		return pageHeader{}, fmt.Errorf("invalid Ogg page at offset %d", off)
+	}
+	segments := make([]byte, fixed[26])
+	if err := sr.ReadAt(segments, off+int64(len(fixed)), "segment table"); err != nil {
+		return pageHeader{}, err
+	}
+	next := off + int64(len(fixed)) + int64(len(segments))
+	for _, s := range segments {
+		next += int64(s)
+	}
+	return pageHeader{
+		granule:    int64(ebinary.LittleEndian.Uint64(fixed[6:14])), //nolint:gosec // G115: RFC 3533 granule position is a signed field; all-ones (-1) means no packet ends on the page
+		serial:     ebinary.LittleEndian.Uint32(fixed[14:18]),
+		headerType: fixed[5],
+		next:       next,
+	}, nil
+}
+
+// lastGranule returns the granule position of the last page of the first
+// logical stream (h.serial) that has one set.
+//
+// It looks in the last 64 KiB of the file first. When the first stream ends
+// earlier, as in a chained or multiplexed file, it walks page headers forward
+// from the start of the stream's audio instead, stopping at the stream's
+// end-of-stream page. It returns an error if no page of the stream carries a
+// granule position, or the context's error if ctx is canceled.
+func lastGranule(ctx context.Context, sr *binary.SafeReader, size int64, h headers) (int64, error) {
+	tailStart := max(size-tailSize, 0)
+	buf := make([]byte, size-tailStart)
+	if err := sr.ReadAt(buf, tailStart, "search region"); err != nil {
 		return 0, err
 	}
 
-	// Find last "OggS" marker
-	lastOggPos := int64(-1)
 	// Payload bytes can contain "OggS", so only accept a plausible page header.
 	for i := len(buf) - 4; i >= 0; i-- {
-		if plausiblePageAt(buf, i) {
-			lastOggPos = searchStart + int64(i)
-			break
+		if !plausiblePageAt(buf, i) || ebinary.LittleEndian.Uint32(buf[i+14:]) != h.serial {
+			continue
+		}
+		if g := int64(ebinary.LittleEndian.Uint64(buf[i+6:])); g >= 0 { //nolint:gosec // G115: RFC 3533 granule position is a signed field; all-ones (-1) means no packet ends on the page
+			return g, nil
 		}
 	}
 
-	if lastOggPos < 0 {
-		return 0, errors.New("could not find last Ogg page")
+	var last int64 = -1
+	for i, off := 0, max(h.audioStart, 0); off < size; i++ {
+		if err := binary.Canceled(ctx, i); err != nil {
+			return 0, err
+		}
+		ph, err := readPageHeader(sr, off)
+		if err != nil {
+			break
+		}
+		if ph.serial == h.serial {
+			if ph.granule >= 0 {
+				last = ph.granule
+			}
+			if ph.headerType&pageEOS != 0 {
+				break
+			}
+		}
+		off = ph.next
 	}
-
-	// Read granule position from last page (at offset 6 from "OggS")
-	granule, err := sr.ReadLE[uint64](lastOggPos+6, "granule position")
-	if err != nil {
-		return 0, err
+	if last < 0 {
+		return 0, errors.New("could not find a granule position for the first Ogg stream")
 	}
-
-	return int64(granule), nil //nolint:gosec // G115: RFC 3533 granule position is a signed field; all-ones (-1) means no packet ends on the page
+	return last, nil
 }

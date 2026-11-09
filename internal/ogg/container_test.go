@@ -132,16 +132,72 @@ func TestFindLastGranuleIgnoresOggSInPayload(t *testing.T) {
 		pageSpec{headerType: 0x04, granule: 44100, serial: 1, lacing: lacingFor(len(fake)), data: fake},
 	)
 	sr := binutil.NewSafeReader(bytes.NewReader(data), int64(len(data)), "t.ogg")
-	got, err := findLastGranulePosition(sr, int64(len(data)))
+	h := headers{serial: 1}
+	got, err := lastGranule(context.Background(), sr, int64(len(data)), h)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got != 44100 {
 		t.Errorf("granule = %d, want 44100", got)
 	}
-	d, err := calculateDuration(sr, int64(len(data)), 44100)
+	d, err := calculateDuration(context.Background(), sr, int64(len(data)), h, 44100)
 	if err != nil || d != time.Second {
 		t.Errorf("duration = %v, %v", d, err)
+	}
+}
+
+func TestLastGranuleSkipsUnsetAndOtherStreams(t *testing.T) {
+	const unset = ^uint64(0)
+	data := buildOgg(
+		pageSpec{headerType: 0x02, serial: 1, lacing: []byte{4}, data: []byte("abcd")},
+		pageSpec{granule: 4 * 48000, serial: 1, lacing: []byte{4}, data: []byte("abcd")},
+		pageSpec{granule: 9 * 48000, serial: 2, lacing: []byte{4}, data: []byte("abcd")},
+		pageSpec{headerType: 0x04, granule: unset, serial: 1, lacing: []byte{4}, data: []byte("abcd")},
+		pageSpec{headerType: 0x04, granule: 9 * 48000, serial: 2, lacing: []byte{4}, data: []byte("abcd")},
+	)
+	sr := binutil.NewSafeReader(bytes.NewReader(data), int64(len(data)), "t.ogg")
+	got, err := lastGranule(context.Background(), sr, int64(len(data)), headers{serial: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != 4*48000 {
+		t.Errorf("granule = %d, want %d", got, 4*48000)
+	}
+	if _, err := lastGranule(context.Background(), sr, int64(len(data)), headers{serial: 3}); err == nil {
+		t.Error("lastGranule for an absent serial returned no error")
+	}
+}
+
+// opusLink is one complete Opus logical stream of the given length in seconds.
+func opusLink(serial uint32, seconds uint64, audio ...pageSpec) []pageSpec {
+	head, tags := opusHeadPacket(), commentPacket("OpusTags", false)
+	pages := []pageSpec{
+		{headerType: 0x02, serial: serial, lacing: lacingFor(len(head)), data: head},
+		{serial: serial, lacing: lacingFor(len(tags)), data: tags},
+	}
+	pages = append(pages, audio...)
+	return append(pages, pageSpec{headerType: 0x04, granule: seconds * 48000, serial: serial, lacing: lacingFor(10), data: make([]byte, 10)})
+}
+
+func TestDuration_ChainedOggUsesFirstStream(t *testing.T) {
+	big := pageSpec{granule: 48000, serial: 2, lacing: lacingFor(60000), data: make([]byte, 60000)}
+	unsetEnd := opusLink(1, 0, pageSpec{granule: 4 * 48000, serial: 1, lacing: lacingFor(10), data: make([]byte, 10)})
+	unsetEnd[len(unsetEnd)-1].granule = ^uint64(0)
+	tests := map[string]struct {
+		pages []pageSpec
+		want  time.Duration
+	}{
+		"short chain":                  {slices.Concat(opusLink(1, 5), opusLink(2, 7)), 5 * time.Second},
+		"first stream beyond the tail": {slices.Concat(opusLink(1, 5), opusLink(2, 7, big, big)), 5 * time.Second},
+		"unset final granule":          {slices.Concat(unsetEnd, opusLink(2, 7)), 4 * time.Second},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			f := parseOggBytes(t, buildOgg(tt.pages...))
+			if f.Audio.Duration != tt.want {
+				t.Errorf("Duration = %v, want %v (the first stream)", f.Audio.Duration, tt.want)
+			}
+		})
 	}
 }
 
