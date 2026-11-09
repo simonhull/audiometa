@@ -252,7 +252,7 @@ func ilstItems(t *testing.T, data []byte) [][]byte {
 		t.Fatal("no ilst")
 	}
 	var out [][]byte
-	for _, c := range ilst.children {
+	for _, c := range ilst.children() {
 		out = append(out, c.appendTo(nil))
 	}
 	return out

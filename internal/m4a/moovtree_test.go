@@ -53,7 +53,7 @@ func TestMAtom_ExtendedHeaderPreserved(t *testing.T) {
 		t.Fatalf("round trip differs (err %v)", err)
 	}
 
-	item := findPath(root, atomUdta, atomMeta, atomIlst).children[0]
+	item := findPath(root, atomUdta, atomMeta, atomIlst).children()[0]
 	item.payload = append(item.payload, make([]byte, 10)...)
 	got, err = root.bytes()
 	if err != nil {
@@ -84,7 +84,7 @@ func TestMAtom_SizesFixedUp(t *testing.T) {
 	want := sizes(before)
 
 	root := moovTreeOf(t, data)
-	item := findPath(root, atomUdta, atomMeta, atomIlst).children[0]
+	item := findPath(root, atomUdta, atomMeta, atomIlst).children()[0]
 	item.payload = append(item.payload, make([]byte, 10)...)
 	out, err := root.bytes()
 	if err != nil {
@@ -103,7 +103,7 @@ func TestMAtom_MalformedUdtaKeptVerbatim(t *testing.T) {
 	bad := atom("udta", []byte{0, 0, 0, 99}, []byte("junk"))
 	moov := atom("moov", atom("mvhd", make([]byte, 100)), bad)
 	root := moovTreeOf(t, moov)
-	if u := root.child(atomUdta); u == nil || u.container {
+	if u := root.child(atomUdta); u == nil || u.isContainer() {
 		t.Fatal("malformed udta should be a leaf")
 	}
 	if got, _ := root.bytes(); !bytes.Equal(got, moov) {
@@ -124,7 +124,7 @@ func TestMAtom_UdtaTerminatorPreserved(t *testing.T) {
 	udta := atom("udta", atom("meta", []byte{0, 0, 0, 0}, mdirHdlr, atom("ilst")), []byte{0, 0, 0, 0})
 	moov := atom("moov", atom("mvhd", make([]byte, 100)), udta)
 	root := moovTreeOf(t, moov)
-	if u := root.child(atomUdta); !u.container || len(u.tail) != 4 {
+	if u := root.child(atomUdta); !u.isContainer() || len(u.box.tail) != 4 {
 		t.Fatal("udta terminator not kept as tail")
 	}
 	if got, _ := root.bytes(); !bytes.Equal(got, moov) {

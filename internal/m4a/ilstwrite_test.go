@@ -180,13 +180,13 @@ func TestIlst_CreatesMissingPath(t *testing.T) {
 	src := buildMP4With(mp4Opts{noUdta: true})
 	out := writeTags(t, src, func(tg *types.Tags) { tg.Title = "Created" })
 	meta := findPath(moovTreeOf(t, out), atomUdta, atomMeta)
-	if meta == nil || !bytes.Equal(meta.full, []byte{0, 0, 0, 0}) {
+	if meta == nil || !bytes.Equal(meta.box.full, []byte{0, 0, 0, 0}) {
 		t.Fatal("meta not created as a full atom")
 	}
-	if hdlr := meta.children[0].appendTo(nil); !bytes.Equal(hdlr, mdirHdlr) || len(hdlr) != 33 {
+	if hdlr := meta.children()[0].appendTo(nil); !bytes.Equal(hdlr, mdirHdlr) || len(hdlr) != 33 {
 		t.Errorf("hdlr = %x, want %x", hdlr, mdirHdlr)
 	}
-	if meta.children[1].typ != atomIlst {
+	if meta.children()[1].typ != atomIlst {
 		t.Error("ilst does not follow hdlr")
 	}
 	if got := parseBytes(t, out).Tags.Title; got != "Created" {
@@ -211,7 +211,7 @@ func TestIlst_DeleteEveryKeyKeepsEmptyIlst(t *testing.T) {
 		tg.Delete(keys...)
 	})
 	ilst := findPath(moovTreeOf(t, out), atomUdta, atomMeta, atomIlst)
-	if ilst == nil || len(ilst.children) != 0 {
+	if ilst == nil || len(ilst.children()) != 0 {
 		t.Fatalf("ilst = %+v, want present and empty", ilst)
 	}
 	for k, v := range parseBytes(t, out).Tags.All() {

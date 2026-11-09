@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here.
 
+## Unreleased
+
+### Changed
+
+- FLAC: a metadata block chain that ends before a block flagged as last now always adds a `StageMetadata` warning, so `Open` fails on it under `WithStrictParsing`. That used to happen only when the file ended inside a block header; a chain that stopped exactly at the end of the file, or whose last block ran past it, was accepted without a warning. A header cut short by the end of the file still wraps an `*OutOfBoundsError`.
+
+### Fixed
+
+- Ogg: when a page does not continue the header packet the previous page left open, `AudioDigest` now ends that packet there, as `Open` already did. It used to count the next page's first packet as part of the headers and leave it out of the digest, so the digest of such a damaged file changes.
+
 ## v0.14.0 — 2026-11-08
 
 ### Added

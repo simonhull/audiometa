@@ -3,6 +3,7 @@ package flac
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -45,7 +46,7 @@ type writer struct{}
 type fblock struct {
 	typ     uint8
 	payload []byte
-	off     int64 // payload offset in the source; -1 for a block the writer created
+	off     int64 // payload offset in the source, for error messages; unset for a block the writer created
 }
 
 // fmeta is the metadata block list of a file being rewritten.
@@ -158,36 +159,27 @@ func walkBlocks(ctx context.Context, sr *binutil.SafeReader, size int64, visit f
 	if string(magic[:]) != flacMagic {
 		return 0, corrupted(sr.Path(), 0, "invalid FLAC magic bytes")
 	}
-	off := int64(len(magic))
-	for i := 0; ; i++ {
-		if err := binutil.Canceled(ctx, i); err != nil {
+	for b, err := range blocks(ctx, sr, size) {
+		switch {
+		case errors.Is(err, errNoLastBlock):
+			return 0, corrupted(sr.Path(), b.off, err.Error())
+		case err != nil:
 			return 0, err
-		}
-		if size-off < 4 {
-			return 0, corrupted(sr.Path(), off, "metadata block chain ends before its last block")
-		}
-		header, err := sr.Read[uint32](off, "metadata block header")
-		if err != nil {
-			return 0, err
-		}
-		typ := uint8(header >> 24 & 0x7F)
-		n := int64(header & maxBlockLen)
-		if i == 0 && typ != blockTypeStreamInfo {
-			return 0, corrupted(sr.Path(), off, "first metadata block is not STREAMINFO")
-		}
-		if n > size-off-4 {
-			return 0, corrupted(sr.Path(), off, fmt.Sprintf("metadata block of %d bytes runs past the end of the file", n))
+		case b.off == int64(len(flacMagic)) && b.typ != blockTypeStreamInfo:
+			return 0, corrupted(sr.Path(), b.off, "first metadata block is not STREAMINFO")
+		case b.n > size-b.payload():
+			return 0, corrupted(sr.Path(), b.off, fmt.Sprintf("metadata block of %d bytes runs past the end of the file", b.n))
 		}
 		if visit != nil {
-			if err := visit(typ, off+4, n); err != nil {
+			if err := visit(b.typ, b.payload(), b.n); err != nil {
 				return 0, err
 			}
 		}
-		off += 4 + n
-		if header>>31 == 1 {
-			return off, nil
+		if b.last {
+			return b.end(), nil
 		}
 	}
+	return 0, corrupted(sr.Path(), size, errNoLastBlock.Error()) // not reached: blocks ends with the last block or an error
 }
 
 // readFMeta reads every metadata block of the file behind sr.
@@ -258,7 +250,7 @@ func (m *fmeta) applyTags(edits *types.EditSet) error {
 		return nil
 	}
 	if len(v.comments) > 0 {
-		m.blocks = slices.Insert(m.blocks, m.newCommentIndex(), fblock{typ: blockTypeVorbisComment, payload: v.bytes(), off: -1})
+		m.blocks = slices.Insert(m.blocks, m.newCommentIndex(), fblock{typ: blockTypeVorbisComment, payload: v.bytes()})
 	}
 	return nil
 }
@@ -281,7 +273,7 @@ func (m *fmeta) applyArtwork(ops []types.ArtworkOp) error {
 			if err != nil {
 				return err
 			}
-			m.blocks = slices.Insert(m.blocks, m.pictureIndex(), fblock{typ: blockTypePicture, payload: payload, off: -1})
+			m.blocks = slices.Insert(m.blocks, m.pictureIndex(), fblock{typ: blockTypePicture, payload: payload})
 		case types.ArtworkOpRemove:
 			m.blocks = slices.DeleteFunc(m.blocks, func(b fblock) bool {
 				return b.typ == blockTypePicture && types.ArtworkTypeFromPictureType(pictureType(b.payload)) == op.Type

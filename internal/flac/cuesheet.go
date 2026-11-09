@@ -42,7 +42,7 @@ type CueIndex struct {
 }
 
 // parseCueSheet parses a FLAC CUESHEET metadata block.
-func parseCueSheet(sr *binary.SafeReader, offset int64, length uint32, file *types.File) error {
+func parseCueSheet(sr *binary.SafeReader, offset, length int64, file *types.File) error {
 	if length < 396 { // Minimum size: 128+8+1+258+1 = 396 bytes
 		return fmt.Errorf("CUESHEET block too short: %d bytes (need at least 396)", length)
 	}
@@ -84,14 +84,14 @@ func parseCueSheet(sr *binary.SafeReader, offset int64, length uint32, file *typ
 
 	// Verify we have enough data for tracks
 	bytesRead := offset - startOffset
-	if int64(length) < bytesRead {
+	if length < bytesRead {
 		return errors.New("CUESHEET block truncated")
 	}
 
 	// Parse tracks
 	tracks := make([]CueTrack, 0, trackCount)
 	for i := range trackCount {
-		track, nextOffset, err := parseCueTrack(sr, offset, startOffset+int64(length))
+		track, nextOffset, err := parseCueTrack(sr, offset, startOffset+length)
 		if err != nil {
 			return fmt.Errorf("parse track %d: %w", i, err)
 		}

@@ -203,7 +203,7 @@ func (t *wtag) setTextFrame(id string, values []string) error {
 	if len(values) == 0 {
 		return nil
 	}
-	t.insert(at, wframe{id: id, payload: encodeText(t.outVersion, values), edited: true})
+	t.insert(at, wframe{id: id, payload: encodeText(t.outVersion, values)})
 	return nil
 }
 
@@ -239,7 +239,7 @@ func (t *wtag) setTXXX(key string, values []string) error {
 	if len(values) == 0 {
 		return nil
 	}
-	t.insert(at, wframe{id: frameIDTXXX, payload: encodeTXXX(t.outVersion, desc, values), edited: true})
+	t.insert(at, wframe{id: frameIDTXXX, payload: encodeTXXX(t.outVersion, desc, values)})
 	return nil
 }
 
@@ -295,7 +295,7 @@ func (t *wtag) setUFID(owner string, values []string) error {
 		return nil
 	}
 	payload := slices.Concat([]byte(owner), []byte{0}, []byte(values[0]))
-	t.insert(at, wframe{id: frameIDUFID, payload: payload, edited: true})
+	t.insert(at, wframe{id: frameIDUFID, payload: payload})
 	return nil
 }
 
@@ -536,11 +536,11 @@ func (t *wtag) applyComment(values []string) error {
 		if !ok || c.desc != "" {
 			continue
 		}
-		t.frames[i] = wframe{id: frameIDCOMM, payload: encodeLangText(t.outVersion, c.lang, "", text), edited: true}
+		t.frames[i] = wframe{id: frameIDCOMM, payload: encodeLangText(t.outVersion, c.lang, "", text)}
 		replaced = true
 	}
 	if !replaced {
-		t.frames = append(t.frames, wframe{id: frameIDCOMM, payload: encodeLangText(t.outVersion, "eng", "", text), edited: true})
+		t.frames = append(t.frames, wframe{id: frameIDCOMM, payload: encodeLangText(t.outVersion, "eng", "", text)})
 	}
 	return nil
 }
@@ -582,7 +582,7 @@ func (t *wtag) applyLyrics(values []string) error {
 		return fmt.Errorf("%w: Lyrics is not valid UTF-8 or contains NUL", types.ErrUnsupportedWrite)
 	}
 	i, c := t.lyricsFrame()
-	frame := wframe{id: frameIDUSLT, payload: encodeLangText(t.outVersion, c.lang, c.desc, text), edited: true}
+	frame := wframe{id: frameIDUSLT, payload: encodeLangText(t.outVersion, c.lang, c.desc, text)}
 	if i < 0 {
 		t.frames = append(t.frames, frame)
 		return nil
@@ -625,7 +625,7 @@ func (t *wtag) applyArtwork(ops []types.ArtworkOp) error {
 			if err != nil {
 				return err
 			}
-			t.insert(t.lastAPIC()+1, wframe{id: frameIDAPIC, payload: payload, edited: true})
+			t.insert(t.lastAPIC()+1, wframe{id: frameIDAPIC, payload: payload})
 		case types.ArtworkOpRemove:
 			var typeErr error
 			t.remove(func(f wframe) (bool, error) {

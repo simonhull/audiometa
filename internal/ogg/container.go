@@ -10,6 +10,7 @@ package ogg
 import (
 	"errors"
 	"fmt"
+	"iter"
 
 	"github.com/simonhull/audiometa/internal/binary"
 )
@@ -126,35 +127,70 @@ func (p *Page) laceValues() []byte {
 	return append(lacing, byte(n)) //nolint:gosec // G115: the loop above leaves 0 <= n < 255
 }
 
-// splitPackets assembles packets from a series of pages using each page's
-// segment table (RFC 3533 section 6): a lacing value below 255 terminates a
-// packet, 255 continues it, possibly onto the next page when that page has the
-// continuation flag set. The final packet is returned even if it is still
-// open; open reports whether the last packet is unterminated.
-func splitPackets(pages []*Page) (packets [][]byte, open bool) {
-	var cur []byte
-	for _, page := range pages {
-		if open && page.HeaderType&0x01 == 0 {
-			// The stream dropped the continuation; keep what we have.
-			packets = append(packets, cur)
-			cur, open = nil, false
+// pageContinued marks a page whose first segment continues the packet left
+// open by the previous page of its stream (RFC 3533 §6).
+const pageContinued = 0x01
+
+// segment is one lacing segment of a page's payload.
+type segment struct {
+	data []byte // the segment's bytes; empty for a packet ended by a dropped continuation
+	ends bool   // the segment ends its packet
+}
+
+// packetTracker follows packet boundaries across the pages of one logical
+// stream. Its zero value starts at a packet boundary.
+type packetTracker struct {
+	open bool // the last segment seen continues onto the next page
+}
+
+// segments yields page's lacing segments in order (RFC 3533 §6): a lacing
+// value below 255 ends a packet, 255 continues it, possibly onto the next
+// page. When a packet is open but page does not continue it, the stream
+// dropped the continuation: an empty segment ends that packet first. Lacing
+// values that run past the payload are clamped to it.
+//
+// The tracker's state is updated as each segment is yielded, so a caller that
+// stops early must not feed it further pages.
+func (t *packetTracker) segments(page *Page) iter.Seq[segment] {
+	return func(yield func(segment) bool) {
+		if t.open && page.HeaderType&pageContinued == 0 {
+			t.open = false
+			if !yield(segment{ends: true}) {
+				return
+			}
 		}
 		data := page.Data
 		for _, lace := range page.laceValues() {
 			n := min(int(lace), len(data))
-			cur = append(cur, data[:n]...)
+			seg := segment{data: data[:n], ends: lace < 255}
 			data = data[n:]
-			open = lace == 255
-			if !open {
+			t.open = !seg.ends
+			if !yield(seg) {
+				return
+			}
+		}
+	}
+}
+
+// splitPackets assembles packets from a series of pages of one logical
+// stream; see [packetTracker.segments]. The final packet is returned even if
+// it is still open; open reports whether the last packet is unterminated.
+func splitPackets(pages []*Page) (packets [][]byte, open bool) {
+	var t packetTracker
+	var cur []byte
+	for _, page := range pages {
+		for seg := range t.segments(page) {
+			cur = append(cur, seg.data...)
+			if seg.ends {
 				packets = append(packets, cur)
 				cur = nil
 			}
 		}
 	}
-	if open {
+	if t.open {
 		packets = append(packets, cur)
 	}
-	return packets, open
+	return packets, t.open
 }
 
 // extractPackets extracts packets from a series of pages, including a trailing
