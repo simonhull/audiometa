@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	audiobinary "github.com/simonhull/audiometa/internal/binary"
 	"github.com/simonhull/audiometa/internal/testbudget"
 	"github.com/simonhull/audiometa/internal/types"
 )
@@ -35,6 +36,36 @@ func TestParse_RepeatedItemsAreLinear(t *testing.T) {
 	}
 	if f.Tags.Title != "t" {
 		t.Errorf("Title = %q, want t", f.Tags.Title)
+	}
+}
+
+func TestParseChunkOffsets_BoundedByAtomAndSamples(t *testing.T) {
+	co64 := append(u32be(1<<20), make([]byte, 16)...) // two 8-byte entries
+	for _, tc := range []struct{ typ, body string }{
+		{"stco", string(u32be(1<<20, 100, 200))},
+		{"co64", string(co64)},
+	} {
+		stbl := createMockAtom("stbl", fullAtom(tc.typ, []byte(tc.body)))
+		// Zeros after the atom let a table that claims 1<<20 entries fit in the file.
+		data := append(stbl, make([]byte, 9<<20)...)
+		sr := audiobinary.NewSafeReader(bytes.NewReader(data), int64(len(data)), "t.m4b")
+		atom, err := readAtomHeader(sr, 0, int64(len(stbl)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var offsets []uint64
+		alloc := testbudget.Allocated(func() {
+			offsets, err = parseChunkOffsets(context.Background(), sr, atom, 2)
+		})
+		if err != nil {
+			t.Fatalf("%s: %v", tc.typ, err)
+		}
+		if len(offsets) != 2 {
+			t.Errorf("%s: %d offsets, want 2", tc.typ, len(offsets))
+		}
+		if alloc > 1<<20 {
+			t.Errorf("%s: allocated %d bytes, want under 1 MiB", tc.typ, alloc)
+		}
 	}
 }
 

@@ -425,7 +425,7 @@ func TestParseChunkOffsets_CountPastFile(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := parseChunkOffsets(context.Background(), sr, atom); err == nil {
+		if _, err := parseChunkOffsets(context.Background(), sr, atom, 1<<30); err == nil {
 			t.Errorf("%s: expected error for count past end of file", typ)
 		}
 	}
