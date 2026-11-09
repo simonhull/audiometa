@@ -59,8 +59,15 @@ func parseTechnicalInfo(ctx context.Context, sr *binary.SafeReader, moovAtom *At
 	}
 
 	// Parse stsd for codec, sample rate, channels
-	if err := parseStsd(sr, stsdAtom, file); err != nil {
+	source, err := parseStsd(sr, stsdAtom, file)
+	if err != nil {
 		return nil
+	}
+
+	// The legacy 16.16 field cannot hold rates above 65535 Hz (writers store
+	// the timescale's low bits or 0 there), but the track's media header does.
+	if source == rateLegacyField {
+		applyMediaTimescale(sr, mdiaAtom, file)
 	}
 
 	// The esds avgBitrate, when the sample description declared one, is already
@@ -258,8 +265,63 @@ func parseMvhdVersion1(sr *binary.SafeReader, offset int64) (timescale uint32, d
 	return timescale, duration, nil
 }
 
+// rateSource says where file.Audio.SampleRate came from.
+type rateSource uint8
+
+const (
+	// rateUnknown means no sample rate was read.
+	rateUnknown rateSource = iota
+	// rateLegacyField is the 16.16 field of a version 0 or 1 sample entry,
+	// which cannot represent rates above 65535 Hz.
+	rateLegacyField
+	// rateDeclared is a rate the file states in full: a version 2 sample
+	// entry's float64 or a codec configuration box.
+	rateDeclared
+)
+
+// mdhdTimescale returns the timescale of mdia's media header, or false when
+// the mdhd atom is absent or unreadable.
+func mdhdTimescale(sr *binary.SafeReader, mdia *Atom) (uint32, bool) {
+	mdhd, err := findAtom(sr, mdia.DataOffset(), mdia.DataOffset()+mdia.DataSize(), "mdhd")
+	if err != nil {
+		return 0, false
+	}
+	version, err := sr.Read[uint8](mdhd.DataOffset(), "mdhd version")
+	if err != nil {
+		return 0, false
+	}
+	// version/flags(4), then creation and modification times (4 bytes each in
+	// version 0, 8 in version 1), then the timescale.
+	var offset int64
+	switch version {
+	case 0:
+		offset = 12
+	case 1:
+		offset = 20
+	default:
+		return 0, false
+	}
+	timescale, err := sr.Read[uint32](mdhd.DataOffset()+offset, "mdhd timescale")
+	if err != nil {
+		return 0, false
+	}
+	return timescale, true
+}
+
+// applyMediaTimescale replaces a sample rate read from the 16.16 field with
+// the media timescale when that field cannot have held the real rate: the
+// timescale is above 65535, or the field was 0.
+func applyMediaTimescale(sr *binary.SafeReader, mdia *Atom, file *types.File) {
+	timescale, ok := mdhdTimescale(sr, mdia)
+	if !ok || (timescale <= math.MaxUint16 && (file.Audio.SampleRate != 0 || timescale == 0)) {
+		return
+	}
+	file.Audio.SampleRate = int(min(timescale, math.MaxInt32))
+}
+
 // parseStsd parses the sample description atom for codec, sample rate, channels.
-func parseStsd(sr *binary.SafeReader, stsdAtom *Atom, file *types.File) error {
+// The result says where the sample rate came from.
+func parseStsd(sr *binary.SafeReader, stsdAtom *Atom, file *types.File) (rateSource, error) {
 	offset := stsdAtom.DataOffset()
 
 	// stsd structure:
@@ -273,12 +335,12 @@ func parseStsd(sr *binary.SafeReader, stsdAtom *Atom, file *types.File) error {
 	// Read number of entries
 	numEntries, err := sr.Read[uint32](offset, "stsd entry count")
 	if err != nil {
-		return err
+		return rateUnknown, err
 	}
 	offset += 4
 
 	if numEntries == 0 {
-		return nil
+		return rateUnknown, nil
 	}
 
 	// Read first entry (audio sample description)
@@ -289,14 +351,14 @@ func parseStsd(sr *binary.SafeReader, stsdAtom *Atom, file *types.File) error {
 
 	entrySize, err := sr.Read[uint32](offset, "stsd entry size")
 	if err != nil {
-		return err
+		return rateUnknown, err
 	}
 	offset += 4
 
 	// Read format (codec type) - 4 bytes
 	formatBytes := make([]byte, 4)
 	if err := sr.ReadAt(formatBytes, offset, "stsd format"); err != nil {
-		return err
+		return rateUnknown, err
 	}
 	offset += 4
 
@@ -308,11 +370,11 @@ func parseStsd(sr *binary.SafeReader, stsdAtom *Atom, file *types.File) error {
 	entry := offset - 8 // the offset of the entry's size field
 	_ = parseCodecDetails(sr, entry, entrySize, codec, file)
 
-	if err := parseSoundSampleEntry(sr, entry, file); err != nil {
-		return err
+	source, err := parseSoundSampleEntry(sr, entry, file)
+	if err != nil {
+		return rateUnknown, err
 	}
-	applyLosslessConfig(sr, entry, entrySize, codec, file)
-	return nil
+	return applyLosslessConfig(sr, entry, entrySize, codec, file, source), nil
 }
 
 // losslessConfig holds the stream properties a lossless codec's configuration
@@ -357,7 +419,8 @@ func soundEntryChildren(version uint16) (offset int64, ok bool) {
 // with those of the codec's own configuration box, and sets the bit depth,
 // for ALAC and FLAC. entry is the offset of the sample entry's size field. It
 // is best effort: whatever is missing or implausible leaves file untouched.
-func applyLosslessConfig(sr *binary.SafeReader, entry int64, entrySize uint32, codec string, file *types.File) {
+// It returns source, or rateDeclared when the configuration supplied the rate.
+func applyLosslessConfig(sr *binary.SafeReader, entry int64, entrySize uint32, codec string, file *types.File, source rateSource) rateSource {
 	var boxType string
 	var decode func(*binary.SafeReader, *Atom) (losslessConfig, bool)
 	switch codec {
@@ -366,29 +429,30 @@ func applyLosslessConfig(sr *binary.SafeReader, entry int64, entrySize uint32, c
 	case codecFLAC:
 		boxType, decode = "dfLa", flacConfig
 	default:
-		return
+		return source
 	}
 
 	version, err := sr.Read[uint16](entry+16, "sound sample entry version")
 	if err != nil {
-		return
+		return source
 	}
 	children, ok := soundEntryChildren(version)
 	if !ok || int64(entrySize) < children {
-		return
+		return source
 	}
 	box, err := findAtom(sr, entry+children, entry+int64(entrySize), boxType)
 	if err != nil {
-		return
+		return source
 	}
 	cfg, ok := decode(sr, box)
 	if !ok {
-		return
+		return source
 	}
 
 	cfg = cfg.valid()
 	if cfg.sampleRate != 0 {
 		file.Audio.SampleRate = cfg.sampleRate
+		source = rateDeclared
 	}
 	if cfg.bitDepth != 0 {
 		file.Audio.BitDepth = cfg.bitDepth
@@ -396,6 +460,7 @@ func applyLosslessConfig(sr *binary.SafeReader, entry int64, entrySize uint32, c
 	if cfg.channels != 0 {
 		file.Audio.Channels = cfg.channels
 	}
+	return source
 }
 
 // alacConfig decodes the ALACSpecificConfig held by an "alac" child box. The
@@ -454,12 +519,12 @@ func flacConfig(sr *binary.SafeReader, box *Atom) (losslessConfig, bool) {
 // entry starting at entry (the offset of its size field). Versions 0 and 1 share
 // the legacy layout (v1's extra fields follow the sample rate); version 2
 // stores a float64 rate and a uint32 channel count further in. Other versions
-// are left unset rather than guessed.
-func parseSoundSampleEntry(sr *binary.SafeReader, entry int64, file *types.File) error {
+// are left unset rather than guessed. The result says where the rate came from.
+func parseSoundSampleEntry(sr *binary.SafeReader, entry int64, file *types.File) (rateSource, error) {
 	// size(4) format(4) reserved(6) data_reference_index(2) = 16 bytes, then:
 	version, err := sr.Read[uint16](entry+16, "sound sample entry version")
 	if err != nil {
-		return err
+		return rateUnknown, err
 	}
 
 	switch version {
@@ -467,32 +532,33 @@ func parseSoundSampleEntry(sr *binary.SafeReader, entry int64, file *types.File)
 		// version(2) revision(2) vendor(4), then channels(2) samplesize(2) compid(2) packetsize(2) rate(16.16)
 		channels, err := sr.Read[uint16](entry+24, "channels")
 		if err != nil {
-			return err
+			return rateUnknown, err
 		}
 		file.Audio.Channels = int(channels)
 
 		rate, err := sr.Read[uint32](entry+32, "sample rate")
 		if err != nil {
-			return err
+			return rateUnknown, err
 		}
 		file.Audio.SampleRate = int(rate >> 16) // integer part of 16.16 fixed point
+		return rateLegacyField, nil
 	case 2:
 		// Legacy fields hold constants; real values: float64 rate at +40, uint32 channels at +48.
 		bits, err := sr.Read[uint64](entry+40, "sample rate")
 		if err != nil {
-			return err
+			return rateUnknown, err
 		}
 		channels, err := sr.Read[uint32](entry+48, "channels")
 		if err != nil {
-			return err
-		}
-		rate := math.Float64frombits(bits)
-		if rate > 0 && rate <= math.MaxInt32 {
-			file.Audio.SampleRate = int(rate)
+			return rateUnknown, err
 		}
 		file.Audio.Channels = int(min(channels, math.MaxUint16))
+		if rate := math.Float64frombits(bits); rate > 0 && rate <= math.MaxInt32 {
+			file.Audio.SampleRate = int(rate)
+			return rateDeclared, nil
+		}
 	}
-	return nil
+	return rateUnknown, nil
 }
 
 // mvhdDuration converts a duration in timescale units to a time.Duration without

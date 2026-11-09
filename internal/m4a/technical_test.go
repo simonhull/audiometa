@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"math"
+	"slices"
 	"testing"
 	"time"
 
@@ -323,6 +324,34 @@ func TestParseTechnicalInfo_LosslessConfig(t *testing.T) {
 			a := parseMoovTech(t, trakWith("soun", stsdFor(tt.codec, tt.entry))).Audio
 			if a.SampleRate != tt.rate || a.BitDepth != tt.bits || a.Channels != tt.channels {
 				t.Errorf("rate %d bits %d channels %d, want %d/%d/%d", a.SampleRate, a.BitDepth, a.Channels, tt.rate, tt.bits, tt.channels)
+			}
+		})
+	}
+}
+
+func trakWithMdhd(timescale uint32, stsd []byte) []byte {
+	hdlr := fullAtom("hdlr", append(append(u32be(0), "soun"...), make([]byte, 12)...))
+	mdhd := fullAtom("mdhd", u32be(0, 0, timescale, 0, 0))
+	minf := createMockAtom("minf", createMockAtom("stbl", stsd))
+	return createMockAtom("trak", createMockAtom("mdia", slices.Concat(mdhd, hdlr, minf)))
+}
+
+func TestParseTechnicalInfo_RateFromMdhd(t *testing.T) {
+	tests := []struct {
+		name      string
+		timescale uint32
+		entryRate uint32
+		want      int
+	}{
+		{"96 kHz AAC: 16.16 says 48000", 96000, 48000, 96000},
+		{"16.16 rate zero", 22050, 0, 22050},
+		{"ordinary file: 16.16 wins over an odd timescale", 1000, 44100, 44100},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := parseMoovTech(t, trakWithMdhd(tt.timescale, stsdFor("mp4a", sampleEntryV01(0, 2, tt.entryRate)))).Audio
+			if a.SampleRate != tt.want {
+				t.Errorf("SampleRate = %d, want %d", a.SampleRate, tt.want)
 			}
 		})
 	}
