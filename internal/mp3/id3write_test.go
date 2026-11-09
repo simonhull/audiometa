@@ -648,6 +648,33 @@ func TestApply_OtherV24FramesStayRefusedInV23(t *testing.T) {
 	}
 }
 
+// A TXXX frame described "tit2" is read under the raw key TIT2, so editing or
+// deleting TIT2 must replace it too.
+func TestApply_TextKeyReplacesShadowTXXX(t *testing.T) {
+	for _, v := range []byte{3, 4} {
+		src := file(id3Tag(v,
+			id3Frame(v, "TIT2", latin1Text("Title")),
+			id3Frame(v, "TXXX", txxxPayload(0, "tit2", "shadow")),
+			id3Frame(v, "TXXX", txxxPayload(0, "Narrator", "N")),
+		))
+		if got := parseBytes(t, src).Tags.Get("TIT2"); !slices.Equal(got, []string{"Title", "shadow"}) {
+			t.Fatalf("v2.%d: source TIT2 = %q, want the reader to merge the TXXX", v, got)
+		}
+		out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.Set("TIT2", "New") }))
+		tags := parseBytes(t, out).Tags
+		if got := tags.Get("TIT2"); !slices.Equal(got, []string{"New"}) {
+			t.Errorf("v2.%d: TIT2 = %q, want [New]", v, got)
+		}
+		if got := tags.GetFirst("NARRATOR"); got != "N" {
+			t.Errorf("v2.%d: NARRATOR = %q, want it kept", v, got)
+		}
+		out = writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.Delete("TIT2") }))
+		if got := parseBytes(t, out).Tags.Get("TIT2"); got != nil {
+			t.Errorf("v2.%d: TIT2 after delete = %q, want none", v, got)
+		}
+	}
+}
+
 func TestApply_InvalidKeyRefused(t *testing.T) {
 	src := file(id3Tag(4, id3Frame(4, "TIT2", latin1Text("x"))))
 	for _, key := range []string{"FOO\x00BAR", "OverDrive MediaMarkers\x00x", "BAD\xffKEY"} {

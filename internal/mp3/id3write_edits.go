@@ -194,15 +194,27 @@ func (t *wtag) isTextKey(key string) bool {
 		slices.ContainsFunc(t.frames, func(f wframe) bool { return f.id == key })
 }
 
-// setTextFrame replaces every frame with ID id by one text frame of values,
-// inserted where the first one was.
+// isShadowTXXX reports whether f is a TXXX frame whose description is id in
+// any case: the reader files its values under the same raw key as the id
+// frame. A compressed TXXX is never read, so it never matches.
+func (t *wtag) isShadowTXXX(f wframe, id string) bool {
+	if f.id != frameIDTXXX {
+		return false
+	}
+	d, ok := t.txxxDescription(f)
+	return ok && strings.EqualFold(d, id)
+}
+
+// setTextFrame replaces every frame with ID id, and every TXXX frame the
+// reader files under the same key, by one text frame of values, inserted
+// where the first one was.
 func (t *wtag) setTextFrame(id string, values []string) error {
 	if len(values) > 0 {
 		if (t.outVersion == 3 && v24OnlyIDs[id]) || (t.outVersion == 4 && v23OnlyIDs[id]) {
 			return fmt.Errorf("%w: %s cannot be written to an ID3v2.%d tag", types.ErrUnsupportedWrite, id, t.outVersion)
 		}
 	}
-	at := t.remove(func(f wframe) (bool, error) { return f.id == id, nil })
+	at := t.remove(func(f wframe) (bool, error) { return f.id == id || t.isShadowTXXX(f, id), nil })
 	if len(values) == 0 {
 		return nil
 	}
