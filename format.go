@@ -32,6 +32,8 @@ const (
 // MP4 files are classified by their ftyp brands: an M4B brand gives
 // [FormatM4B], other audio brands give [FormatM4A].
 //
+// A FLAC stream behind an ID3v2 tag, which some taggers write, gives [FormatFLAC].
+//
 // It returns an [*UnsupportedFormatError] when the header cannot be read or
 // matches no known format.
 func DetectFormat(r io.ReaderAt, size int64, path string) (Format, error) {

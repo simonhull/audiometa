@@ -74,12 +74,19 @@ func LeadingID3v2Size(sr *binary.SafeReader) int64 {
 	return n
 }
 
+// hasMagicAt reports whether magic sits at off in sr.
+func hasMagicAt(sr *binary.SafeReader, off int64, magic string) bool {
+	b := make([]byte, len(magic))
+	return off > 0 && sr.ReadAt(b, off, "magic bytes") == nil && string(b) == magic
+}
+
 // DetectFormat determines the audio file format by examining magic bytes.
 //
 // Supported formats: FLAC, MP3, M4A, M4B, Ogg Vorbis, Opus, WAV (RIFF, RIFX and
 // RF64), AIFF (AIFF and AIFF-C)
 //
-// Detection is based on file signatures (magic bytes) at the beginning of the file.
+// Detection is based on file signatures (magic bytes) at the beginning of the
+// file. An ID3v2 tag followed by "fLaC" is a FLAC file.
 // Format detection does not validate the entire file structure.
 func DetectFormat(r io.ReaderAt, size int64, path string) (Format, error) { //nolint:gocyclo // Format detection requires checking multiple magic byte patterns
 	// File must be at least 4 bytes for any meaningful detection
@@ -103,8 +110,12 @@ func DetectFormat(r io.ReaderAt, size int64, path string) (Format, error) { //no
 		return FormatFLAC, nil
 	}
 
-	// Check for ID3v2 tag (MP3)
+	// An ID3v2 tag starts an MP3 file, or, against the FLAC spec but written
+	// by some taggers, sits in front of a FLAC stream.
 	if string(magic[:3]) == "ID3" {
+		if hasMagicAt(sr, LeadingID3v2Size(sr), "fLaC") {
+			return FormatFLAC, nil
+		}
 		return FormatMP3, nil
 	}
 
