@@ -35,6 +35,28 @@ func TestParseTechnical_JunkAfterTag_Bounded(t *testing.T) {
 	}
 }
 
+func TestParseTechnicalInfo_OneRead(t *testing.T) {
+	// An MPEG-1 Layer III 128 kbps 44.1 kHz stereo frame (417 bytes) carrying a
+	// Xing header with a frame count, then two more frames.
+	frame := func() []byte { return append([]byte{0xFF, 0xFB, 0x90, 0x00}, make([]byte, 413)...) }
+	first := frame()
+	copy(first[4+32:], []byte{'X', 'i', 'n', 'g', 0, 0, 0, 1, 0, 0, 0, 100})
+	data := bytes.Join([][]byte{make([]byte, 6000), first, frame(), frame(), make([]byte, 200)}, nil)
+	cr := &countingReaderAt{r: bytes.NewReader(data)}
+	sr := binutil.NewSafeReader(cr, int64(len(data)), "xing.mp3")
+	file := &types.File{}
+
+	if err := parseTechnicalInfo(context.Background(), sr, 0, int64(len(data)), file); err != nil {
+		t.Fatal(err)
+	}
+	if !file.Audio.VBR || file.Audio.Duration == 0 {
+		t.Errorf("audio = %+v, want the Xing frame count used", file.Audio)
+	}
+	if cr.calls != 1 {
+		t.Errorf("ReadAt calls = %d, want 1 (the frame window)", cr.calls)
+	}
+}
+
 func TestParseTechnical_FindsFrameAfterPadding(t *testing.T) {
 	// 1000 bytes of padding, then an MPEG-1 Layer III 128 kbps 44.1 kHz stereo header.
 	data := make([]byte, 1000, 1100)
