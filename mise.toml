@@ -32,8 +32,12 @@ description = "Regenerate stringer output"
 run = "go generate ./..."
 
 [tasks.generate-check]
-description = "Fail when go generate output is stale (rewrites stale files; run on a clean tree)"
-run = ["go generate ./...", "git diff --exit-code"]
+description = "Fail when generated *_string.go files are stale or untracked (rewrites stale files; other uncommitted edits are ignored)"
+run = [
+  "go generate ./...",
+  "git diff --exit-code -- ':(glob)**/*_string.go'",
+  "test -z \"$(git ls-files --others --exclude-standard -- ':(glob)**/*_string.go')\"",
+]
 
 [tasks.verify-mod]
 description = "Verify downloaded module checksums (needs network on a cold cache)"
