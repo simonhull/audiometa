@@ -83,9 +83,8 @@ func parseCustomAtomWithTags(sr *binary.SafeReader, customAtom *Atom, file *type
 			// Field name (e.g., "Narrator", "Series"), after version and flags.
 			fieldName = readAtomText(sr, atom, 4, "name field")
 		case "data":
-			// Value, after version, flags and the reserved word.
-			text := readAtomText(sr, atom, 8, "data value")
-			if v := strings.TrimSpace(strings.TrimRight(text, "\x00")); v != "" && types.TakeValue(file) {
+			// Decoded by data type like every other ilst item.
+			if v, err := parseDataValue(sr, atom); err == nil && v != "" && types.TakeValue(file) {
 				values = append(values, v)
 			}
 		}

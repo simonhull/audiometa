@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"slices"
 	"strings"
 	"testing"
 
@@ -66,6 +67,58 @@ func TestParseAudiobookTags_Narrator(t *testing.T) {
 
 	if file.Tags.Narrator != "Wil Wheaton" {
 		t.Errorf("expected narrator 'Wil Wheaton', got '%s'", file.Tags.Narrator)
+	}
+}
+
+// createTypedCustomAtom creates a ---- atom whose data atom has the given type indicator.
+func createTypedCustomAtom(fieldName string, typeIndicator uint32, payload []byte) []byte {
+	meanBuf := binary.BigEndian.AppendUint32(nil, 0)
+	meanBuf = append(meanBuf, "com.apple.iTunes"...)
+	nameBuf := binary.BigEndian.AppendUint32(nil, 0)
+	nameBuf = append(nameBuf, fieldName...)
+	dataBuf := binary.BigEndian.AppendUint32(nil, typeIndicator)
+	dataBuf = binary.BigEndian.AppendUint32(dataBuf, 0)
+	dataBuf = append(dataBuf, payload...)
+
+	body := bytes.Join([][]byte{
+		createAtomWithType([]byte("mean"), meanBuf),
+		createAtomWithType([]byte("name"), nameBuf),
+		createAtomWithType([]byte("data"), dataBuf),
+	}, nil)
+	return createAtomWithType([]byte("----"), body)
+}
+
+func TestParseAudiobookTags_FreeformByDataType(t *testing.T) {
+	tests := []struct {
+		name     string
+		field    string
+		typ      uint32
+		payload  []byte
+		rawKey   string
+		wantRaw  []string
+		narrator string
+	}{
+		{name: "integer", field: "Rating", typ: 21, payload: []byte{0x2A}, rawKey: "RATING", wantRaw: []string{"42"}},
+		{name: "jpeg skipped", field: "Cover", typ: 13, payload: []byte{0xFF, 0xD8, 0xFF, 0xE0}, rawKey: "COVER"},
+		{name: "text", field: "Narrator", typ: 1, payload: []byte("Wil Wheaton"), rawKey: "NARRATOR", wantRaw: []string{"Wil Wheaton"}, narrator: "Wil Wheaton"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ilst := createMockAtom("ilst", createTypedCustomAtom(tt.field, tt.typ, tt.payload))
+			sr := audiobinary.NewSafeReader(bytes.NewReader(ilst), int64(len(ilst)), "test.m4b")
+			ilstAtom, _ := readAtomHeader(sr, 0, int64(len(ilst)))
+
+			file := &types.File{}
+			if err := parseAudiobookTags(context.Background(), sr, ilstAtom, file); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got := file.Tags.Get(tt.rawKey); !slices.Equal(got, tt.wantRaw) {
+				t.Errorf("Get(%q) = %q, want %q", tt.rawKey, got, tt.wantRaw)
+			}
+			if file.Tags.Narrator != tt.narrator {
+				t.Errorf("Narrator = %q, want %q", file.Tags.Narrator, tt.narrator)
+			}
+		})
 	}
 }
 
