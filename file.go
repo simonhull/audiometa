@@ -129,7 +129,11 @@ func openWithContext(ctx context.Context, path string, opts ...Option) (*File, e
 
 	// Preload artwork if requested
 	if options.preloadArtwork {
-		if _, err := file.ExtractArtwork(); err != nil {
+		if _, err := file.ExtractArtworkContext(ctx); err != nil {
+			if ctx.Err() != nil {
+				_ = f.Close()
+				return nil, err
+			}
 			// Don't fail completely, just add warning
 			types.Warn(&file.File, StageArtwork, 0, err, fmt.Sprintf("preload artwork failed: %v", err))
 		}
