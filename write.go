@@ -68,7 +68,7 @@ func (f *File) WriteToContext(ctx context.Context, w io.Writer) (int64, error) {
 	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
-	tw, err := writerFor(f.Format)
+	tw, err := writerFor(f.src.format)
 	if err != nil {
 		return 0, err
 	}
@@ -77,9 +77,9 @@ func (f *File) WriteToContext(ctx context.Context, w io.Writer) (int64, error) {
 		return 0, err
 	}
 	if edits.Empty() {
-		return writeutil.CopyRange(ctx, w, f.reader, 0, f.Size)
+		return writeutil.CopyRange(ctx, w, f.reader, 0, f.src.size)
 	}
-	return writeSafely(ctx, tw, w, f.reader, f.Size, f.Path, edits)
+	return writeSafely(ctx, tw, w, f.reader, f.src.size, f.src.path, edits)
 }
 
 // Write opens the audio file at path, calls edit to change its tags and
@@ -153,7 +153,7 @@ func WriteContext(ctx context.Context, path string, edit func(f *File) error, op
 	}
 	defer f.Close() // may run after BeforeRename closed it; the error is ignored
 
-	tw, err := writerFor(f.Format)
+	tw, err := writerFor(f.src.format)
 	if err != nil {
 		return err
 	}
@@ -168,14 +168,14 @@ func WriteContext(ctx context.Context, path string, edit func(f *File) error, op
 		return nil
 	}
 
-	digest, err := preservedSafely(ctx, tw, f.reader, f.Size, target)
+	digest, err := preservedSafely(ctx, tw, f.reader, f.src.size, target)
 	if err != nil {
 		return fmt.Errorf("digest source audio: %w", err)
 	}
 	job := &writeJob{
 		f: f, tw: tw, edits: edits, opts: o,
 		target: target, st0: st0,
-		ref: verifyRef{format: f.Format, digest: digest, chapters: slices.Clone(f.Chapters)},
+		ref: verifyRef{format: f.src.format, digest: digest, chapters: slices.Clone(f.Chapters)},
 	}
 
 	if o.inPlace {
@@ -223,7 +223,7 @@ func (j *writeJob) unchanged() error {
 func (j *writeJob) writeAtomic(ctx context.Context) error {
 	return atomicfile.Replace(j.target,
 		func(w io.Writer) error {
-			_, err := writeSafely(ctx, j.tw, w, j.f.reader, j.f.Size, j.target, j.edits)
+			_, err := writeSafely(ctx, j.tw, w, j.f.reader, j.f.src.size, j.target, j.edits)
 			return err
 		},
 		atomicfile.Options{
@@ -250,15 +250,15 @@ func (j *writeJob) writeInPlace(ctx context.Context) (done bool, err error) {
 	if !ok {
 		return false, nil
 	}
-	off, patch, fits, err := patchSafely(ctx, ipw, j.f.reader, j.f.Size, j.target, j.edits)
+	off, patch, fits, err := patchSafely(ctx, ipw, j.f.reader, j.f.src.size, j.target, j.edits)
 	if err != nil {
 		return true, err
 	}
 	if !fits {
 		return false, nil
 	}
-	if off < 0 || off+int64(len(patch)) > j.f.Size {
-		return true, fmt.Errorf("in-place patch [%d, %d) outside file of %d bytes", off, off+int64(len(patch)), j.f.Size)
+	if off < 0 || off+int64(len(patch)) > j.f.src.size {
+		return true, fmt.Errorf("in-place patch [%d, %d) outside file of %d bytes", off, off+int64(len(patch)), j.f.src.size)
 	}
 	if err := j.unchanged(); err != nil {
 		return true, err
@@ -347,16 +347,16 @@ func writerFor(format Format) (registry.TagWriter, error) {
 
 // buildEdits re-parses the source and diffs it against f's current state.
 func (f *File) buildEdits(ctx context.Context) (*types.EditSet, error) {
-	orig, err := parseSafely(ctx, f.parser, f.reader, f.Size, f.Path)
+	orig, err := parseSafely(ctx, f.parser, f.reader, f.src.size, f.src.path)
 	if err != nil {
-		return nil, fmt.Errorf("re-read %s: %w", f.Format, err)
+		return nil, fmt.Errorf("re-read %s: %w", f.src.format, err)
 	}
-	types.BindFormat(&orig.Tags, f.Format)
+	types.BindFormat(&orig.Tags, f.src.format)
 
 	if !slices.EqualFunc(f.Chapters, orig.Chapters, chapterEqual) {
 		return nil, fmt.Errorf("%w: chapter editing is not supported", ErrUnsupportedWrite)
 	}
-	keys, fields, err := types.Diff(&orig.Tags, &f.Tags, f.Format)
+	keys, fields, err := types.Diff(&orig.Tags, &f.Tags, f.src.format)
 	if err != nil {
 		return nil, err
 	}

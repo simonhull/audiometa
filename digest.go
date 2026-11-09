@@ -52,19 +52,19 @@ func (f *File) AudioDigest() ([sha256.Size]byte, error) {
 // a library in a worker pool.
 func (f *File) AudioDigestContext(ctx context.Context) ([sha256.Size]byte, error) {
 	var sum [sha256.Size]byte
-	d := lookupDigester(f.Format)
+	d := lookupDigester(f.src.format)
 	if d == nil {
-		return sum, fmt.Errorf("audio digest: %w", &UnsupportedFormatError{Path: f.Path, Reason: fmt.Sprintf("no digest for %s files", f.Format)})
+		return sum, fmt.Errorf("audio digest: %w", &UnsupportedFormatError{Path: f.src.path, Reason: fmt.Sprintf("no digest for %s files", f.src.format)})
 	}
-	digest, err := digestSafely(ctx, d, f.reader, f.Size, f.Path)
+	digest, err := digestSafely(ctx, d, f.reader, f.src.size, f.src.path)
 	if err != nil {
-		return sum, fmt.Errorf("audio digest: %w", withPath(err, f.Path))
+		return sum, fmt.Errorf("audio digest: %w", withPath(err, f.src.path))
 	}
 	if len(digest) != sha256.Size {
 		return sum, fmt.Errorf("audio digest: digester returned %d bytes, want %d", len(digest), sha256.Size)
 	}
 	if sum = [sha256.Size]byte(digest); sum == sha256.Sum256(nil) {
-		return [sha256.Size]byte{}, fmt.Errorf("audio digest: %w", &CorruptedFileError{Path: f.Path, Reason: "no audio data"})
+		return [sha256.Size]byte{}, fmt.Errorf("audio digest: %w", &CorruptedFileError{Path: f.src.path, Reason: "no audio data"})
 	}
 	return sum, nil
 }

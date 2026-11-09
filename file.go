@@ -26,7 +26,10 @@ import (
 //
 // The parsed data lives in the promoted fields of the embedded data payload:
 //
-//   - Path, Format and Size describe the file.
+//   - Path, Format and Size describe the file as Open found it. They are
+//     for reading only: changing them does not change what
+//     [File.ExtractArtwork], [File.AudioDigest], [File.WriteTo] or [Write]
+//     read, which always use the values from Open.
 //   - Tags holds the format-agnostic tags ([Tags]).
 //   - Audio holds the technical properties ([AudioInfo]).
 //   - Chapters lists the chapter markers ([Chapter]), in playback order.
@@ -46,6 +49,7 @@ type File struct {
 	types.File
 
 	reader  io.ReaderAt
+	src     source // what Open read; see source
 	parser  FormatParser
 	artwork []Artwork
 
@@ -117,6 +121,7 @@ func openWithContext(ctx context.Context, path string, opts ...Option) (*File, e
 	// Wrap in File struct
 	file := &File{
 		File:   *typesFile.file,
+		src:    typesFile.source(),
 		reader: f,
 		parser: typesFile.parser,
 
@@ -221,6 +226,21 @@ type parsedFile struct {
 	parser FormatParser
 }
 
+// source identifies the file a File was opened from, as Open saw it. The
+// exported Path, Format and Size are copies that callers may change;
+// everything that reads the file again (artwork, digests, writes) uses
+// these instead.
+type source struct {
+	path   string
+	format Format
+	size   int64
+}
+
+// source returns what Open saw of the parsed file.
+func (p *parsedFile) source() source {
+	return source{path: p.file.Path, format: p.file.Format, size: p.file.Size}
+}
+
 // openReader opens from an io.ReaderAt (internal, for testing).
 func openReader(ctx context.Context, r io.ReaderAt, size int64, path string) (*parsedFile, error) {
 	// Detect format
@@ -301,7 +321,7 @@ func (f *File) ExtractArtworkContext(ctx context.Context) ([]Artwork, error) {
 
 	artwork := []Artwork{}
 	if extractor, ok := f.parser.(ArtworkExtractor); ok {
-		extracted, err := extractSafely(ctx, extractor, f.reader, f.Size, f.Path)
+		extracted, err := extractSafely(ctx, extractor, f.reader, f.src.size, f.src.path)
 		if err != nil {
 			return nil, fmt.Errorf("extract artwork: %w", err) // Not cached: a later call may retry.
 		}

@@ -134,7 +134,7 @@ func FuzzWriteRoundTrip(f *testing.F) {
 		if err != nil {
 			return
 		}
-		file := &File{File: *p.file, reader: bytes.NewReader(data), parser: p.parser}
+		file := &File{File: *p.file, src: p.source(), reader: bytes.NewReader(data), parser: p.parser}
 		tw := registry.GetWriter(file.Format)
 		if tw == nil {
 			return
