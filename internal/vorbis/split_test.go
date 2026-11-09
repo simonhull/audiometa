@@ -106,15 +106,21 @@ func TestSplitCanceled(t *testing.T) {
 	}
 }
 
+// TestSplitAllocationBound declares a million comments in a 10-byte body: nothing may be sized
+// from the declared count. Bytes per call are measured, since the count of allocations varies
+// under the race detector.
 func TestSplitAllocationBound(t *testing.T) {
 	p := append(append(le32(0), le32(1_000_000)...), 1, 2)
-	allocs := testing.AllocsPerRun(10, func() {
-		if _, err := Split(context.Background(), p); err == nil {
-			t.Fatal("want an error")
+	r := testing.Benchmark(func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			if _, err := Split(context.Background(), p); err == nil {
+				b.Fatal("want an error")
+			}
 		}
 	})
-	if allocs > 3 {
-		t.Errorf("allocs = %v, want <= 3", allocs)
+	if got := r.AllocedBytesPerOp(); got > 1024 {
+		t.Errorf("%d bytes allocated per call, want under 1 KiB (a million-entry slice is 24 MB)", got)
 	}
 }
 
