@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json/v2"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -284,15 +285,42 @@ func TestWriteNewRefusesOverwrite(t *testing.T) {
 
 func TestArtworkNoArtworkFile(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "out")
-	code, out, _ := runCLI(t, "artwork", "--out", dir, mp3Fixture)
-	if code != exitOK {
-		t.Fatalf("code=%d", code)
+	code, out, errs := runCLI(t, "artwork", "--out", dir, "../../testdata/sample.wav")
+	if code != exitOK || out != "" || errs != "" {
+		t.Fatalf("code=%d out=%q err=%q", code, out, errs)
 	}
-	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
-		t.Fatalf("out dir not created: %v", err)
+	if entries, err := os.ReadDir(dir); err != nil || len(entries) != 0 {
+		t.Fatalf("out dir: %v, entries %v; want it created and empty", err, entries)
 	}
-	if strings.Contains(out, "wrote") {
-		t.Logf("fixture has artwork: %s", out)
+}
+
+func TestArtworkNumbersExtraImages(t *testing.T) {
+	src, err := os.ReadFile("../../testdata/sample.flac")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "two.flac")
+	if err := os.WriteFile(path, src, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err = audiometa.Write(path, func(f *audiometa.File) error {
+		art, err := f.ExtractArtwork()
+		if err != nil || len(art) != 1 {
+			return fmt.Errorf("fixture artwork: %d images, %w", len(art), err)
+		}
+		return f.AddArtwork(audiometa.Artwork{Type: audiometa.ArtworkBackCover, MIMEType: art[0].MIMEType, Data: art[0].Data})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(t.TempDir(), "out")
+	if code, _, errs := runCLI(t, "artwork", "--out", dir, path); code != exitOK {
+		t.Fatalf("code=%d err=%q", code, errs)
+	}
+	for _, name := range []string{"two.jpg", "two_1.jpg"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
 	}
 }
 
