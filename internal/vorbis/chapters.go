@@ -44,12 +44,13 @@ func ParseChapters(comments []string, fileDuration time.Duration) []types.Chapte
 			continue
 		}
 
-		key := strings.ToUpper(strings.TrimSpace(before))
-		value := strings.TrimSpace(after)
-
-		if !strings.HasPrefix(key, "CHAPTER") {
+		// Most comments are not chapters: reject them before upper-casing.
+		key := strings.TrimSpace(before)
+		if len(key) < len("CHAPTER") || !strings.EqualFold(key[:len("CHAPTER")], "CHAPTER") {
 			continue
 		}
+		key = strings.ToUpper(key)
+		value := strings.TrimSpace(after)
 
 		if strings.HasSuffix(key, "NAME") { //nolint:nestif // Chapter tag parsing requires nested conditionals for different formats
 			// CHAPTERxxxNAME - extract chapter number
