@@ -32,11 +32,16 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	sr := binary.NewSafeReader(r, size, path)
 
 	// Verify Ogg magic bytes ("OggS")
-	magic := make([]byte, 4)
-	if err := sr.ReadAt(magic, 0, "Ogg magic bytes"); err != nil {
-		return nil, fmt.Errorf("read Ogg magic: %w", err)
+	// A direct read: filling a SafeReader window here would cost 16 KiB that
+	// the page stream, which reads the same bytes next, does not share.
+	var magic [4]byte
+	if size < int64(len(magic)) {
+		return nil, fmt.Errorf("read Ogg magic: %w", &binary.OutOfBoundsError{Path: path, What: "Ogg magic bytes", Offset: 0, Length: len(magic), Size: size})
 	}
-	if string(magic) != capturePattern {
+	if n, err := r.ReadAt(magic[:], 0); n < len(magic) && err != nil {
+		return nil, fmt.Errorf("read Ogg magic: %s: failed to read Ogg magic bytes at offset 0: %w", path, err)
+	}
+	if string(magic[:]) != capturePattern {
 		return nil, &types.CorruptedFileError{
 			Path:   path,
 			Offset: 0,
