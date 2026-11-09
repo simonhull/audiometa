@@ -158,7 +158,9 @@ func (t *Tags) Get(key string) []string {
 //
 //	encoder := file.Tags.GetFirst("ENCODER")
 func (t *Tags) GetFirst(key string) string {
-	values := t.Get(key)
+	// Index the stored slice directly: Get would copy every value just to
+	// read one, which is quadratic when a caller probes a growing key.
+	values := t.raw[key]
 	if len(values) == 0 {
 		return ""
 	}
