@@ -614,6 +614,23 @@ func TestApply_V22KeysNormalized(t *testing.T) {
 	}
 }
 
+// A raw edit of the key an ID3v2.2 tag exposes for its year lands in the
+// ID3v2.4 frame the tag is rewritten with: TYER becomes TDRC.
+func TestApply_V22RawYearKeyLandsInTDRC(t *testing.T) {
+	src := file(v22Tag(id3v22Frame("TYE", latin1Text("2020"))))
+	out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.Set("TYER", "1999") }))
+	if wt := framesOf(t, out); wt.inVersion != 4 || len(framesWithID(wt.frames, "TYER")) != 0 {
+		t.Errorf("version %d, frames %v, want v2.4 without TYER", wt.inVersion, frameIDs(wt.frames))
+	}
+	got := parseBytes(t, out).Tags
+	if v := got.Get("TDRC"); !slices.Equal(v, []string{"1999"}) {
+		t.Errorf("TDRC = %q, want 1999", v)
+	}
+	if v := got.Get("TYER"); len(v) != 0 {
+		t.Errorf("TYER = %q, want none", v)
+	}
+}
+
 func TestApply_SortFramesInEitherVersion(t *testing.T) {
 	for _, v := range []byte{3, 4} {
 		for _, id := range []string{"TSOT", "TSOA", "TSOP"} {
