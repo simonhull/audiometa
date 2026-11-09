@@ -285,13 +285,13 @@
       "title": "Chapter 40",
       "index": 41,
       "start_time": 8000000000,
-      "end_time": 8199999999,
+      "end_time": 8200000000,
       "source": "vorbis_comment"
     },
     {
       "title": "Chapter 41",
       "index": 42,
-      "start_time": 8199999999,
+      "start_time": 8200000000,
       "end_time": 8400000000,
       "source": "vorbis_comment"
     },

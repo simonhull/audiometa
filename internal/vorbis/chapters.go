@@ -126,64 +126,75 @@ func ParseChapters(comments []string, fileDuration time.Duration) []types.Chapte
 	return chapters
 }
 
-// parseChapterTimestamp parses chapter timestamps in various formats:
-//   - HH:MM:SS.mmm (hours:minutes:seconds.milliseconds)
-//   - MM:SS.mmm (minutes:seconds.milliseconds)
-//   - SS.mmm (seconds.milliseconds)
+// maxChapterHours caps the hours of a chapter time so the sum cannot overflow
+// a [time.Duration] (about 11 years).
+const maxChapterHours = 100_000
+
+// parseChapterTimestamp parses a chapter time with integer arithmetic only.
+// The accepted forms are:
+//   - HH:MM:SS[.fff] (hours, minutes, seconds)
+//   - MM:SS[.fff] (minutes, seconds)
+//   - SS[.fff] (seconds)
 //
-// Returns the duration or an error if the format is invalid.
+// Every component is ASCII digits only: no sign, exponent, hex, NaN or Inf.
+// Hours run from 0 to 100000; minutes and seconds must be below 60. The
+// fraction may have any number of digits; those beyond nine (nanoseconds) are
+// truncated. The integer part of the seconds needs at least one digit.
 func parseChapterTimestamp(ts string) (time.Duration, error) {
-	// Split by ':'
 	parts := strings.Split(ts, ":")
-
-	var hours, minutes int
-	var seconds float64
-	var err error
-
-	switch len(parts) {
-	case 3:
-		// HH:MM:SS.mmm
-		hours, err = strconv.Atoi(parts[0])
-		if err != nil {
-			return 0, fmt.Errorf("invalid hours in timestamp: %s", ts)
-		}
-		minutes, err = strconv.Atoi(parts[1])
-		if err != nil {
-			return 0, fmt.Errorf("invalid minutes in timestamp: %s", ts)
-		}
-		seconds, err = strconv.ParseFloat(parts[2], 64)
-		if err != nil {
-			return 0, fmt.Errorf("invalid seconds in timestamp: %s", ts)
-		}
-
-	case 2:
-		// MM:SS.mmm
-		minutes, err = strconv.Atoi(parts[0])
-		if err != nil {
-			return 0, fmt.Errorf("invalid minutes in timestamp: %s", ts)
-		}
-		seconds, err = strconv.ParseFloat(parts[1], 64)
-		if err != nil {
-			return 0, fmt.Errorf("invalid seconds in timestamp: %s", ts)
-		}
-
-	case 1:
-		// SS.mmm
-		seconds, err = strconv.ParseFloat(parts[0], 64)
-		if err != nil {
-			return 0, fmt.Errorf("invalid seconds in timestamp: %s", ts)
-		}
-
-	default:
+	if len(parts) > 3 {
 		return 0, fmt.Errorf("invalid timestamp format: %s", ts)
 	}
 
-	// Validate ranges
-	if hours < 0 || minutes < 0 || minutes >= 60 || seconds < 0 || seconds >= 60 {
-		return 0, fmt.Errorf("timestamp values out of range: %s", ts)
+	whole, frac, _ := strings.Cut(parts[len(parts)-1], ".")
+	seconds, ok := chapterDigits(whole)
+	if !ok || seconds >= 60 || !isASCIIDigits(frac) {
+		return 0, fmt.Errorf("invalid seconds in timestamp: %s", ts)
+	}
+	total := time.Duration(seconds) * time.Second
+	if len(frac) > 9 {
+		frac = frac[:9]
+	}
+	if frac != "" {
+		nanos, _ := chapterDigits(frac)
+		for range 9 - len(frac) {
+			nanos *= 10
+		}
+		total += time.Duration(nanos)
 	}
 
-	// Convert to duration
-	totalSeconds := float64(hours*3600+minutes*60) + seconds
-	return time.Duration(totalSeconds * float64(time.Second)), nil
+	if len(parts) >= 2 {
+		minutes, ok := chapterDigits(parts[len(parts)-2])
+		if !ok || minutes >= 60 {
+			return 0, fmt.Errorf("invalid minutes in timestamp: %s", ts)
+		}
+		total += time.Duration(minutes) * time.Minute
+	}
+	if len(parts) == 3 {
+		hours, ok := chapterDigits(parts[0])
+		if !ok || hours > maxChapterHours {
+			return 0, fmt.Errorf("invalid hours in timestamp: %s", ts)
+		}
+		total += time.Duration(hours) * time.Hour
+	}
+	return total, nil
+}
+
+// chapterDigits parses 1 to 9 ASCII digits.
+func chapterDigits(s string) (int, bool) {
+	if s == "" || len(s) > 9 || !isASCIIDigits(s) {
+		return 0, false
+	}
+	n, err := strconv.Atoi(s)
+	return n, err == nil
+}
+
+// isASCIIDigits reports whether s holds only the digits 0-9 (true for "").
+func isASCIIDigits(s string) bool {
+	for i := range len(s) {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
