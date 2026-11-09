@@ -187,7 +187,7 @@ func TestAudioDigest_UnchangedByWrite(t *testing.T) {
 			before := digestFile(t, dst)
 			err := Write(dst, func(f *File) error {
 				f.Tags.Title = "A completely different title that is much longer than before"
-				f.Tags.Set("KITSUNE_TEST", "value")
+				f.Tags.Set("AUDIOMETA_TEST", "value")
 				f.RemoveAllArtwork()
 				return nil
 			})
