@@ -193,6 +193,49 @@ func TestShift_OffsetIntoMoovRefused(t *testing.T) {
 	}
 }
 
+func TestLayout_OffsetIntoRegionRefusedEveryPlacement(t *testing.T) {
+	tests := []struct {
+		name      string
+		faststart bool
+		mutate    func(*types.Tags)
+		want      placement
+	}{
+		{"fits with free", true, growTitle(-3), placeFits},
+		{"exact fit", true, growTitle(8), placeFits},
+		{"moov last grows", false, growTitle(100), placeAtEnd},
+		{"moov last shrinks", false, growTitle(-10), placeFits},
+		{"shift", true, growTitle(100), placeShift},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			build := func(o uint64) []byte {
+				return buildMP4With(mp4Opts{faststart: tt.faststart, items: [][]byte{ilstText("\xA9nam", strings.Repeat("t", 20))}, extra: []uint64{o}})
+			}
+			clean := build(0) // offset 0 lies before moov and is allowed
+			if l := layoutOf(t, clean, tt.mutate); l.placement != tt.want {
+				t.Fatalf("placement = %d, want %d", l.placement, tt.want)
+			}
+			writeTags(t, clean, tt.mutate) // must still succeed
+
+			moov := topAtomOf(t, clean, atomMoov)
+			rEnd := moov.end
+			if tt.faststart {
+				rEnd = topAtomOf(t, clean, atomFree).end
+			}
+			for _, o := range []uint64{uint64(moov.start), uint64(moov.start) + 10, uint64(rEnd) - 1} {
+				src := build(o)
+				if _, err := tryTags(t, src, tt.mutate); !errors.Is(err, types.ErrUnsupportedWrite) {
+					t.Errorf("offset %d: WriteFile err = %v, want ErrUnsupportedWrite", o, err)
+				}
+				_, _, _, err := (&writer{}).InPlacePatch(context.Background(), bytes.NewReader(src), int64(len(src)), editsFor(t, src, tt.mutate))
+				if !errors.Is(err, types.ErrUnsupportedWrite) {
+					t.Errorf("offset %d: InPlacePatch err = %v, want ErrUnsupportedWrite", o, err)
+				}
+			}
+		})
+	}
+}
+
 func TestStructure_DRMRefused(t *testing.T) {
 	for _, entry := range []string{"drms", "enca", "aavd", "drmi"} {
 		src := buildMP4With(mp4Opts{entries: []string{"mp4a", entry}, items: [][]byte{ilstText("\xA9nam", "t")}})

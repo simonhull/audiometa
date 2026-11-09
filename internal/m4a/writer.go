@@ -37,10 +37,11 @@ var drmSampleEntries = setOf("drms drmi enca encv enct encs aavd")
 // free atom and nothing else in the file moves. When moov is the last atom
 // it simply grows. Otherwise it is followed by a 2048-byte free atom and
 // everything after it moves by one delta: every stco and co64 chunk offset
-// past the old moov is shifted by that delta. A chunk offset that points
-// into the old moov or its free space, or an stco offset that would exceed
-// 32 bits, makes the write fail with ErrUnsupportedWrite (stco is not
-// upgraded to co64). Fragmented files are refused with ErrUnsupportedWrite
+// past the old moov is shifted by that delta, and an stco offset that would
+// exceed 32 bits makes the write fail with ErrUnsupportedWrite (stco is not
+// upgraded to co64). In every case a chunk offset that points into the old
+// moov or its free space, whose bytes are rewritten, makes the write fail
+// with ErrUnsupportedWrite. Fragmented files are refused with ErrUnsupportedWrite
 // and encrypted tracks with ErrDRMProtected.
 type writer struct{}
 
@@ -202,9 +203,14 @@ func planWrite(ctx context.Context, sr *binutil.SafeReader, size int64, edits *t
 	return l, nil
 }
 
-// place chooses the layout case for the new moov (M5) and, when the data
-// after it moves, shifts the chunk offsets and re-serializes moov.
+// place refuses chunk offsets into the region it rewrites, chooses the
+// layout case for the new moov (M5) and, when the data after it moves,
+// shifts the chunk offsets and re-serializes moov.
 func (l *layout) place(root *matom, size int64) error {
+	// Every placement rewrites [moovStart, rEnd), so no chunk may live there.
+	if err := checkChunkOffsets(root, l.moovStart, l.rEnd); err != nil {
+		return err
+	}
 	n, region := int64(len(l.moov)), l.rEnd-l.moovStart
 	switch {
 	case n == region || region-n >= 8: // pad the rest with one free atom
@@ -216,7 +222,7 @@ func (l *layout) place(root *matom, size int64) error {
 	}
 	l.placement, l.free = placeShift, growFree
 	l.delta = n + growFree - region
-	if err := shiftChunkOffsets(root, l.moovStart, l.rEnd, l.delta); err != nil {
+	if err := shiftChunkOffsets(root, l.rEnd, l.delta); err != nil {
 		return err
 	}
 	moov, err := root.bytes()
@@ -230,11 +236,11 @@ func (l *layout) place(root *matom, size int64) error {
 	return nil
 }
 
-// shiftChunkOffsets adds delta to every stco/co64 chunk offset at or past
-// rEnd. Offsets before moovStart stay. An offset inside [moovStart, rEnd)
-// points into the old moov or its free space, and an stco offset that would
-// not fit in 32 bits cannot be stored: both return ErrUnsupportedWrite.
-func shiftChunkOffsets(root *matom, moovStart, rEnd, delta int64) error {
+// eachChunkOffset calls fn with every stco and co64 chunk offset entry under
+// root: typ is the atom type and entry the entry's 4 or 8 big-endian bytes,
+// which fn may rewrite in place. A table whose entry count does not fit its
+// atom cannot be checked and is ErrUnsupportedWrite.
+func eachChunkOffset(root *matom, fn func(typ string, entry []byte) error) error {
 	return root.walk(func(a *matom) error {
 		if a.isContainer() || (a.typ != atomStco && a.typ != atomCo64) {
 			return nil
@@ -251,8 +257,7 @@ func shiftChunkOffsets(root *matom, moovStart, rEnd, delta int64) error {
 			return fmt.Errorf("%w: %s holds %d entries but has room for %d", types.ErrUnsupportedWrite, a.typ, count, (len(a.payload)-8)/width)
 		}
 		for i := range int(count) { //nolint:gosec // G115: count*width <= len(payload)
-			entry := a.payload[8+i*width : 8+(i+1)*width]
-			if err := shiftEntry(a.typ, entry, moovStart, rEnd, delta); err != nil {
+			if err := fn(a.typ, a.payload[8+i*width:8+(i+1)*width]); err != nil {
 				return err
 			}
 		}
@@ -260,33 +265,51 @@ func shiftChunkOffsets(root *matom, moovStart, rEnd, delta int64) error {
 	})
 }
 
-// shiftEntry shifts one big-endian chunk offset (4 bytes for stco, 8 for co64).
-func shiftEntry(typ string, entry []byte, moovStart, rEnd, delta int64) error {
-	var o uint64
+// chunkOffset decodes one big-endian chunk offset: 4 bytes for stco, 8 for co64.
+func chunkOffset(typ string, entry []byte) uint64 {
 	if typ == atomStco {
-		o = uint64(binary.BigEndian.Uint32(entry))
-	} else {
-		o = binary.BigEndian.Uint64(entry)
+		return uint64(binary.BigEndian.Uint32(entry))
 	}
-	switch {
-	case o < uint64(moovStart): //nolint:gosec // G115: moovStart is a file offset, never negative
-		return nil
-	case o < uint64(rEnd): //nolint:gosec // G115: rEnd is a file offset, never negative
-		return fmt.Errorf("%w: %s chunk offset %d points into moov or its free space [%d, %d)", types.ErrUnsupportedWrite, typ, o, moovStart, rEnd)
-	}
-	shifted := o + uint64(delta) //nolint:gosec // G115: the grow case only, where delta > 0
-	if typ == atomCo64 {
-		if shifted < o {
-			return fmt.Errorf("%w: co64 chunk offset overflow", types.ErrUnsupportedWrite)
+	return binary.BigEndian.Uint64(entry)
+}
+
+// checkChunkOffsets refuses, with ErrUnsupportedWrite, a file whose chunk
+// offsets point into [moovStart, rEnd): the old moov and the free space
+// after it, which every placement overwrites or drops.
+func checkChunkOffsets(root *matom, moovStart, rEnd int64) error {
+	return eachChunkOffset(root, func(typ string, entry []byte) error {
+		o := chunkOffset(typ, entry)
+		if o >= uint64(moovStart) && o < uint64(rEnd) { //nolint:gosec // G115: file offsets, never negative
+			return fmt.Errorf("%w: %s chunk offset %d points into moov or its free space [%d, %d)", types.ErrUnsupportedWrite, typ, o, moovStart, rEnd)
 		}
-		binary.BigEndian.PutUint64(entry, shifted)
 		return nil
-	}
-	if shifted > math.MaxUint32 {
-		return fmt.Errorf("%w: chunk offset overflow; co64 upgrade not supported", types.ErrUnsupportedWrite)
-	}
-	binary.BigEndian.PutUint32(entry, uint32(shifted))
-	return nil
+	})
+}
+
+// shiftChunkOffsets adds delta to every stco/co64 chunk offset at or past
+// rEnd; offsets before it stay. checkChunkOffsets has already refused
+// offsets inside the old moov region. An stco offset that would not fit in
+// 32 bits cannot be stored: ErrUnsupportedWrite.
+func shiftChunkOffsets(root *matom, rEnd, delta int64) error {
+	return eachChunkOffset(root, func(typ string, entry []byte) error {
+		o := chunkOffset(typ, entry)
+		if o < uint64(rEnd) { //nolint:gosec // G115: rEnd is a file offset, never negative
+			return nil
+		}
+		shifted := o + uint64(delta) //nolint:gosec // G115: the grow case only, where delta > 0
+		if typ == atomCo64 {
+			if shifted < o {
+				return fmt.Errorf("%w: co64 chunk offset overflow", types.ErrUnsupportedWrite)
+			}
+			binary.BigEndian.PutUint64(entry, shifted)
+			return nil
+		}
+		if shifted > math.MaxUint32 {
+			return fmt.Errorf("%w: chunk offset overflow; co64 upgrade not supported", types.ErrUnsupportedWrite)
+		}
+		binary.BigEndian.PutUint32(entry, uint32(shifted))
+		return nil
+	})
 }
 
 // moovRegion returns the extent of moov and the free/skip run after it: the
