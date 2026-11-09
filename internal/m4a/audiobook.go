@@ -85,7 +85,7 @@ func parseCustomAtomWithTags(sr *binary.SafeReader, customAtom *Atom, file *type
 		case "data":
 			// Value, after version, flags and the reserved word.
 			text := readAtomText(sr, atom, 8, "data value")
-			if v := strings.TrimSpace(strings.TrimRight(text, "\x00")); v != "" {
+			if v := strings.TrimSpace(strings.TrimRight(text, "\x00")); v != "" && file.TakeValue() {
 				values = append(values, v)
 			}
 		}

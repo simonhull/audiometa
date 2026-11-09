@@ -3,6 +3,8 @@ package m4a
 import (
 	"bytes"
 	"context"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/simonhull/audiometa/internal/testbudget"
@@ -33,5 +35,22 @@ func TestParse_RepeatedItemsAreLinear(t *testing.T) {
 	}
 	if f.Tags.Title != "t" {
 		t.Errorf("Title = %q, want t", f.Tags.Title)
+	}
+}
+
+func TestParse_ItemValuesAreCapped(t *testing.T) {
+	values := slices.Repeat([]string{"a"}, 70_000)
+	data := buildMP4(false, ilstText("\xa9gen", values...))
+	f, err := (&parser{}).Parse(context.Background(), bytes.NewReader(data), int64(len(data)), "x.m4a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(f.Tags.Genres); got != types.MaxTagValues {
+		t.Errorf("Genres = %d, want %d", got, types.MaxTagValues)
+	}
+	if !slices.ContainsFunc(f.Warnings, func(w types.Warning) bool {
+		return w.Stage == types.StageMetadata && strings.Contains(w.Message, "tag values")
+	}) {
+		t.Errorf("warnings = %+v, want a tag values warning", f.Warnings)
 	}
 }

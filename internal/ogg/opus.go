@@ -134,6 +134,9 @@ func parseOpusTags(data []byte, file *types.File) error {
 			break
 		}
 
+		if !file.TakeValue() {
+			break
+		}
 		comment := string(data[offset : offset+int(commentLen)])
 		offset += int(commentLen)
 

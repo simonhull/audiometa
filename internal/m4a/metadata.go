@@ -69,8 +69,8 @@ func parseMetadataTag(sr *binary.SafeReader, tagAtom *Atom) (string, error) {
 // parseMetadataValues returns the non-empty text or integer value of every
 // data atom of an iTunes metadata tag atom, in order. Data atoms of other
 // types (images, UTF-16, floats) are skipped, and a malformed child atom
-// ends the list.
-func parseMetadataValues(sr *binary.SafeReader, tagAtom *Atom) ([]string, error) {
+// ends the list. Values past the file's tag value cap are not collected.
+func parseMetadataValues(sr *binary.SafeReader, tagAtom *Atom, file *types.File) ([]string, error) {
 	var values []string
 	off, end := tagAtom.DataOffset(), tagAtom.DataOffset()+tagAtom.DataSize()
 	for off < end {
@@ -89,6 +89,9 @@ func parseMetadataValues(sr *binary.SafeReader, tagAtom *Atom) ([]string, error)
 				return values, err
 			}
 			if value != "" {
+				if !file.TakeValue() {
+					return values, nil
+				}
 				values = append(values, value)
 			}
 		}
@@ -197,7 +200,7 @@ func extractIlstMetadata(ctx context.Context, sr *binary.SafeReader, ilstAtom *A
 			// ----: freeform atoms, handled by parseAudiobookTags.
 		case keyGnre:
 			// ID3v1 genre index: recorded raw only, never mapped into Genres.
-			if index, ok := parseGnre(sr, tagAtom); ok {
+			if index, ok := parseGnre(sr, tagAtom); ok && file.TakeValue() {
 				file.Tags.AddRaw(keyGnre, strconv.Itoa(index))
 			}
 		default:
@@ -286,7 +289,7 @@ func mapTagToField(tag string, value string, file *types.File) {
 // mapTextItem reads every value of a text or integer ilst item and maps it:
 // the first through mapTagToField, the rest through mapExtraValue.
 func mapTextItem(sr *binary.SafeReader, tagAtom *Atom, file *types.File) {
-	values, err := parseMetadataValues(sr, tagAtom)
+	values, err := parseMetadataValues(sr, tagAtom, file)
 	if err != nil {
 		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 			Stage:   types.StageMetadata,

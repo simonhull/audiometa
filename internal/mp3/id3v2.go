@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"iter"
 	"slices"
 	"strings"
 	"time"
@@ -364,7 +365,7 @@ func parseTextFrame(frame ID3v2Frame, file *types.File) { //nolint:gocyclo // Co
 	}
 
 	encoding := frame.Data[0]
-	values := splitTextValues(decodeText(frame.Data[1:], encoding))
+	values := takeTextValues(file, decodeText(frame.Data[1:], encoding))
 	var text string
 	if len(values) > 0 {
 		text = values[0]
@@ -501,8 +502,12 @@ func parseTXXXFrame(frame ID3v2Frame, file *types.File) {
 	}
 
 	description := decodeText(data[:nullIdx], encoding)
-	values := splitTextValues(decodeText(data[nullIdx+terminatorSize(encoding):], encoding))
+	values := takeTextValues(file, decodeText(data[nullIdx+terminatorSize(encoding):], encoding))
 	if len(values) == 0 {
+		// An empty value is still a value; no values at all means the cap is reached.
+		if !file.TakeValue() {
+			return
+		}
 		values = []string{""}
 	}
 
@@ -525,7 +530,7 @@ func parseTXXXFrame(frame ID3v2Frame, file *types.File) {
 // a binary identifier, or a frame with no owner, is not.
 func parseUFIDFrame(frame ID3v2Frame, file *types.File) {
 	owner, id, ok := parseUFID(frame.Data)
-	if !ok || id == "" || !utf8.ValidString(id) || strings.ContainsRune(id, 0) {
+	if !ok || id == "" || !utf8.ValidString(id) || strings.ContainsRune(id, 0) || !file.TakeValue() {
 		return
 	}
 	file.Tags.AddRaw(ufidKeyPrefix+owner, id)
@@ -552,9 +557,11 @@ func parseCommentFrame(frame ID3v2Frame, file *types.File, st *frameState) {
 		return
 	}
 
-	switch {
-	case c.text == "", strings.HasPrefix(c.desc, "iTun"):
+	if c.text == "" || strings.HasPrefix(c.desc, "iTun") || !file.TakeValue() {
 		return
+	}
+
+	switch {
 	case c.desc == "":
 		if file.Tags.Comment == "" {
 			file.Tags.Comment = c.text
@@ -569,7 +576,7 @@ func parseCommentFrame(frame ID3v2Frame, file *types.File, st *frameState) {
 // language or description, fills Lyrics.
 func parseLyricsFrame(frame ID3v2Frame, file *types.File) {
 	c, ok := parseLangText(frame.Data)
-	if !ok || c.text == "" {
+	if !ok || c.text == "" || !file.TakeValue() {
 		return
 	}
 	file.Tags.AddRaw(frameIDUSLT, c.text)
@@ -727,23 +734,36 @@ func decodeSingleByteText(data []byte) string {
 	return b.String()
 }
 
-// splitTextValues splits decoded text-frame content into its values. ID3v2.4
+// textValues yields the values of decoded text-frame content. ID3v2.4
 // separates multiple values with NUL; UTF-16 values may each carry their own
-// BOM, which decodes to U+FEFF and is dropped. Empty values are removed.
-func splitTextValues(s string) []string {
-	var out []string
-	for p := range strings.SplitSeq(s, "\x00") {
-		if p = strings.TrimPrefix(p, "\uFEFF"); p != "" {
-			out = append(out, p)
+// BOM, which decodes to U+FEFF and is dropped. Empty values are skipped.
+func textValues(s string) iter.Seq[string] {
+	return func(yield func(string) bool) {
+		for p := range strings.SplitSeq(s, "\x00") {
+			if p = strings.TrimPrefix(p, "\uFEFF"); p != "" && !yield(p) {
+				return
+			}
 		}
+	}
+}
+
+// takeTextValues returns the values of s that file's tag value cap admits, in
+// order. It stops splitting at the first refusal.
+func takeTextValues(file *types.File, s string) []string {
+	var out []string
+	for v := range textValues(s) {
+		if !file.TakeValue() {
+			break
+		}
+		out = append(out, v)
 	}
 	return out
 }
 
 // firstValue returns the first value of a possibly multi-valued text, or "".
 func firstValue(s string) string {
-	if values := splitTextValues(s); len(values) > 0 {
-		return values[0]
+	for v := range textValues(s) {
+		return v
 	}
 	return ""
 }

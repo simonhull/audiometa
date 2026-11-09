@@ -131,6 +131,9 @@ func decodeText(b []byte) string {
 // to its key (types.FieldBindings), so BindFormat fills it, ID3 first.
 func addRaw(file *types.File, entries []entry, commentID string) {
 	for _, e := range entries {
+		if !file.TakeValue() {
+			break
+		}
 		file.Tags.AddRaw(e.id, e.value)
 		if e.id == commentID && file.Tags.Comment == "" {
 			file.Tags.Comment = e.value
