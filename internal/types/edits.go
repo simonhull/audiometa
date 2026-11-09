@@ -13,7 +13,7 @@ type KeyEdit struct {
 }
 
 // FieldEdit sets one typed field that no KeyEdit already covers. Values uses the
-// fieldValues encoding (nil = clear).
+// valuesOf encoding (nil = clear).
 type FieldEdit struct {
 	Field  Field
 	Values []string
@@ -114,7 +114,7 @@ func diffFields(orig, cur *Tags, format Format, keys []KeyEdit) ([]FieldEdit, er
 
 	var edits []FieldEdit
 	for f := range AllFields() {
-		c, d, o := fieldValues(cur, f), fieldValues(derived, f), fieldValues(orig, f)
+		c, d, o := valuesOf(cur, f), valuesOf(derived, f), valuesOf(orig, f)
 		if slices.Equal(c, d) {
 			continue
 		}

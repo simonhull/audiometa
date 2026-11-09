@@ -56,13 +56,13 @@ func TestFieldValuesRoundTrip(t *testing.T) {
 
 		tags := &Tags{}
 		setFieldValues(tags, f, sample)
-		if got := fieldValues(tags, f); !slices.Equal(got, sample) {
-			t.Errorf("%s: fieldValues after set %v = %v", f, sample, got)
+		if got := valuesOf(tags, f); !slices.Equal(got, sample) {
+			t.Errorf("%s: valuesOf after set %v = %v", f, sample, got)
 		}
 
 		setFieldValues(tags, f, nil)
-		if got := fieldValues(tags, f); got != nil {
-			t.Errorf("%s: fieldValues after clear = %v, want nil", f, got)
+		if got := valuesOf(tags, f); got != nil {
+			t.Errorf("%s: valuesOf after clear = %v, want nil", f, got)
 		}
 	}
 }

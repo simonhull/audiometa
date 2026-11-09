@@ -139,7 +139,7 @@ func TestDecodeField(t *testing.T) {
 			if ok := decodeField(tags, tc.format, tc.field, tc.key, tc.values); ok != tc.ok {
 				t.Fatalf("ok = %v, want %v", ok, tc.ok)
 			}
-			got := fieldValues(tags, tc.field)
+			got := valuesOf(tags, tc.field)
 			if len(got) != len(tc.want) || (len(got) > 0 && got[0] != tc.want[0]) {
 				t.Errorf("field = %v, want %v", got, tc.want)
 			}

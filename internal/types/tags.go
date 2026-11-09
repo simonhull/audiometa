@@ -425,7 +425,7 @@ func (t *Tags) mergeRaw(other *Tags) (owned [fieldCount]bool) {
 // fills in t's format.
 func (t *Tags) holdsFieldBoundTo(key string) bool {
 	for _, b := range bindingsFor(t.format) {
-		if slices.Contains(b.Keys, key) && fieldValues(t, b.Field) != nil {
+		if slices.Contains(b.Keys, key) && valuesOf(t, b.Field) != nil {
 			return true
 		}
 	}
