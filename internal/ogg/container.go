@@ -177,15 +177,41 @@ func (t *packetTracker) segments(page *Page) iter.Seq[segment] {
 // splitPackets assembles packets from a series of pages of one logical
 // stream; see [packetTracker.segments]. The final packet is returned even if
 // it is still open; open reports whether the last packet is unterminated.
+//
+// Packets are assembled in two passes so each is allocated once at its final
+// size: the first sums the segment lengths, the second copies them.
 func splitPackets(pages []*Page) (packets [][]byte, open bool) {
+	var sizes []int
 	var t packetTracker
-	var cur []byte
+	n := 0
+	for _, page := range pages {
+		for seg := range t.segments(page) {
+			n += len(seg.data)
+			if seg.ends {
+				sizes = append(sizes, n)
+				n = 0
+			}
+		}
+	}
+	if t.open {
+		sizes = append(sizes, n)
+	}
+
+	alloc := func(k int) []byte {
+		if k >= len(sizes) || sizes[k] == 0 {
+			return nil
+		}
+		return make([]byte, 0, sizes[k])
+	}
+	packets = make([][]byte, 0, len(sizes))
+	t = packetTracker{}
+	cur := alloc(0)
 	for _, page := range pages {
 		for seg := range t.segments(page) {
 			cur = append(cur, seg.data...)
 			if seg.ends {
 				packets = append(packets, cur)
-				cur = nil
+				cur = alloc(len(packets))
 			}
 		}
 	}

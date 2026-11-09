@@ -70,6 +70,36 @@ func splitAcrossPages(packet []byte, firstType byte, serial uint32) []pageSpec {
 	return out
 }
 
+// pagesOf reads every page of an Ogg file built by buildOgg.
+func pagesOf(t testing.TB, data []byte) []*Page {
+	t.Helper()
+	sr := binutil.NewSafeReader(bytes.NewReader(data), int64(len(data)), "x")
+	var pages []*Page
+	for off := int64(0); off < int64(len(data)); {
+		page, next, err := readPage(sr, off)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pages = append(pages, page)
+		off = next
+	}
+	return pages
+}
+
+func TestSplitPacketsAllocs(t *testing.T) {
+	packet := bytes.Repeat([]byte{7}, 300_000)
+	pages := pagesOf(t, buildOgg(splitAcrossPages(packet, 0, 1)...))
+	if len(pages) < 2 {
+		t.Fatalf("pages = %d, want a packet spanning several", len(pages))
+	}
+	if got, _ := splitPackets(pages); len(got) != 1 || !bytes.Equal(got[0], packet) {
+		t.Fatal("packet not reassembled")
+	}
+	if n := testing.AllocsPerRun(10, func() { splitPackets(pages) }); n > 4 {
+		t.Errorf("allocs = %v, want <= 4", n)
+	}
+}
+
 func TestSplitPackets(t *testing.T) {
 	pk := func(n int, b byte) []byte { return bytes.Repeat([]byte{b}, n) }
 	tests := []struct {
