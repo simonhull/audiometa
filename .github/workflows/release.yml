@@ -8,9 +8,17 @@ on:
 permissions: {}
 
 jobs:
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   release:
     name: Release
+    needs: ci
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: write
 
@@ -20,19 +28,16 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Set up Go
-      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-      with:
-        # Latest 1.27 patch, matching CI, so binaries carry current stdlib fixes.
-        # go-version-file would pin go.mod's minimum (1.27.0).
-        go-version: '1.27'
-        check-latest: true
+    - name: Require the tag to be on main
+      run: |
+        git fetch --no-tags origin main
+        git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+          echo "::error::$GITHUB_REF_NAME ($GITHUB_SHA) is not on main"; exit 1; }
+
+    - name: Install tools
+      uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5.2.7
 
     - name: Run GoReleaser
-      uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
-      with:
-        distribution: goreleaser
-        version: v2.19.0
-        args: release --clean
+      run: mise exec -- goreleaser release --clean
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
