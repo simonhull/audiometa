@@ -55,48 +55,27 @@ func (h ID3v2Header) totalSize() int64 {
 // size of the tag; for a recognized tag with an unsupported version that is
 // still returned (alongside the error) so the audio scan can skip the tag.
 func parseID3v2(ctx context.Context, sr *binutil.SafeReader, file *types.File) (int64, error) {
-	header, err := parseID3v2Header(sr)
+	warn := func(w types.Warning) { file.Warnings = types.AppendWarning(file.Warnings, w) }
+	tag, err := openID3v2Tag(sr, warn)
 	if err != nil {
-		if header.Version != 0 {
-			return header.totalSize(), err
+		return tag.size, err
+	}
+	st := &frameState{}
+	for frame, err := range tag.frames(ctx, isMetadataFrame, warn) {
+		if err != nil {
+			return 0, err
 		}
-		return 0, err
-	}
-
-	tagSize := header.totalSize()
-	if header.Version == 2 && header.Flags&flagV22Compression != 0 {
-		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-			Stage:   types.StageMetadata,
-			Message: "ID3v2.2 tag is compressed; frames ignored",
-		})
-		return tagSize, nil
-	}
-	if (header.Version == 2 || header.Version == 3) && header.Flags&flagUnsync != 0 {
-		// ID3v2.3 unsynchronises the whole tag body, so undo it before walking frames.
-		var warn *types.Warning
-		sr, header, warn = deunsyncTag(sr, header)
-		if warn != nil {
-			file.Warnings = types.AppendWarning(file.Warnings, *warn)
-		}
-	}
-
-	frameDataOffset := skipExtendedHeader(sr, header)
-	st, err := parseID3v2Frames(ctx, sr, file, header, frameDataOffset)
-	if err != nil {
-		return 0, err
+		processFrame(frame, file, st)
 	}
 	if file.Tags.Comment == "" {
 		file.Tags.Comment = st.describedComment
 	}
-
-	// Process chapters
 	if len(st.chapters) > 0 {
 		// CHAP frames take precedence over OverDrive MediaMarkers (set by a TXXX handler).
-		file.Chapters = parseChapterFrames(st.chapters, header.Version)
+		file.Chapters = parseChapterFrames(st.chapters, tag.header.Version)
 	}
-
-	// Total tag size including header (as stored on disk, before any de-unsynchronisation)
-	return tagSize, nil
+	// On-disk size of the tag, before any de-unsynchronisation.
+	return tag.size, nil
 }
 
 // Header and frame flag bits.
@@ -260,82 +239,6 @@ func skipExtendedHeader(sr *binutil.SafeReader, header ID3v2Header) int64 {
 	}
 
 	return frameDataOffset
-}
-
-// parseID3v2Frames parses all frames in the ID3v2 tag.
-// It returns ctx.Err() if the context is canceled mid-walk.
-func parseID3v2Frames(ctx context.Context, sr *binutil.SafeReader, file *types.File, header ID3v2Header, startOffset int64) (*frameState, error) {
-	tagEnd := int64(10 + header.Size)
-	offset := startOffset
-	st := &frameState{}
-
-	for i := 0; offset < tagEnd; i++ {
-		if err := binutil.Canceled(ctx, i); err != nil {
-			return nil, err
-		}
-
-		frame, bytesRead, stop := readSingleFrame(sr, file, header, offset)
-		if stop {
-			break
-		}
-
-		if frame != nil {
-			processFrame(*frame, file, st)
-		}
-
-		offset += bytesRead
-	}
-
-	return st, nil
-}
-
-// readSingleFrame reads a single ID3v2 frame.
-func readSingleFrame(sr *binutil.SafeReader, file *types.File, header ID3v2Header, offset int64) (*ID3v2Frame, int64, bool) {
-	frameID, frameSize, frameFlags, headerLen, ok := readFrameHeader(sr, header.Version, offset)
-	if !ok {
-		return nil, 0, true
-	}
-
-	if !isMetadataFrame(frameID) {
-		// processFrame ignores this frame (e.g. APIC artwork, which ExtractArtwork
-		// reads lazily), so skip its payload entirely.
-		return nil, headerLen + int64(frameSize), false
-	}
-
-	// Read frame data
-	var frameData []byte
-	err := sr.CheckLen(offset+headerLen, int(frameSize), 1, "ID3 frame")
-	if err == nil {
-		frameData = make([]byte, frameSize)
-		err = sr.ReadAt(frameData, offset+headerLen, "frame data")
-	}
-	if err != nil {
-		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-			Stage:   types.StageMetadata,
-			Message: fmt.Sprintf("failed to read frame %s: %v", frameID, err),
-			Err:     err,
-		})
-		return nil, headerLen + int64(frameSize), false
-	}
-
-	frameData, skip := frameBody(header.Version, header.Flags, frameFlags, frameData)
-	if skip != "" {
-		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-			Stage:   types.StageMetadata,
-			Message: fmt.Sprintf("skipped %s frame %s", skip, frameID),
-			Offset:  offset,
-		})
-		return nil, headerLen + int64(frameSize), false
-	}
-
-	frame := &ID3v2Frame{
-		ID:    frameID,
-		Size:  frameSize,
-		Flags: frameFlags,
-		Data:  frameData,
-	}
-
-	return frame, headerLen + int64(frameSize), false
 }
 
 // Frame IDs referenced in more than one place.
