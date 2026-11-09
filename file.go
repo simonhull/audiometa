@@ -111,10 +111,13 @@ func openWithContext(ctx context.Context, path string, opts ...Option) (*File, e
 		return nil, err
 	}
 
+	src := typesFile.source()
+	src.stat = stat
+
 	// Wrap in File struct
 	file := &File{
 		File:   *typesFile.file,
-		src:    typesFile.source(),
+		src:    src,
 		reader: f,
 		parser: typesFile.parser,
 
@@ -257,9 +260,13 @@ type source struct {
 	path   string
 	format Format
 	size   int64
+	// stat is the open handle's stat. On Windows only a handle stat carries
+	// the file's identity for os.SameFile; a path stat loads it lazily.
+	stat os.FileInfo
 }
 
-// source returns what Open saw of the parsed file.
+// source returns what Open saw of the parsed file. Its stat is left nil;
+// Open sets it from the handle.
 func (p *parsedFile) source() source {
 	return source{path: p.file.Path, format: p.file.Format, size: p.file.Size}
 }

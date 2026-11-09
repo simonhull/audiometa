@@ -155,11 +155,11 @@ func WriteContext(ctx context.Context, path string, edit func(f *File) error, op
 	if err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
-	st0, err := os.Stat(target)
+	pre, err := os.Stat(target) // a clean error before opening; the reference stat comes from the handle
 	if err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
-	if !st0.Mode().IsRegular() {
+	if !pre.Mode().IsRegular() {
 		return notRegular(path)
 	}
 
@@ -190,7 +190,7 @@ func WriteContext(ctx context.Context, path string, edit func(f *File) error, op
 	}
 	job := &writeJob{
 		f: f, tw: tw, edits: edits, opts: o,
-		target: target, st0: st0,
+		target: target, st0: f.src.stat, // the handle's stat; a successful Open always sets it
 		ref: verifyRef{format: f.src.format, digest: digest, chapters: slices.Clone(f.Chapters)},
 	}
 
@@ -208,7 +208,7 @@ type writeJob struct {
 	f      *File
 	tw     registry.TagWriter
 	edits  *types.EditSet
-	st0    os.FileInfo // the target's stat before it was opened
+	st0    os.FileInfo // the opened file's stat, from its handle
 	target string      // path with symlinks resolved
 	ref    verifyRef
 	opts   writeOptions
