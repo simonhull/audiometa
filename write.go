@@ -104,7 +104,10 @@ func (f *File) WriteToContext(ctx context.Context, w io.Writer) (int64, error) {
 // point leaves either the old or the new file, never a mix. The new file
 // keeps the original's permission bits and, where the process may set them,
 // its owner and group. Symlinks are followed and their target replaced; the
-// link itself is kept. [WithInPlace] trades that atomicity for speed, and
+// link itself is kept. Because the new contents are a new file, other hard
+// links to the original keep the old contents, and extended attributes, ACLs
+// and file flags are not carried over; an edit [WithInPlace] applies in place
+// keeps all of them. [WithInPlace] trades that atomicity for speed, and
 // [WithPreserveModTime] keeps the modification time.
 //
 // Write does not lock the file. Just before it renames the new file into
