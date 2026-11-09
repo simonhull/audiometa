@@ -17,7 +17,64 @@ type id3v2Tag struct {
 	sr         *binutil.SafeReader
 	header     ID3v2Header
 	start, end int64
-	size       int64 // on-disk size of the tag (header, body, footer), before any de-unsynchronisation
+	size       int64           // on-disk size of the tag (header, body, footer), before any de-unsynchronisation
+	coding     frameSizeCoding // how the tag's ID3v2.4 frame sizes are encoded
+}
+
+// frameSizeCoding is how the frame sizes of an ID3v2.4 tag are encoded. The
+// standard is synchsafe; some older iTunes versions wrote plain big-endian
+// integers. ID3v2.2 and ID3v2.3 sizes are always plain, whatever the coding.
+type frameSizeCoding uint8
+
+const (
+	sizeSynchsafe frameSizeCoding = iota // the standard, and the zero value
+	sizeBigEndian
+)
+
+// v24SizeCoding decides how the frame sizes of the ID3v2.4 frames in
+// [start, end) of sr are encoded, as mutagen does for a whole tag: the frame
+// headers are walked once with synchsafe sizes and once with plain sizes, and
+// each walk counts the frames whose ID is four characters of A-Z or 0-9,
+// stopping at padding, an invalid ID or a frame running past end. Plain sizes
+// are chosen when they find more frames, or as many while the synchsafe walk
+// overran end and the plain one did not; otherwise the standard synchsafe.
+func v24SizeCoding(sr *binutil.SafeReader, start, end int64) frameSizeCoding {
+	ss, ssOverran := countFrames(sr, start, end, sizeSynchsafe)
+	be, beOverran := countFrames(sr, start, end, sizeBigEndian)
+	if be > ss || (be == ss && ssOverran && !beOverran) {
+		return sizeBigEndian
+	}
+	return sizeSynchsafe
+}
+
+// countFrames counts the well-formed frames at the start of [start, end) when
+// their sizes are decoded with coding, and reports whether the walk stopped
+// because a frame ran past end.
+func countFrames(sr *binutil.SafeReader, start, end int64, coding frameSizeCoding) (n int, overran bool) {
+	var hdr [10]byte
+	for off := start; off+10 <= end; n++ {
+		if sr.ReadAt(hdr[:], off, "frame header") != nil || !validFrameID(hdr[:4]) {
+			return n, false
+		}
+		off += 10 + int64(decodeFrameSize(4, coding, hdr[4:8]))
+		if off > end {
+			return n, true
+		}
+	}
+	return n, false
+}
+
+// validFrameID reports whether id is four characters of A-Z or 0-9.
+func validFrameID(id []byte) bool {
+	if len(id) != 4 {
+		return false
+	}
+	for _, c := range id {
+		if (c < 'A' || c > 'Z') && (c < '0' || c > '9') {
+			return false
+		}
+	}
+	return true
 }
 
 // openID3v2Tag reads the ID3v2 header at the start of sr and prepares the
@@ -49,6 +106,9 @@ func openID3v2Tag(sr *binutil.SafeReader, warn func(types.Warning)) (id3v2Tag, e
 	}
 	t.start = skipExtendedHeader(t.sr, t.header)
 	t.end = 10 + int64(t.header.Size)
+	if t.header.Version == 4 {
+		t.coding = v24SizeCoding(t.sr, t.start, t.end)
+	}
 	return t, nil
 }
 
@@ -66,7 +126,7 @@ func (t id3v2Tag) frames(ctx context.Context, wanted func(id string) bool, warn 
 				yield(ID3v2Frame{}, err)
 				return
 			}
-			id, size, flags, headerLen, ok := readFrameHeader(t.sr, t.header.Version, off)
+			id, size, flags, headerLen, ok := readFrameHeader(t.sr, t.header.Version, t.coding, off)
 			if !ok {
 				return
 			}

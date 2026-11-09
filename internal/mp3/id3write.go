@@ -147,6 +147,11 @@ func (t *wtag) walk(ctx context.Context, sr *binutil.SafeReader, header ID3v2Hea
 	if header.Version == 2 {
 		headerLen, idLen = 6, 3
 	}
+	// An ID3v2.4 body is never de-unsynchronised as a whole, so it lies in sr at offset 10.
+	var coding frameSizeCoding
+	if header.Version == 4 {
+		coding = v24SizeCoding(sr, int64(10+start), int64(10+len(body)))
+	}
 	for i, off := 0, start; off < len(body) && body[off] != 0; i++ {
 		if err := binutil.Canceled(ctx, i); err != nil {
 			return err
@@ -155,7 +160,7 @@ func (t *wtag) walk(ctx context.Context, sr *binutil.SafeReader, header ID3v2Hea
 			return corrupted(sr, int64(10+off), "frame header overruns the ID3v2 tag")
 		}
 		hdr := body[off : off+headerLen]
-		size := frameSizeFromHeader(header.Version, hdr)
+		size := frameSizeFromHeader(header.Version, coding, hdr)
 		if size > uint64(len(body)-off-headerLen) { //nolint:gosec // G115: the check above guarantees len(body)-off >= headerLen
 			return corrupted(sr, int64(10+off), fmt.Sprintf("frame %q of %d bytes overruns the ID3v2 tag", hdr[:idLen], size))
 		}
@@ -164,6 +169,9 @@ func (t *wtag) walk(ctx context.Context, sr *binutil.SafeReader, header ID3v2Hea
 		if err != nil {
 			return err
 		}
+		if coding == sizeBigEndian {
+			f.header = nil // plain sizes are not standard; encode a fresh synchsafe header
+		}
 		t.frames = append(t.frames, f)
 		off += headerLen + int(size) //nolint:gosec // G115: size <= len(body)
 	}
@@ -171,11 +179,11 @@ func (t *wtag) walk(ctx context.Context, sr *binutil.SafeReader, header ID3v2Hea
 }
 
 // frameSizeFromHeader decodes the payload size from a frame header.
-func frameSizeFromHeader(version byte, hdr []byte) uint64 {
+func frameSizeFromHeader(version byte, coding frameSizeCoding, hdr []byte) uint64 {
 	if version == 2 {
 		return uint64(hdr[3])<<16 | uint64(hdr[4])<<8 | uint64(hdr[5])
 	}
-	return uint64(decodeFrameSize(version, hdr[4:8]))
+	return uint64(decodeFrameSize(version, coding, hdr[4:8]))
 }
 
 // newFrame builds a wframe from a frame's on-disk header and payload,

@@ -300,7 +300,7 @@ func TestParseChapterFrames(t *testing.T) {
 		},
 	}
 
-	chapters := parseChapterFrames(frames, 3)
+	chapters := parseChapterFrames(frames, 3, sizeSynchsafe)
 
 	if len(chapters) != 2 {
 		t.Fatalf("expected 2 chapters, got %d", len(chapters))

@@ -73,7 +73,7 @@ func parseID3v2(ctx context.Context, sr *binutil.SafeReader, file *types.File) (
 	}
 	if len(st.chapters) > 0 {
 		// CHAP frames take precedence over OverDrive MediaMarkers (set by a TXXX handler).
-		file.Chapters = parseChapterFrames(st.chapters, tag.header.Version)
+		file.Chapters = parseChapterFrames(st.chapters, tag.header.Version, tag.coding)
 	}
 	// On-disk size of the tag, before any de-unsynchronisation.
 	return tag.size, nil
@@ -269,7 +269,7 @@ var v22FrameIDs = map[string]string{
 // readFrameHeader reads the frame header at offset for the tag's version and
 // returns the (v2.3-normalised) frame ID, payload size, flags and header length.
 // ok is false at padding or when the header cannot be read.
-func readFrameHeader(sr *binutil.SafeReader, version byte, offset int64) (id string, size uint32, flags uint16, headerLen int64, ok bool) {
+func readFrameHeader(sr *binutil.SafeReader, version byte, coding frameSizeCoding, offset int64) (id string, size uint32, flags uint16, headerLen int64, ok bool) {
 	if version == 2 {
 		var buf [6]byte
 		if err := sr.ReadAt(buf[:], offset, "frame header"); err != nil || buf[0] == 0 {
@@ -288,12 +288,13 @@ func readFrameHeader(sr *binutil.SafeReader, version byte, offset int64) (id str
 	if err := sr.ReadAt(buf[:], offset, "frame header"); err != nil || buf[0] == 0 {
 		return "", 0, 0, 0, false // unreadable, or padding (null bytes end the frames)
 	}
-	return string(buf[0:4]), decodeFrameSize(version, buf[4:8]), binary.BigEndian.Uint16(buf[8:10]), 10, true
+	return string(buf[0:4]), decodeFrameSize(version, coding, buf[4:8]), binary.BigEndian.Uint16(buf[8:10]), 10, true
 }
 
-// decodeFrameSize decodes frame size based on ID3v2 version.
-func decodeFrameSize(version byte, sizeBytes []byte) uint32 {
-	if version == 4 {
+// decodeFrameSize decodes a frame size: synchsafe in an ID3v2.4 tag unless
+// the tag's coding says its sizes are plain, big-endian otherwise.
+func decodeFrameSize(version byte, coding frameSizeCoding, sizeBytes []byte) uint32 {
+	if version == 4 && coding == sizeSynchsafe {
 		return decodeSynchsafe(sizeBytes)
 	}
 	return binary.BigEndian.Uint32(sizeBytes)
@@ -614,7 +615,7 @@ func parseLangText(body []byte) (langText, bool) {
 // CHAP frame format:
 //
 //	[element_id\0][start_time(4)][end_time(4)][start_offset(4)][end_offset(4)][subframes...]
-func parseChapterFrames(frames []ID3v2Frame, version byte) []types.Chapter {
+func parseChapterFrames(frames []ID3v2Frame, version byte, coding frameSizeCoding) []types.Chapter {
 	type chapterData struct {
 		ElementID string
 		Title     string
@@ -649,7 +650,7 @@ func parseChapterFrames(frames []ID3v2Frame, version byte) []types.Chapter {
 		// Skip startOffset and endOffset (usually 0xFFFFFFFF) at data[8:16]
 
 		// Parse subframes for chapter title
-		title := extractChapterTitleFromSubframes(data[16:], version, elementID)
+		title := extractChapterTitleFromSubframes(data[16:], version, coding, elementID)
 
 		chapters = append(chapters, chapterData{
 			Index:     len(chapters),
@@ -682,13 +683,13 @@ func parseChapterFrames(frames []ID3v2Frame, version byte) []types.Chapter {
 
 // extractChapterTitleFromSubframes walks the CHAP subframes (sized per the tag
 // version) and returns the first non-empty TIT2 title, else fallbackTitle.
-func extractChapterTitleFromSubframes(subframeData []byte, version byte, fallbackTitle string) string {
+func extractChapterTitleFromSubframes(subframeData []byte, version byte, coding frameSizeCoding, fallbackTitle string) string {
 	for len(subframeData) >= 10 {
 		if subframeData[0] == 0 { // padding
 			break
 		}
 		id := string(subframeData[0:4])
-		size := uint64(decodeFrameSize(version, subframeData[4:8]))
+		size := uint64(decodeFrameSize(version, coding, subframeData[4:8]))
 		if size > uint64(len(subframeData)-10) { //nolint:gosec // G115: the loop condition guarantees len(subframeData) >= 10 // truncated/corrupt: stop, don't guess
 			break
 		}
