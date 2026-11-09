@@ -2,6 +2,7 @@ package types
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -252,8 +253,8 @@ func TestTags_Merge(t *testing.T) {
 
 		tags.Merge(other)
 
-		if got := tags.GetFirst("CUSTOM"); got != "Other" {
-			t.Errorf("CUSTOM = %q, want %q (should be overwritten)", got, "Other")
+		if got := tags.GetFirst("CUSTOM"); got != "Original" {
+			t.Errorf("CUSTOM = %q, want %q (t's value must be kept)", got, "Original")
 		}
 		if got := tags.GetFirst("NEW"); got != "Value" {
 			t.Errorf("NEW = %q, want %q", got, "Value")
@@ -694,5 +695,100 @@ func TestDelete_ReDerivesFromRemainingKey(t *testing.T) {
 	tags.Delete("SERIES")
 	if tags.Series != "B" {
 		t.Errorf("Series = %q, want B", tags.Series)
+	}
+}
+
+// mergeValue is a value every binding of f decodes: a number for numeric
+// fields (a valid year, track and series part alike), text otherwise.
+func mergeValue(f Field, n int) string {
+	if f == FieldYear || f == FieldSeriesPart || intField(&Tags{}, f) != nil {
+		return strconv.Itoa(2000 + n)
+	}
+	return "v" + strconv.Itoa(n)
+}
+
+// TestMerge_NeverConflicts merges every bound key of every format into bound
+// Tags, empty or already holding the field, and checks that Diff accepts the
+// result and that t keeps what it had.
+func TestMerge_NeverConflicts(t *testing.T) {
+	for _, format := range bindingFormats {
+		for _, b := range FieldBindings(format) {
+			for _, key := range b.Keys {
+				t.Run(format.String()+"/"+b.Field.String()+"/"+key, func(t *testing.T) {
+					for _, held := range []bool{false, true} {
+						tags := boundTags(format)
+						if held {
+							tags.Set(b.Keys[0], mergeValue(b.Field, 1))
+						}
+						orig := tags.Clone()
+						other := &Tags{}
+						other.Set(key, mergeValue(b.Field, 2))
+
+						tags.Merge(other)
+
+						if _, _, err := Diff(orig, tags, format); err != nil {
+							t.Fatalf("held=%v: Diff after Merge: %v", held, err)
+						}
+						want := orig.Clone()
+						if !held {
+							want.Set(key, mergeValue(b.Field, 2))
+						}
+						if got, w := fieldValues(tags, b.Field), fieldValues(want, b.Field); !slices.Equal(got, w) {
+							t.Errorf("held=%v: %s = %q, want %q", held, b.Field, got, w)
+						}
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestMerge_KeepsExistingRawValues(t *testing.T) {
+	tags := &Tags{}
+	tags.Set("CUSTOM", "Original")
+	other := &Tags{}
+	other.Set("CUSTOM", "Other")
+	other.Set("NEW", "Value")
+	tags.Merge(other)
+	if got := tags.Get("CUSTOM"); !slices.Equal(got, []string{"Original"}) {
+		t.Errorf("CUSTOM = %q, want [Original]", got)
+	}
+	if got := tags.Get("NEW"); !slices.Equal(got, []string{"Value"}) {
+		t.Errorf("NEW = %q, want [Value]", got)
+	}
+}
+
+func TestMerge_NoRawKeysAcrossFormats(t *testing.T) {
+	tags := boundTags(FormatFLAC)
+	other := boundTags(FormatMP3)
+	other.Set("TIT2", "From MP3")
+	tags.Merge(other)
+	if got := tags.Get("TIT2"); got != nil {
+		t.Errorf("TIT2 copied into FLAC tags: %q", got)
+	}
+	if tags.Title != "From MP3" {
+		t.Errorf("Title = %q, want the typed value merged", tags.Title)
+	}
+}
+
+func TestMerge_KeepsOtherSpelling(t *testing.T) {
+	tags := &Tags{}
+	other := &Tags{}
+	other.SetNamed("MusicBrainz Album Id", "id")
+	tags.Merge(other)
+	if got := tags.Name("MUSICBRAINZ ALBUM ID"); got != "MusicBrainz Album Id" {
+		t.Errorf("Name = %q, want other's spelling", got)
+	}
+}
+
+func TestMerge_DoesNotAliasOther(t *testing.T) {
+	tags := &Tags{}
+	other := &Tags{Genres: []string{"Rock"}}
+	other.Set("K", "v")
+	tags.Merge(other)
+	other.Genres[0] = "changed"
+	other.raw["K"][0] = "changed"
+	if tags.Genres[0] != "Rock" || tags.GetFirst("K") != "v" {
+		t.Errorf("Merge aliased other: Genres %q, K %q", tags.Genres, tags.GetFirst("K"))
 	}
 }
