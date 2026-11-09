@@ -55,10 +55,10 @@ func (e *EditSet) Empty() bool {
 //
 // Every raw key whose values differ becomes a KeyEdit. A typed field becomes a
 // FieldEdit only when its value in cur differs from what the key edits alone
-// produce (applied to orig with the Set sync rule). If a key edit already
-// changed a field and cur disagrees with that result, or two related fields
-// (Artist/Artists, Year/Date) were edited inconsistently, Diff returns an
-// error wrapping ErrConflictingEdits.
+// produce (applied to orig with the Set sync rule). If a field is edited and so
+// is one of its raw keys (unless the field only follows that key edit), or two
+// related fields (Artist/Artists, Year/Date) were edited inconsistently, Diff
+// returns an error wrapping ErrConflictingEdits.
 func Diff(orig, cur *Tags, format Format) ([]KeyEdit, []FieldEdit, error) {
 	keys := diffKeys(orig, cur)
 	fields, err := diffFields(orig, cur, format, keys)
@@ -121,9 +121,22 @@ func diffFields(orig, cur *Tags, format Format, keys []KeyEdit) ([]FieldEdit, er
 		if !slices.Equal(d, o) {
 			return nil, fmt.Errorf("%w: %s and its raw key were both edited", ErrConflictingEdits, f)
 		}
+		if boundKeyEdited(format, f, keys) {
+			return nil, fmt.Errorf("%w: %s and its raw key were both edited", ErrConflictingEdits, f)
+		}
 		edits = append(edits, FieldEdit{Field: f, Values: c})
 	}
 	return edits, nil
+}
+
+// boundKeyEdited reports whether keys edit a raw key that format binds to f.
+func boundKeyEdited(format Format, f Field, keys []KeyEdit) bool {
+	for _, b := range bindingsFor(format) {
+		if b.Field == f && slices.ContainsFunc(keys, func(e KeyEdit) bool { return slices.Contains(b.Keys, e.Key) }) {
+			return true
+		}
+	}
+	return false
 }
 
 // checkCrossField rejects field edits that contradict each other: an Artist
