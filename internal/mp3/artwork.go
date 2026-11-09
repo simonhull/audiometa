@@ -12,6 +12,9 @@ import (
 	"github.com/simonhull/audiometa/internal/types"
 )
 
+// mimeLink is the MIME type (or PIC image format) of a picture stored as a URL.
+const mimeLink = "-->"
+
 var (
 	errAPICTooShort    = errors.New("APIC frame too short")
 	errAPICNoMIMETerm  = errors.New("APIC MIME type not null-terminated")
@@ -80,9 +83,9 @@ func parseAPICFrame(data []byte) (types.Artwork, error) {
 		mimeType = imagemeta.MIMEJPEG
 	case "PNG", "png":
 		mimeType = imagemeta.MIMEPNG
-	case "", "-->":
-		// Empty or URL reference - try to detect from data
-		mimeType = imagemeta.MIMEJPEG // Default, will be overridden if PNG detected
+	case "":
+		// Empty: try to detect from data.
+		mimeType = imagemeta.MIMEJPEG // Default, overridden when the bytes say otherwise
 	}
 
 	return parsePictureBody(data, pos, encoding, mimeType)
@@ -116,9 +119,11 @@ func parsePictureBody(data []byte, pos int, encoding byte, mimeType string) (typ
 	// Remaining bytes are picture data
 	imageData := data[pos:]
 
-	// Detect actual MIME type from image magic bytes
-	if detectedMIME := imagemeta.MIMEType(imageData); detectedMIME != "" {
-		mimeType = detectedMIME
+	// Detect actual MIME type from image magic bytes; a link's data is a URL.
+	if mimeType != mimeLink {
+		if detectedMIME := imagemeta.MIMEType(imageData); detectedMIME != "" {
+			mimeType = detectedMIME
+		}
 	}
 
 	// Detect dimensions
@@ -128,7 +133,7 @@ func parsePictureBody(data []byte, pos int, encoding byte, mimeType string) (typ
 		MIMEType:    mimeType,
 		Description: description,
 		Data:        imageData,
-		Type:        types.ArtworkType(pictureType),
+		Type:        types.ArtworkTypeFromPictureType(uint32(pictureType)),
 		Width:       width,
 		Height:      height,
 	}, nil
@@ -141,8 +146,11 @@ func parsePICFrame(data []byte) (types.Artwork, error) {
 		return types.Artwork{}, errAPICTooShort
 	}
 	mimeType := imagemeta.MIMEJPEG // default; magic-byte sniffing in parsePictureBody overrides it
-	if strings.EqualFold(string(data[1:4]), "PNG") {
+	switch format := string(data[1:4]); {
+	case strings.EqualFold(format, "PNG"):
 		mimeType = imagemeta.MIMEPNG
+	case format == mimeLink:
+		mimeType = mimeLink
 	}
 	return parsePictureBody(data, 4, data[0], mimeType)
 }
