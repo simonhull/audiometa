@@ -4,6 +4,8 @@
 // that represent parsed audio file information across all supported formats.
 package types
 
+import "fmt"
+
 // File represents an opened audio file with parsed metadata.
 //
 // File provides access to format-agnostic metadata (Tags), technical
@@ -21,4 +23,32 @@ type File struct {
 	Audio    AudioInfo
 	Format   Format
 	Size     int64
+
+	// tagValues counts the tag values TakeValue has admitted; it reaches
+	// MaxTagValues+1 once the first refusal has been warned about.
+	tagValues int
+}
+
+// MaxTagValues is the most tag values one parse records. Values past it are
+// dropped with one StageMetadata warning, which bounds the memory a hostile
+// file can make the parser spend on per-value overhead.
+const MaxTagValues = 1 << 16
+
+// TakeValue reports whether f may record one more parsed tag value, counting
+// it if so. The first refusal appends a StageMetadata warning; later ones are
+// silent. Parsers call it before decoding or storing each value. It is a
+// function, not a method, so types embedding File do not promote it.
+func TakeValue(f *File) bool {
+	switch {
+	case f.tagValues < MaxTagValues:
+		f.tagValues++
+		return true
+	case f.tagValues == MaxTagValues:
+		f.tagValues++
+		f.Warnings = AppendWarning(f.Warnings, Warning{
+			Stage:   StageMetadata,
+			Message: fmt.Sprintf("more than %d tag values; the rest are ignored", MaxTagValues),
+		})
+	}
+	return false
 }

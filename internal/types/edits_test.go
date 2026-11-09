@@ -23,6 +23,11 @@ func TestDiff(t *testing.T) {
 		o.Set("DATE", "2000-01-01")
 		return o
 	}
+	vorbisNoDate := func() *Tags {
+		o := boundTags(FormatFLAC)
+		o.Set("TITLE", "Orig")
+		return o
+	}
 
 	tests := []struct {
 		name     string
@@ -40,6 +45,14 @@ func TestDiff(t *testing.T) {
 			nil, []FieldEdit{{FieldTitle, []string{"x"}}}, false},
 		{"raw and typed disagree", FormatMP3, mp3Orig, func(c *Tags) { c.Set("TIT2", "x"); c.Title = "y" },
 			nil, nil, true},
+		{"raw date unparseable, year typed", FormatFLAC, vorbisOrig, func(c *Tags) { c.Set("DATE", "00"); c.Year = 1948 },
+			nil, nil, true},
+		{"raw date unparseable on a file without one, year typed", FormatFLAC, vorbisNoDate, func(c *Tags) { c.Set("DATE", "00"); c.Year = 1948 },
+			nil, nil, true},
+		{"raw TDRC and typed year", FormatMP3, mp3Orig, func(c *Tags) { c.Set("TDRC", "x"); c.Year = 1999 },
+			nil, nil, true},
+		{"raw unrelated key and typed field", FormatMP3, mp3Orig, func(c *Tags) { c.Set("TXXX-ONLY", "v"); c.Title = "y" },
+			[]KeyEdit{{"TXXX-ONLY", []string{"v"}}}, []FieldEdit{{FieldTitle, []string{"y"}}}, false},
 		{"raw and typed agree", FormatMP3, mp3Orig, func(c *Tags) { c.Set("TIT2", "x"); c.Title = "x" },
 			[]KeyEdit{{"TIT2", []string{"x"}}}, nil, false},
 		{"delete key", FormatMP3, mp3Orig, func(c *Tags) { c.Delete("TXXX-ONLY") },

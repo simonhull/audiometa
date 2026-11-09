@@ -18,11 +18,12 @@ type writeOptions struct {
 // FLAC padding), instead of rewriting the whole file. For large audiobooks
 // that avoids copying gigabytes of audio.
 //
-// It is a hint: when the format or the edits cannot be applied in place,
-// Write falls back to the default atomic rewrite. In-place writes are not
-// crash-atomic: a crash mid-write can leave a damaged tag (the audio is never
-// touched). Write keeps a copy of the overwritten bytes and restores them if
-// verification fails.
+// It is a hint: when the format or the edits cannot be applied in place, or
+// the file's permissions do not allow opening it for writing, Write falls
+// back to the default atomic rewrite. In-place writes are not crash-atomic: a
+// crash mid-write can leave a damaged tag (the audio is never touched). Write
+// keeps a copy of the overwritten bytes and, if verification fails, restores
+// them and the modification time.
 func WithInPlace() WriteOption {
 	return func(o *writeOptions) { o.inPlace = true }
 }

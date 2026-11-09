@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -103,13 +104,22 @@ func (f *File) WriteToContext(ctx context.Context, w io.Writer) (int64, error) {
 // point leaves either the old or the new file, never a mix. The new file
 // keeps the original's permission bits and, where the process may set them,
 // its owner and group. Symlinks are followed and their target replaced; the
-// link itself is kept. [WithInPlace] trades that atomicity for speed, and
+// link itself is kept. Because the new contents are a new file, other hard
+// links to the original keep the old contents, and extended attributes, ACLs
+// and file flags are not carried over; an edit [WithInPlace] applies in place
+// keeps all of them. [WithInPlace] trades that atomicity for speed, and
 // [WithPreserveModTime] keeps the modification time.
 //
-// Write does not lock the file. If it changes on disk while Write runs, Write
-// returns [ErrConcurrentModification] and leaves it alone, but concurrent
-// Writes to the same path are not otherwise coordinated: serialize them.
-// Writes to different files may run concurrently.
+// Write does not lock the file. Just before it renames the new file into
+// place (or, with [WithInPlace], before it overwrites anything), it checks
+// that the file is still the one it opened, with the same size and
+// modification time and, on Linux and macOS, the same inode change time. If
+// not, Write returns [ErrConcurrentModification] and leaves the file as the
+// other writer left it. A change after that check is not detected, and a
+// process that only changes the file's permissions, owner or extended
+// attributes also triggers the error. Concurrent Writes to the same path are
+// not otherwise coordinated: serialize them. Writes to different files may
+// run concurrently.
 //
 // # Errors
 //
@@ -145,11 +155,11 @@ func WriteContext(ctx context.Context, path string, edit func(f *File) error, op
 	if err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
-	st0, err := os.Stat(target)
+	pre, err := os.Stat(target) // a clean error before opening; the reference stat comes from the handle
 	if err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
-	if !st0.Mode().IsRegular() {
+	if !pre.Mode().IsRegular() {
 		return notRegular(path)
 	}
 
@@ -180,7 +190,7 @@ func WriteContext(ctx context.Context, path string, edit func(f *File) error, op
 	}
 	job := &writeJob{
 		f: f, tw: tw, edits: edits, opts: o,
-		target: target, st0: st0,
+		target: target, st0: f.src.stat, // the handle's stat; a successful Open always sets it
 		ref: verifyRef{format: f.src.format, digest: digest, chapters: slices.Clone(f.Chapters)},
 	}
 
@@ -198,7 +208,7 @@ type writeJob struct {
 	f      *File
 	tw     registry.TagWriter
 	edits  *types.EditSet
-	st0    os.FileInfo // the target's stat before it was opened
+	st0    os.FileInfo // the opened file's stat, from its handle
 	target string      // path with symlinks resolved
 	ref    verifyRef
 	opts   writeOptions
@@ -211,15 +221,28 @@ type verifyRef struct {
 	format   Format
 }
 
-// unchanged returns ErrConcurrentModification if the target's size or
-// modification time differ from when Write opened it.
+// unchanged returns ErrConcurrentModification unless the file at the target
+// path is still the one Write opened, unmodified.
 func (j *writeJob) unchanged() error {
 	st, err := os.Stat(j.target)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrConcurrentModification, err)
 	}
-	if st.Size() != j.st0.Size() || !st.ModTime().Equal(j.st0.ModTime()) {
+	return j.sameAsOpened(st)
+}
+
+// sameAsOpened returns ErrConcurrentModification unless st describes the file
+// Write opened (same file, size and modification time, and the same inode
+// change time where the platform reports one). Changing a file's contents,
+// or setting its mtime back afterwards, bumps its change time.
+func (j *writeJob) sameAsOpened(st os.FileInfo) error {
+	if !os.SameFile(j.st0, st) || st.Size() != j.st0.Size() || !st.ModTime().Equal(j.st0.ModTime()) {
 		return fmt.Errorf("%w: %s", ErrConcurrentModification, j.target)
+	}
+	if c0, ok := changeTime(j.st0); ok {
+		if c, ok := changeTime(st); ok && !c.Equal(c0) {
+			return fmt.Errorf("%w: %s: inode change time differs", ErrConcurrentModification, j.target)
+		}
 	}
 	return nil
 }
@@ -266,37 +289,54 @@ func (j *writeJob) writeInPlace(ctx context.Context) (done bool, err error) {
 	if off < 0 || off+int64(len(patch)) > j.f.src.size {
 		return true, fmt.Errorf("in-place patch [%d, %d) outside file of %d bytes", off, off+int64(len(patch)), j.f.src.size)
 	}
-	if err := j.unchanged(); err != nil {
-		return true, err
+	rw, err := os.OpenFile(j.target, os.O_RDWR, 0)
+	if errors.Is(err, fs.ErrPermission) {
+		return false, nil // read-only: the atomic rewrite needs only a writable directory
 	}
-	return true, j.patch(ctx, off, patch)
+	if err != nil {
+		return true, fmt.Errorf("open for in-place write: %w", err)
+	}
+	return true, j.patch(ctx, rw, off, patch)
 }
 
-// patch overwrites len(patch) bytes at off, verifies the result and restores
-// the original bytes if verification fails.
-func (j *writeJob) patch(ctx context.Context, off int64, patch []byte) (err error) {
-	rw, err := os.OpenFile(j.target, os.O_RDWR, 0)
-	if err != nil {
-		return fmt.Errorf("open for in-place write: %w", err)
-	}
+// patch overwrites len(patch) bytes of rw at off, verifies the result and
+// restores the original bytes if verification fails. It closes rw.
+func (j *writeJob) patch(ctx context.Context, rw *os.File, off int64, patch []byte) (err error) {
+	written, restored := false, false
 	defer func() {
 		if cerr := rw.Close(); cerr != nil && err == nil {
 			err = fmt.Errorf("close after in-place write: %w", cerr)
 		}
-		if err == nil && j.opts.preserveModTime {
-			err = os.Chtimes(j.target, time.Time{}, j.st0.ModTime())
+		// A restored file gets its mtime back too, so a failed Write leaves it
+		// as it was. A failed restore leaves the new mtime: the file is damaged.
+		if (err == nil && j.opts.preserveModTime) || (err != nil && written && restored) {
+			if terr := os.Chtimes(j.target, time.Time{}, j.st0.ModTime()); terr != nil {
+				err = errors.Join(err, fmt.Errorf("restore modification time: %w", terr))
+			}
 		}
 	}()
 
+	st, err := rw.Stat()
+	if err != nil {
+		return fmt.Errorf("stat for in-place write: %w", err)
+	}
+	if err := j.sameAsOpened(st); err != nil {
+		return err
+	}
 	backup := make([]byte, len(patch))
 	if _, err := rw.ReadAt(backup, off); err != nil {
 		return fmt.Errorf("back up metadata region: %w", err)
 	}
+	written = true
 	if err := writeSync(rw, patch, off); err != nil {
-		return errors.Join(fmt.Errorf("in-place write: %w", err), restore(rw, backup, off))
+		rerr := restore(rw, backup, off)
+		restored = rerr == nil
+		return errors.Join(fmt.Errorf("in-place write: %w", err), rerr)
 	}
 	if err := verifyFile(ctx, rw, j.st0.Size(), j.target, j.tw, j.ref); err != nil {
-		return errors.Join(err, restore(rw, backup, off))
+		rerr := restore(rw, backup, off)
+		restored = rerr == nil
+		return errors.Join(err, rerr)
 	}
 	return nil
 }

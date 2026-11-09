@@ -7,11 +7,17 @@ import (
 	"image"
 	"image/png"
 	"os"
+	"reflect"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/simonhull/audiometa/internal/registry"
+	"github.com/simonhull/audiometa/internal/testbudget"
 	"github.com/simonhull/audiometa/internal/types"
 )
 
@@ -31,6 +37,14 @@ var fuzzWritablePaths = []string{
 	"testdata/bench/book.mp3",
 	"testdata/bench/book.flac",
 	"testdata/bench/book.m4b",
+	"testdata/sample_mono_vbr.mp3",
+	"testdata/sample_mpeg2.mp3",
+	"testdata/sample_upper.flac",
+	"testdata/sample.m4b",
+	"testdata/sample_faststart.m4a",
+	"testdata/sample.aifc",
+	"testdata/sample_ext.wav",
+	"testdata/sample_float.wav",
 }
 
 // fuzzPNG is a 1x1 PNG for the artwork operations.
@@ -104,8 +118,11 @@ func applyFuzzOps(f *File, ops []byte, png []byte) {
 
 // FuzzWriteRoundTrip applies random edits to random inputs through the public
 // write path of every registered writer. A successful write must re-open, keep
-// the audio payload bit-identical and be deterministic; a failed one must be
-// an ordinary error, never a recovered panic.
+// the audio payload bit-identical, be deterministic and land the edits: every
+// edited key and field reads back, and every raw key no edit or field binding
+// touches keeps its values. An in-place patch must equal the full rewrite. A
+// failed write must be an ordinary error, never a recovered panic, and no
+// operation may allocate more than its budget.
 //
 // The per-format fuzz targets (FuzzWriteFLAC in internal/flac) drive one
 // writer directly with a fixed edit set; this one covers the dispatch, edit
@@ -118,9 +135,12 @@ func FuzzWriteRoundTrip(f *testing.F) {
 		}
 		f.Add(data, []byte{})
 		f.Add(data, []byte{0, 1, 'x', 2, 'y'})
+		f.Add(data, []byte{1, 3, 'a', 'b', 'c', 3, 50, 0, 7, 4, 'q', 'r', 's', 't'})
 	}
 	f.Add([]byte("ID3\x04\x00\x00\x00\x00\x00\x00"), []byte{0})
 	f.Add([]byte("fLaC"), []byte{0})
+	// An empty text chunk last in the file (plan 058).
+	f.Add([]byte("FORM0000AIFFCOMM\x00\x00\x00\x12000000000000000000"), []byte("00"))
 
 	img := fuzzPNG()
 	f.Fuzz(func(t *testing.T, data, ops []byte) {
@@ -147,16 +167,29 @@ func FuzzWriteRoundTrip(f *testing.F) {
 		}
 		applyFuzzOps(file, ops, img)
 
-		var out bytes.Buffer
-		if _, err := file.WriteToContext(ctx, &out); err != nil {
-			var ce *types.CorruptedFileError
-			if errors.As(err, &ce) && strings.HasPrefix(ce.Reason, "parser panic") {
-				t.Fatalf("writer panicked: %v", err)
-			}
+		edits, err := file.buildEdits(ctx)
+		if err != nil {
+			failOnPanic(t, err)
+			return
+		}
+		if edits.Empty() {
 			return
 		}
 
-		if _, err := openReader(ctx, bytes.NewReader(out.Bytes()), int64(out.Len()), "fuzz"); err != nil {
+		budget := testbudget.For(testbudget.Write, file.Format)
+		var out bytes.Buffer
+		testbudget.Check(t, budget, len(data), "WriteToContext", func() {
+			_, err = file.WriteToContext(ctx, &out)
+		})
+		if err != nil {
+			failOnPanic(t, err)
+			return
+		}
+
+		checkInPlace(ctx, t, tw, file, data, edits, out.Bytes())
+
+		q, err := openReader(ctx, bytes.NewReader(out.Bytes()), int64(out.Len()), "fuzz")
+		if err != nil {
 			t.Fatalf("output does not re-open: %v", err)
 		}
 		after, err := tw.AudioDigest(ctx, bytes.NewReader(out.Bytes()), int64(out.Len()))
@@ -170,5 +203,173 @@ func FuzzWriteRoundTrip(f *testing.F) {
 		if !bytes.Equal(again.Bytes(), out.Bytes()) {
 			t.Fatal("second write is not byte-identical")
 		}
+		checkLanded(t, file.Format, data, &p.file.Tags, &q.file.Tags, edits)
 	})
+}
+
+// failOnPanic fails t when err reports a recovered parser or writer panic.
+func failOnPanic(t *testing.T, err error) {
+	t.Helper()
+	var ce *types.CorruptedFileError
+	if errors.As(err, &ce) && strings.HasPrefix(ce.Reason, "parser panic") {
+		t.Fatalf("writer panicked: %v", err)
+	}
+}
+
+// checkInPlace fails t when tw can patch data in place and the patched bytes
+// differ from out, the full rewrite of the same edits.
+func checkInPlace(ctx context.Context, t *testing.T, tw registry.TagWriter, file *File, data []byte, edits *types.EditSet, out []byte) {
+	t.Helper()
+	ip, ok := tw.(registry.InPlaceWriter)
+	if !ok {
+		return
+	}
+	var (
+		off   int64
+		patch []byte
+		fits  bool
+		err   error
+	)
+	testbudget.Check(t, testbudget.For(testbudget.Write, file.Format), len(data), "InPlacePatch", func() {
+		off, patch, fits, err = patchSafely(ctx, ip, bytes.NewReader(data), int64(len(data)), "fuzz", edits)
+	})
+	if err != nil {
+		t.Fatalf("%v: InPlacePatch failed after WriteToContext succeeded: %v", file.Format, err)
+	}
+	if !fits {
+		return
+	}
+	if off < 0 || off+int64(len(patch)) > int64(len(data)) {
+		t.Fatalf("%v: InPlacePatch at %d of %d bytes does not fit in %d bytes", file.Format, off, len(patch), len(data))
+	}
+	patched := slices.Clone(data)
+	copy(patched[off:], patch)
+	if !bytes.Equal(patched, out) {
+		t.Fatalf("%v: patching in place differs from the full rewrite", file.Format)
+	}
+}
+
+// checkLanded fails t when the written file does not read back the edits: each
+// key edit and field edit must read back exactly, and every raw key that no
+// edit touches and no field binds must keep its values. Edits whose values a
+// format cannot hold exactly (see representable) skip the check.
+func checkLanded(t *testing.T, format Format, data []byte, orig, final *Tags, edits *types.EditSet) {
+	t.Helper()
+	for _, e := range edits.Keys {
+		if !representable(e.Values) {
+			return
+		}
+	}
+	for _, e := range edits.Fields {
+		if !representable(e.Values) {
+			return
+		}
+	}
+	for _, e := range edits.Keys {
+		if reason := landedExempt(format, data, 0, e.Values); reason != "" {
+			continue
+		}
+		if got := final.Get(e.Key); !slices.Equal(got, e.Values) {
+			t.Errorf("%v: key %q = %q, want %q", format, e.Key, got, e.Values)
+		}
+	}
+	for _, e := range edits.Fields {
+		if reason := landedExempt(format, data, e.Field, e.Values); reason != "" {
+			continue
+		}
+		if got := typedValues(final, e.Field); !slices.Equal(got, e.Values) {
+			t.Errorf("%v: field %v = %q, want %q", format, e.Field, got, e.Values)
+		}
+	}
+
+	touched := map[string]bool{}
+	for _, e := range edits.Keys {
+		touched[e.Key] = true
+	}
+	for _, b := range types.FieldBindings(format) {
+		for _, k := range b.Keys {
+			touched[k] = true
+		}
+	}
+	for key, want := range orig.All() {
+		if touched[key] {
+			continue
+		}
+		if got := final.Get(key); !slices.Equal(got, want) {
+			t.Errorf("%v: untouched key %q = %q, want %q", format, key, got, want)
+		}
+	}
+}
+
+// representable reports whether every value survives a write and read in
+// every format: non-empty, valid UTF-8, free of control characters and without
+// leading or trailing white space. Others are lossy by design (a NUL ends a
+// native text value, a tag reader trims white space, and so on).
+func representable(values []string) bool {
+	for _, v := range values {
+		if v == "" || !utf8.ValidString(v) || strings.TrimSpace(v) != v {
+			return false
+		}
+		if strings.IndexFunc(v, unicode.IsControl) >= 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// typedValues returns field f of t encoded as types.fieldValues does: nil when
+// empty or zero, one value for strings and ints, a copy for slices.
+func typedValues(t *Tags, f types.Field) []string {
+	switch v := reflect.ValueOf(t).Elem().FieldByName(f.String()).Interface().(type) {
+	case string:
+		if v == "" {
+			return nil
+		}
+		return []string{v}
+	case int:
+		if v == 0 {
+			return nil
+		}
+		return []string{strconv.Itoa(v)}
+	case []string:
+		if len(v) == 0 {
+			return nil
+		}
+		return slices.Clone(v)
+	default:
+		return nil
+	}
+}
+
+// landedExempt names why an edit of field (0 for a raw key) to values may
+// legitimately not read back, or returns "". Each case is a debt with an owner.
+func landedExempt(format Format, data []byte, field types.Field, values []string) string {
+	switch {
+	case field == types.FieldYear && len(values) == 1 && outsideID3Years(format, values[0]):
+		// Known finding 2 (plan 058): the ID3 writer accepts a year the ID3 reader
+		// rejects (it takes only 1900-2100), so it is written and reads back as 0.
+		// Plan 065 or a follow-up should decide whether to refuse it.
+		return "year outside 1900-2100 in an ID3 tag"
+	case len(values) == 0 && format == FormatMP3 && hasID3v1(data):
+		// Known finding 3 (plan 058): clearing a field on an MP3 with an ID3v1
+		// trailer reads back the ID3v1 value, which Write does not update
+		// (documented in the README; plan 079 owns it).
+		return "cleared field shadowed by the ID3v1 trailer"
+	}
+	return ""
+}
+
+// outsideID3Years reports whether v is a year the ID3 reader rejects, on a
+// format that keeps Year in an ID3 tag.
+func outsideID3Years(format Format, v string) bool {
+	if format != FormatMP3 && format != FormatWAV && format != FormatAIFF {
+		return false
+	}
+	y, err := strconv.Atoi(v)
+	return err == nil && (y < 1900 || y > 2100)
+}
+
+// hasID3v1 reports whether data ends in an ID3v1 tag.
+func hasID3v1(data []byte) bool {
+	return len(data) >= 128 && string(data[len(data)-128:][:3]) == "TAG"
 }

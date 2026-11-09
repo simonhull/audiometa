@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -79,8 +81,10 @@ func TestReplace_HappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.Mode().Perm() != 0o640 {
-		t.Errorf("mode = %v, want 0640", st.Mode().Perm())
+	if runtime.GOOS != "windows" { // Windows maps only the read-only bit
+		if st.Mode().Perm() != 0o640 {
+			t.Errorf("mode = %v, want 0640", st.Mode().Perm())
+		}
 	}
 	assertNoTemp(t, filepath.Dir(path))
 }
@@ -216,4 +220,102 @@ func TestReplace_LongName(t *testing.T) {
 	}
 	assertContent(t, path, []byte("new"))
 	assertNoTemp(t, dir)
+}
+
+// skipUnlessUnixUser skips tests that rely on Unix permission bits, which
+// Windows ignores for directories and root bypasses.
+func skipUnlessUnixUser(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs Unix permissions and a non-root user")
+	}
+}
+
+func TestReplace_CreateTempFails(t *testing.T) {
+	skipUnlessUnixUser(t)
+	path := writeOriginal(t, 0o644)
+	dir := filepath.Dir(path)
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+	err := Replace(path, writeBytes([]byte("new")), Options{})
+	if _, ok := errors.AsType[*os.PathError](err); !ok || !errors.Is(err, fs.ErrPermission) {
+		t.Fatalf("err = %v, want an *os.PathError for permission", err)
+	}
+	assertContent(t, path, original)
+	assertNoTemp(t, dir)
+}
+
+// TestReplace_RenameFails puts a non-empty directory where the target was, so
+// the rename fails after the temp file is complete.
+func TestReplace_RenameFails(t *testing.T) {
+	path := writeOriginal(t, 0o644)
+	err := Replace(path, writeBytes([]byte("new")), Options{BeforeRename: func() error {
+		if err := os.Remove(path); err != nil {
+			return err
+		}
+		if err := os.Mkdir(path, 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(filepath.Join(path, "x"), nil, 0o644)
+	}})
+	if _, ok := errors.AsType[*os.LinkError](err); !ok {
+		t.Fatalf("err = %v, want an *os.LinkError", err)
+	}
+	assertNoTemp(t, filepath.Dir(path))
+}
+
+// TestReplace_SyncDirFails: the new contents are in place, and the error says
+// the directory sync failed.
+func TestReplace_SyncDirFails(t *testing.T) {
+	boom := errors.New("boom")
+	prev := syncDirectory
+	syncDirectory = func(string) error { return boom }
+	t.Cleanup(func() { syncDirectory = prev })
+	path := writeOriginal(t, 0o644)
+	err := Replace(path, writeBytes([]byte("new")), Options{})
+	if !errors.Is(err, boom) || !strings.Contains(err.Error(), "sync directory") {
+		t.Fatalf("err = %v, want the sync error", err)
+	}
+	assertContent(t, path, []byte("new"))
+	assertNoTemp(t, filepath.Dir(path))
+}
+
+// TestReplace_RemoveTempFails: when the temp file cannot be removed after an
+// error, both errors are reported and the original is untouched.
+func TestReplace_RemoveTempFails(t *testing.T) {
+	skipUnlessUnixUser(t)
+	path := writeOriginal(t, 0o644)
+	dir := filepath.Dir(path)
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) }) // lets TempDir remove the leftover temp file
+	boom := errors.New("boom")
+	err := Replace(path, func(io.Writer) error {
+		if err := os.Chmod(dir, 0o555); err != nil {
+			return err
+		}
+		return boom
+	}, Options{})
+	if !errors.Is(err, boom) || !errors.Is(err, fs.ErrPermission) || !strings.Contains(err.Error(), "remove temp file") {
+		t.Fatalf("err = %v, want boom joined with the removal error", err)
+	}
+	assertContent(t, path, original)
+}
+
+// TestReplace_PreserveModTimeFails removes the temp file before seal sets its
+// mtime.
+func TestReplace_PreserveModTimeFails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows cannot remove an open file")
+	}
+	path := writeOriginal(t, 0o644)
+	err := Replace(path, writeBytes([]byte("new")), Options{
+		PreserveModTime: true,
+		Verify:          func(tmp *os.File) error { return os.Remove(tmp.Name()) },
+	})
+	if !errors.Is(err, fs.ErrNotExist) || !strings.Contains(err.Error(), "preserve mtime") {
+		t.Fatalf("err = %v, want the mtime error", err)
+	}
+	assertContent(t, path, original)
+	assertNoTemp(t, filepath.Dir(path))
 }

@@ -304,7 +304,7 @@ func parseTextTrackChapters(ctx context.Context, sr *binary.SafeReader, trakAtom
 	}
 
 	// Parse chunk offsets
-	chunkOffsets, err := parseChunkOffsets(ctx, sr, stblAtom)
+	chunkOffsets, err := parseChunkOffsets(ctx, sr, stblAtom, len(sampleSizes))
 	if err != nil {
 		return nil, err
 	}
@@ -545,8 +545,10 @@ func computeSampleOffsets(sampleSizes []uint32, chunkOffsets []uint64, stsc []st
 	return offsets
 }
 
-// parseChunkOffsets extracts chunk offsets from stco or co64 atom.
-func parseChunkOffsets(ctx context.Context, sr *binary.SafeReader, stblAtom *Atom) ([]uint64, error) {
+// parseChunkOffsets extracts chunk offsets from stco or co64 atom. It reads at
+// most maxChunks entries, and no more than the atom holds, whatever count the
+// atom declares: the caller needs one chunk per sample at most.
+func parseChunkOffsets(ctx context.Context, sr *binary.SafeReader, stblAtom *Atom, maxChunks int) ([]uint64, error) {
 	stcoAtom, err := findAtom(sr, stblAtom.DataOffset(), stblAtom.DataOffset()+stblAtom.DataSize(), "stco")
 	if err != nil {
 		// Try co64 for 64-bit offsets
@@ -570,8 +572,13 @@ func parseChunkOffsets(ctx context.Context, sr *binary.SafeReader, stblAtom *Ato
 	if err := sr.CheckLen(offset, int(chunkCount), elemSize, "chunk table"); err != nil {
 		return nil, err
 	}
-	chunkOffsets := make([]uint64, chunkCount)
-	for i := range chunkCount {
+	// The table cannot hold more entries than its atom, and nothing past the
+	// samples needed is read, so the slice is sized by neither a hostile count
+	// nor a table that merely fits in the file.
+	inAtom := max(stcoAtom.DataSize()-8, 0) / int64(elemSize)
+	n := min(int64(chunkCount), inAtom, int64(max(maxChunks, 0)))
+	chunkOffsets := make([]uint64, n)
+	for i := range n {
 		if err := binary.Canceled(ctx, int(i)); err != nil {
 			return nil, err
 		}

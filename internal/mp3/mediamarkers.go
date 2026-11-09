@@ -17,6 +17,12 @@ const mediaMarkersDescription = "overdrive mediamarkers" // compared lower-cased
 // maxMediaMarkers bounds work on hostile input.
 const maxMediaMarkers = 10_000
 
+// maxMediaMarkersBytes bounds the document decoded, before it is. xml.Unmarshal
+// allocates about 18 bytes per byte of document, so the limit caps that cost at
+// a few tens of MiB. 1 MiB holds about 16,000 realistic markers, more than
+// maxMediaMarkers admits.
+const maxMediaMarkersBytes = 1 << 20
+
 type mediaMarkersXML struct {
 	XMLName xml.Name `xml:"Markers"`
 	Markers []struct {
@@ -30,8 +36,12 @@ type mediaMarkersXML struct {
 // chapter's start; the last chapter's EndTime is left 0 for the caller to fill.
 // Any malformed marker fails the whole document.
 func parseMediaMarkers(doc string) ([]types.Chapter, error) {
+	doc = strings.TrimRight(doc, "\x00")
+	if len(doc) > maxMediaMarkersBytes {
+		return nil, fmt.Errorf("document is %d bytes, max %d", len(doc), maxMediaMarkersBytes)
+	}
 	var parsed mediaMarkersXML
-	if err := xml.Unmarshal([]byte(strings.TrimRight(doc, "\x00")), &parsed); err != nil {
+	if err := xml.Unmarshal([]byte(doc), &parsed); err != nil {
 		return nil, fmt.Errorf("parse MediaMarkers XML: %w", err)
 	}
 	if len(parsed.Markers) > maxMediaMarkers {

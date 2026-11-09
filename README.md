@@ -223,8 +223,8 @@ a file Picard tagged gives `MusicBrainz Album Id` for the key `MUSICBRAINZ ALBUM
 | WAV         | ✓    | ✓     | ✓       | ✓        | ✓              |
 | AIFF        | ✓    | ✓     | ✓       | ✓        | ✓              |
 
-Ogg Vorbis and Opus writing is not supported yet (see
-[docs/design/020-write-support-design.md](docs/design/020-write-support-design.md)). WAV covers
+Ogg Vorbis and Opus writing is not supported yet: their comment header shares pages with the codec
+setup header, so a writer must re-page the stream. WAV covers
 RIFF, its big-endian twin RIFX, and RF64; AIFF covers AIFF and AIFF-C. Their artwork and
 chapters come from the ID3v2 chunk. See [Writing metadata](#writing-metadata) for what writing does
 and does not touch.
@@ -355,9 +355,12 @@ The parsers are written to read untrusted files:
 - length fields from the file cannot drive allocations past the file size or a fixed
   256 MiB ceiling;
 - a file records at most 100 warnings;
+- a file records at most 65,536 tag values, and an OverDrive MediaMarkers document is read
+  only up to 1 MiB;
 - a panic inside a parser is recovered and returned as a `*CorruptedFileError`;
 - parse loops check the `context`, so `OpenContext` and `OpenMany` stop promptly;
-- each parser has a fuzz target (`FuzzParseMP3`, `FuzzParseFLAC`, `FuzzParseM4A`, `FuzzParseOgg`).
+- every parser, the writers, format detection and the CLI atom walker have fuzz targets
+  that check results and allocation budgets, and CI fuzzes each on every push.
 
 ## Examples
 
@@ -454,8 +457,7 @@ audiometa/
 │   └── imagemeta/    # Image type and dimension sniffing
 ├── cmd/audiometa/    # Command-line tool
 ├── examples/         # Example programs
-├── testdata/         # Sample files and benchmark fixtures
-└── docs/design/      # Design documents
+└── testdata/         # Sample files and benchmark fixtures
 ```
 
 ## Architecture
@@ -506,6 +508,7 @@ go tool pprof cpu.prof
 
 # Fuzz a parser
 go test -fuzz=FuzzParseMP3 ./internal/mp3
+scripts/fuzz.sh 30s   # every target
 
 # Generate code (stringer for enums)
 go generate ./...

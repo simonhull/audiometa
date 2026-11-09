@@ -6,10 +6,13 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/simonhull/audiometa/internal/testbudget"
+	"github.com/simonhull/audiometa/internal/types"
 )
 
 func FuzzParseM4A(f *testing.F) {
-	for _, name := range []string{"sample.m4a", "sample.m4b"} {
+	for _, name := range []string{"sample.m4a", "sample.m4b", "sample_faststart.m4a", "sample_faststart.m4b", "bench/book.m4b"} {
 		if data, err := os.ReadFile(filepath.Join("..", "..", "testdata", name)); err == nil {
 			f.Add(data)
 		}
@@ -20,7 +23,12 @@ func FuzzParseM4A(f *testing.F) {
 	p := &parser{}
 	f.Fuzz(func(t *testing.T, data []byte) {
 		// Must not panic or hang on any input; errors are fine.
-		_, _ = p.Parse(context.Background(), bytes.NewReader(data), int64(len(data)), "fuzz.m4a")
-		_, _ = p.ExtractArtwork(context.Background(), bytes.NewReader(data), int64(len(data)), "fuzz.m4a")
+		budget := testbudget.For(testbudget.Read, types.FormatM4A)
+		testbudget.Check(t, budget, len(data), "Parse", func() {
+			_, _ = p.Parse(context.Background(), bytes.NewReader(data), int64(len(data)), "fuzz.m4a")
+		})
+		testbudget.Check(t, budget, len(data), "ExtractArtwork", func() {
+			_, _ = p.ExtractArtwork(context.Background(), bytes.NewReader(data), int64(len(data)), "fuzz.m4a")
+		})
 	})
 }

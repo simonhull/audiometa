@@ -24,6 +24,10 @@ import (
 	"unicode/utf8"
 )
 
+// syncDirectory is syncDir; tests replace it to simulate a failing directory
+// sync.
+var syncDirectory = syncDir
+
 // bufSize is the write buffer in front of the temp file.
 const bufSize = 1 << 20
 
@@ -78,7 +82,7 @@ func Replace(path string, write func(io.Writer) error, opts Options) (err error)
 		return fmt.Errorf("rename temp file: %w", err)
 	}
 	committed = true
-	if err := syncDir(dir); err != nil {
+	if err := syncDirectory(dir); err != nil {
 		return fmt.Errorf("sync directory %s: %w", dir, err)
 	}
 	return nil

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/simonhull/audiometa/internal/testbudget"
 	"github.com/simonhull/audiometa/internal/types"
 )
 
@@ -80,6 +81,21 @@ func TestParseMediaMarkersEdgeCases(t *testing.T) {
 		if ch, err := parseMediaMarkers(doc); err == nil || ch != nil {
 			t.Errorf("%s: got %v, %v; want nil chapters and an error", name, ch, err)
 		}
+	}
+}
+
+func TestParseMediaMarkers_OversizeRefusedBeforeDecoding(t *testing.T) {
+	doc := "<Markers>" + strings.Repeat("<Marker><Name>x</Name><Time>0:00</Time></Marker>", 25_000) + "</Markers>"
+	if len(doc) <= maxMediaMarkersBytes {
+		t.Fatalf("document is %d bytes, want over %d", len(doc), maxMediaMarkersBytes)
+	}
+	var err error
+	alloc := testbudget.Allocated(func() { _, err = parseMediaMarkers(doc) })
+	if err == nil || !strings.Contains(err.Error(), "bytes") {
+		t.Errorf("err = %v, want a size error", err)
+	}
+	if alloc > 1<<20 {
+		t.Errorf("allocated %d bytes, want under 1 MiB", alloc)
 	}
 }
 

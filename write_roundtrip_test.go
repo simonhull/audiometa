@@ -410,6 +410,18 @@ func openFile(t *testing.T, path string) *audiometa.File {
 	return f
 }
 
+// tagsOf returns a copy of path's tags and closes the file again, so a
+// following Write can replace it (Windows refuses to rename over an open file).
+func tagsOf(t *testing.T, path string) *audiometa.Tags {
+	t.Helper()
+	f, err := audiometa.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	return f.Tags.Clone()
+}
+
 func TestWriteRoundTrip_Corpus(t *testing.T) {
 	for _, tc := range roundTripCorpus {
 		t.Run(filepath.Base(tc.path), func(t *testing.T) {
@@ -882,6 +894,61 @@ func TestWriteRoundTrip_M4AInPlace(t *testing.T) {
 	}
 }
 
+// TestWrite_InPlaceRealWriters checks that WithInPlace patches the original
+// file (same inode, same size) for every writer that supports it, and falls
+// back to a new file for WAV, whose writer does not.
+func TestWrite_InPlaceRealWriters(t *testing.T) {
+	tests := []struct {
+		path    string
+		inPlace bool
+	}{
+		{"testdata/sample.flac", true},
+		{"testdata/sample_upper.flac", true},
+		{"testdata/sample.mp3", true},
+		{"testdata/sample_v24.mp3", true},
+		{"testdata/sample.m4a", true},
+		{"testdata/sample_faststart.m4b", true},
+		{"testdata/sample.wav", false},
+	}
+	for _, tc := range tests {
+		t.Run(filepath.Base(tc.path), func(t *testing.T) {
+			path := writeTempCopy(t, tc.path)
+			src := readTestdata(t, path)
+			// Stat the open handle: on Windows only a handle stat carries the file's identity.
+			held, err := os.Open(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			before, err := held.Stat()
+			_ = held.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := audiometa.Write(path, func(f *audiometa.File) error { f.Tags.Title = "T"; return nil }, audiometa.WithInPlace()); err != nil {
+				t.Fatalf("Write: %v", err)
+			}
+			after, err := os.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := os.SameFile(before, after); got != tc.inPlace {
+				t.Errorf("same file after Write = %v, want %v", got, tc.inPlace)
+			}
+			out := readTestdata(t, path)
+			if tc.inPlace && len(out) != len(src) {
+				t.Errorf("in-place write changed the size from %d to %d", len(src), len(out))
+			}
+			f := openFile(t, path)
+			if f.Tags.Title != "T" {
+				t.Errorf("Title = %q, want T", f.Tags.Title)
+			}
+			if audioDigest(t, f.Format, src) != audioDigest(t, f.Format, out) {
+				t.Error("audio changed")
+			}
+		})
+	}
+}
+
 // Deleting every raw key of an M4A/M4B leaves a valid file whose ilst holds
 // only covr (artwork is not a raw key), with no raw tags, the same audio and
 // the same chapters.
@@ -1011,7 +1078,7 @@ func TestWrite_FLACTotalTracksFirst(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if got := openFile(t, file).Tags.TrackTotal; got != 7 {
+	if got := tagsOf(t, file).TrackTotal; got != 7 {
 		t.Fatalf("TrackTotal = %d, want 7 (TRACKTOTAL outranks TOTALTRACKS)", got)
 	}
 	if err := audiometa.Write(file, func(f *audiometa.File) error {
@@ -1020,7 +1087,7 @@ func TestWrite_FLACTotalTracksFirst(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if got := openFile(t, file).Tags.TrackTotal; got != 12 {
+	if got := tagsOf(t, file).TrackTotal; got != 12 {
 		t.Errorf("TrackTotal after Set = %d, want 12", got)
 	}
 }

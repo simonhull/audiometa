@@ -131,6 +131,9 @@ func parseVorbisComment(data []byte, file *types.File) error {
 			break
 		}
 
+		if !types.TakeValue(file) {
+			break
+		}
 		comment := string(data[offset : offset+int(commentLen)])
 		offset += int(commentLen)
 

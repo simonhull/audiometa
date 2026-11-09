@@ -146,12 +146,19 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 
 // maxHeaderBytes bounds how much page data is read while looking for the
 // identification and comment headers. Comment packets carrying embedded cover
-// art (METADATA_BLOCK_PICTURE) can span many pages.
+// art (METADATA_BLOCK_PICTURE) can span many pages. Every scanned page counts
+// its full size, header included, whichever stream it belongs to.
 const maxHeaderBytes = 16 << 20
+
+// maxHeaderPages bounds how many pages are scanned while looking for the
+// headers. A page costs at least 27 bytes of file, so without it a run of
+// empty pages would cost memory out of proportion to the bytes it charges.
+// A comment header with a 16 MiB cover spans a few thousand pages at most.
+const maxHeaderPages = 1 << 16
 
 // readHeaderPackets reads pages from the start of the first logical stream until
 // its first two packets (identification and comment headers) are complete, the
-// file ends, or maxBytes of page data have been read. A read error on the first
+// file ends, or maxBytes of pages or maxHeaderPages pages have been scanned. A read error on the first
 // page is fatal; later errors and hitting the cap are recorded as warnings and
 // parsing continues with the packets gathered so far.
 func readHeaderPackets(ctx context.Context, sr *binary.SafeReader, size int64, file *types.File, maxBytes int64) ([][]byte, error) {
@@ -180,21 +187,28 @@ func readHeaderPackets(ctx context.Context, sr *binary.SafeReader, size int64, f
 			})
 			break
 		}
+		read += nextOffset - offset
 		offset = nextOffset
+		if read > maxBytes {
+			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
+				Stage:   types.StageMetadata,
+				Message: fmt.Sprintf("Ogg header search exceeds %d bytes; truncated", maxBytes),
+			})
+			break
+		}
+		if i >= maxHeaderPages {
+			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
+				Stage:   types.StageMetadata,
+				Message: fmt.Sprintf("Ogg header search exceeds %d pages; truncated", maxHeaderPages),
+			})
+			break
+		}
 		if i == 0 {
 			serial = page.SerialNumber
 		} else if page.SerialNumber != serial {
 			continue // another multiplexed stream
 		}
 
-		read += int64(len(page.Data))
-		if read > maxBytes {
-			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-				Stage:   types.StageMetadata,
-				Message: fmt.Sprintf("Ogg comment header exceeds %d bytes; truncated", maxBytes),
-			})
-			break
-		}
 		pages = append(pages, page)
 		for seg := range packets.segments(page) {
 			if seg.ends {
