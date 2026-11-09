@@ -191,25 +191,32 @@ type mirror struct {
 	value func(tag *types.Tags, old string) []string
 }
 
-// The mirrors of each format.
+// The mirrors of each format: the native keys types binds to a field, and the
+// native comment.
 var (
-	wavMirrors = []mirror{
-		{types.FieldTitle, []string{"INAM"}, frame("TIT2")},
-		{types.FieldArtist, []string{"IART"}, frame("TPE1")},
-		{types.FieldArtists, []string{"IART"}, frame("TPE1")},
-		{types.FieldAlbum, []string{"IPRD"}, frame("TALB")},
-		{types.FieldGenres, []string{"IGNR"}, frame("TCON")},
-		{types.FieldYear, []string{"ICRD"}, year},
-		{types.FieldTrackNumber, []string{"ITRK", "IPRT"}, track},
-		{types.FieldComment, []string{keyICMT}, comment},
-	}
-	aiffMirrors = []mirror{
-		{types.FieldTitle, []string{"NAME"}, frame("TIT2")},
-		{types.FieldArtist, []string{"AUTH"}, frame("TPE1")},
-		{types.FieldArtists, []string{"AUTH"}, frame("TPE1")},
-		{types.FieldComment, []string{keyANNO}, comment},
-	}
+	wavMirrors  = mirrorsOf(types.FormatWAV, keyICMT)
+	aiffMirrors = mirrorsOf(types.FormatAIFF, keyANNO)
 )
+
+// mirrorsOf builds the mirrors of format from types.NativeTextBindings, each
+// taking its value from the ID3 frame MP3 binds to the field, and adds the
+// native comment commentID.
+func mirrorsOf(format types.Format, commentID string) []mirror {
+	id3 := map[types.Field]string{}
+	for _, b := range types.FieldBindings(types.FormatMP3) {
+		id3[b.Field] = b.Keys[0]
+	}
+	special := map[types.Field]func(*types.Tags, string) []string{types.FieldYear: year, types.FieldTrackNumber: track}
+	var out []mirror
+	for _, b := range types.NativeTextBindings(format) {
+		value, ok := special[b.Field]
+		if !ok {
+			value = frame(id3[b.Field])
+		}
+		out = append(out, mirror{b.Field, b.Keys, value})
+	}
+	return append(out, mirror{types.FieldComment, []string{commentID}, comment})
+}
 
 // frame mirrors the values of an ID3 frame.
 func frame(id string) func(*types.Tags, string) []string {

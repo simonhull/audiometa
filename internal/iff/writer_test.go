@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"math"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -345,5 +346,29 @@ func TestSetEntries_ReportsChange(t *testing.T) {
 	}
 	if _, changed := setEntries(entries, "ICOP", nil); changed {
 		t.Error("deleting an absent id: changed = true")
+	}
+}
+
+func TestMirrors_FollowNativeBindings(t *testing.T) {
+	t.Parallel()
+	for format, want := range map[types.Format]struct {
+		mirrors []mirror
+		comment string
+	}{
+		types.FormatWAV:  {wavMirrors, keyICMT},
+		types.FormatAIFF: {aiffMirrors, keyANNO},
+	} {
+		native := types.NativeTextBindings(format)
+		if len(want.mirrors) != len(native)+1 {
+			t.Fatalf("%s: %d mirrors, want one per native binding (%d) and the comment", format, len(want.mirrors), len(native))
+		}
+		for i, b := range native {
+			if m := want.mirrors[i]; m.field != b.Field || !slices.Equal(m.ids, b.Keys) || m.value == nil {
+				t.Errorf("%s: mirror %d = %v %v, want %v %v", format, i, m.field, m.ids, b.Field, b.Keys)
+			}
+		}
+		if m := want.mirrors[len(native)]; m.field != types.FieldComment || !slices.Equal(m.ids, []string{want.comment}) {
+			t.Errorf("%s: last mirror = %v %v, want the comment %q", format, m.field, m.ids, want.comment)
+		}
 	}
 }
