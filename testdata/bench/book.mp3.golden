@@ -401,7 +401,7 @@
     "Codec": "MP3",
     "CodecDescription": "",
     "CodecProfile": "",
-    "Container": "",
+    "Container": "MP3",
     "Duration": 10000000000,
     "SampleRate": 44100,
     "BitDepth": 0,

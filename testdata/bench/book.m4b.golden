@@ -401,7 +401,7 @@
     "Codec": "mp4a",
     "CodecDescription": "AAC",
     "CodecProfile": "AAC-LC",
-    "Container": "",
+    "Container": "MP4",
     "Duration": 10000000000,
     "SampleRate": 44100,
     "BitDepth": 0,

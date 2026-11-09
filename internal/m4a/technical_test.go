@@ -266,3 +266,14 @@ func TestParseTechnicalInfo_BitrateIgnoresFileSize(t *testing.T) {
 		})
 	}
 }
+
+func TestParseTechnicalInfo_Lossless(t *testing.T) {
+	for codec, want := range map[string]bool{"alac": true, "fLaC": true, "mp4a": false, "Opus": false} {
+		t.Run(codec, func(t *testing.T) {
+			file := parseMoovTech(t, trakWith("soun", stsdFor(codec, sampleEntryV01(0, 2, 44100))))
+			if file.Audio.Lossless != want {
+				t.Errorf("Lossless = %v, want %v", file.Audio.Lossless, want)
+			}
+		})
+	}
+}

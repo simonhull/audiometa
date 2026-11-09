@@ -302,6 +302,7 @@ func parseStsd(sr *binary.SafeReader, stsdAtom *Atom, file *types.File) error {
 
 	codec := string(formatBytes)
 	file.Audio.Codec = codec
+	file.Audio.Lossless = codec == codecALAC || codec == codecFLAC
 
 	// Parse enhanced codec details (non-fatal if it fails)
 	_ = parseCodecDetails(sr, offset-8, entrySize, codec, file)

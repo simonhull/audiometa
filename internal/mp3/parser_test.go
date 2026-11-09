@@ -53,6 +53,10 @@ func TestParse_ValidMP3(t *testing.T) {
 	if file.Audio.Codec != "MP3" {
 		t.Errorf("expected codec MP3, got %s", file.Audio.Codec)
 	}
+
+	if file.Audio.Container != "MP3" {
+		t.Errorf("Container = %q, want MP3", file.Audio.Container)
+	}
 }
 
 func TestParse_FileNotFound(t *testing.T) {

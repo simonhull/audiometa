@@ -7,6 +7,12 @@ import (
 	"github.com/simonhull/audiometa/internal/types"
 )
 
+// Sample entry FourCCs of the lossless codecs. FLAC's is spelled "fLaC" in files.
+const (
+	codecALAC = "alac"
+	codecFLAC = "fLaC"
+)
+
 // codecNames maps MP4 codec FourCC codes to human-readable names.
 var codecNames = map[string]string{
 	// AAC Family
@@ -20,11 +26,11 @@ var codecNames = map[string]string{
 	"ac-4": "AC-4",
 
 	// Lossless
-	"alac": "Apple Lossless",
-	"flac": "FLAC",
+	codecALAC: "Apple Lossless",
+	codecFLAC: "FLAC",
 
 	// Other
-	"opus": "Opus",
+	"Opus": "Opus",
 	"mp3 ": "MP3",
 	".mp3": "MP3",
 }

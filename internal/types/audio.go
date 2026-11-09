@@ -15,14 +15,15 @@ type AudioInfo struct {
 	Codec            string
 	CodecDescription string
 	CodecProfile     string
-	Container        string
-	Duration         time.Duration
-	SampleRate       int
-	BitDepth         int
-	Channels         int
-	Bitrate          int
-	Lossless         bool
-	VBR              bool
+	// Container is the file format holding the stream: "MP4", "Ogg", "FLAC", "MP3", "WAV", "RF64", "AIFF" or "AIFF-C".
+	Container  string
+	Duration   time.Duration
+	SampleRate int
+	BitDepth   int
+	Channels   int
+	Bitrate    int
+	Lossless   bool
+	VBR        bool
 }
 
 // AverageBitrate returns the average bitrate, in bits per second, of n bytes

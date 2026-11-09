@@ -30,7 +30,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		Format: types.FormatMP3,
 		Size:   size,
 		Tags:   types.Tags{},
-		Audio:  types.AudioInfo{},
+		Audio:  types.AudioInfo{Container: "MP3"},
 	}
 
 	// ID3v2 tag. A file without one (untagged, or with only an ID3v1
