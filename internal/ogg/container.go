@@ -8,11 +8,14 @@
 package ogg
 
 import (
+	"bufio"
 	"context"
 	ebinary "encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"iter"
+	"slices"
 
 	"github.com/simonhull/audiometa/internal/binary"
 )
@@ -33,86 +36,156 @@ type Page struct {
 	HeaderType      byte
 }
 
-// readPage reads an Ogg page at the given offset.
+// pageStream reads consecutive Ogg pages from the start of a file through one
+// buffered sequential reader, so each byte is fetched once and a page costs no
+// extra read. A payload larger than the buffer is read straight into its
+// destination.
 //
-// Returns the page, next offset, and any error encountered.
-func readPage(sr *binary.SafeReader, offset int64) (*Page, int64, error) {
-	// Verify "OggS" magic marker
-	magic := make([]byte, 4)
-	if err := sr.ReadAt(magic, offset, "Ogg magic"); err != nil {
-		return nil, 0, err
-	}
-	if string(magic) != capturePattern {
-		return nil, 0, fmt.Errorf("invalid Ogg page at offset %d", offset)
-	}
+// Errors match what reading each field through a [binary.SafeReader] reports:
+// an [*binary.OutOfBoundsError] for a page cut short by the end of the file,
+// "invalid Ogg page" or "unsupported Ogg version" for a bad header, and the
+// reader's own error, wrapped, for a failing read.
+type pageStream struct {
+	br     *bufio.Reader
+	off    int64 // file offset of the next page
+	size   int64
+	path   string
+	shared bool // next reuses its buffers: the caller must not keep the page
+	page   Page // the page returned by next when shared
+	data   []byte
+	lacing []byte
+}
 
-	// Read stream structure version (should be 0x00)
-	version, err := sr.Read[uint8](offset+4, "version")
+// pageStreamBuffer is the read size of a pageStream: large enough that a page
+// of typical audio size costs about one read.
+const pageStreamBuffer = 16 << 10
+
+// newPageStream returns a pageStream over the first size bytes of r. When
+// shared is true, the page next returns and its Data and Lacing are only valid
+// until the following call.
+func newPageStream(r io.ReaderAt, size int64, path string, shared bool) *pageStream {
+	return &pageStream{
+		br:     bufio.NewReaderSize(io.NewSectionReader(r, 0, size), pageStreamBuffer),
+		size:   size,
+		path:   path,
+		shared: shared,
+	}
+}
+
+// check returns the error SafeReader reports for reading n bytes of what at off.
+func (s *pageStream) check(what string, off int64, n int) error {
+	if off < 0 || off >= s.size || off+int64(n) > s.size {
+		return &binary.OutOfBoundsError{Path: s.path, What: what, Offset: off, Length: n, Size: s.size}
+	}
+	return nil
+}
+
+// fill reads len(b) bytes of what, found at off, from the stream.
+func (s *pageStream) fill(b []byte, what string, off int64) error {
+	n, err := io.ReadFull(s.br, b)
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF):
+		return fmt.Errorf("%s: short read for %s at offset %d: got %d bytes, expected %d", s.path, what, off, n, len(b))
+	default:
+		return fmt.Errorf("%s: failed to read %s at offset %d: %w", s.path, what, off, err)
+	}
+}
+
+// header reads and validates the fixed 27-byte header of the page at off, field
+// by field in file order, so a truncated page reports the first field that
+// does not fit.
+func (s *pageStream) header(off int64) (fixed [27]byte, err error) {
+	if avail := s.size - off; avail > 0 {
+		if err := s.fill(fixed[:min(avail, int64(len(fixed)))], "Ogg magic", off); err != nil {
+			return fixed, err
+		}
+	}
+	if err := s.check("Ogg magic", off, 4); err != nil {
+		return fixed, err
+	}
+	if string(fixed[:4]) != capturePattern {
+		return fixed, fmt.Errorf("invalid Ogg page at offset %d", off)
+	}
+	if err := s.check("version", off+4, 1); err != nil {
+		return fixed, err
+	}
+	if fixed[4] != 0 {
+		return fixed, fmt.Errorf("unsupported Ogg version: %d", fixed[4])
+	}
+	for _, f := range [...]struct {
+		what      string
+		at, bytes int
+	}{
+		{"header type", 5, 1}, {"granule position", 6, 8}, {"serial number", 14, 4},
+		{"sequence number", 18, 4}, {"segment count", 26, 1},
+	} {
+		if err := s.check(f.what, off+int64(f.at), f.bytes); err != nil {
+			return fixed, err
+		}
+	}
+	return fixed, nil
+}
+
+// buffer returns an n-byte slice for a page field: a fresh one, or when the
+// stream is shared one backed by *keep, which grows to fit.
+func (s *pageStream) buffer(keep *[]byte, n int) []byte {
+	if !s.shared {
+		return make([]byte, n)
+	}
+	if *keep == nil {
+		*keep = make([]byte, 0, max(n, 1)) // never nil: a nil lacing means "synthesize one"
+	}
+	*keep = slices.Grow((*keep)[:0], n)
+	return (*keep)[:n]
+}
+
+// next reads the page at the stream's offset and advances past it. It returns
+// the page and the offset of the one after it.
+func (s *pageStream) next() (*Page, int64, error) {
+	off := s.off
+	fixed, err := s.header(off)
 	if err != nil {
 		return nil, 0, err
 	}
-	if version != 0 {
-		return nil, 0, fmt.Errorf("unsupported Ogg version: %d", version)
-	}
 
-	// Read header fields
-	headerType, err := sr.Read[uint8](offset+5, "header type")
-	if err != nil {
+	// Segment table (each byte is the size of a segment, 0-255), then payload.
+	segmentCount := int(fixed[26])
+	if err := s.check("segment table", off+27, segmentCount); err != nil {
 		return nil, 0, err
 	}
-
-	granule, err := sr.ReadLE[uint64](offset+6, "granule position")
-	if err != nil {
+	lacing := s.buffer(&s.lacing, segmentCount)
+	if err := s.fill(lacing, "segment table", off+27); err != nil {
 		return nil, 0, err
 	}
-
-	serial, err := sr.ReadLE[uint32](offset+14, "serial number")
-	if err != nil {
-		return nil, 0, err
-	}
-
-	sequence, err := sr.ReadLE[uint32](offset+18, "sequence number")
-	if err != nil {
-		return nil, 0, err
-	}
-
-	segmentCount, err := sr.Read[uint8](offset+26, "segment count")
-	if err != nil {
-		return nil, 0, err
-	}
-
-	// Read segment table (each byte is size of a segment, 0-255)
-	segments := make([]byte, segmentCount)
-	if err := sr.ReadAt(segments, offset+27, "segment table"); err != nil {
-		return nil, 0, err
-	}
-
-	// Calculate total data size
 	dataSize := 0
-	for _, seg := range segments {
+	for _, seg := range lacing {
 		dataSize += int(seg)
 	}
-
-	// Read page data
-	data := make([]byte, dataSize)
-	dataOffset := offset + 27 + int64(segmentCount)
-	if err := sr.ReadAt(data, dataOffset, "page data"); err != nil {
+	dataOffset := off + 27 + int64(segmentCount)
+	if err := s.check("page data", dataOffset, dataSize); err != nil {
+		return nil, 0, err
+	}
+	data := s.buffer(&s.data, dataSize)
+	if err := s.fill(data, "page data", dataOffset); err != nil {
 		return nil, 0, err
 	}
 
-	page := &Page{
-		HeaderType:      headerType,
-		GranulePosition: int64(granule), //nolint:gosec // G115: RFC 3533 granule position is a signed field; all-ones (-1) means no packet ends on the page
-		SerialNumber:    serial,
-		SequenceNumber:  sequence,
-		Data:            data,
-		Lacing:          segments,
+	page := &s.page
+	if !s.shared {
+		page = new(Page)
 	}
-
-	// Calculate next page offset
-	nextOffset := dataOffset + int64(dataSize)
-
-	return page, nextOffset, nil
+	*page = Page{
+		HeaderType:      fixed[5],
+		GranulePosition: int64(ebinary.LittleEndian.Uint64(fixed[6:14])), //nolint:gosec // G115: RFC 3533 granule position is a signed field; all-ones (-1) means no packet ends on the page
+		SerialNumber:    ebinary.LittleEndian.Uint32(fixed[14:18]),
+		SequenceNumber:  ebinary.LittleEndian.Uint32(fixed[18:22]),
+		Data:            data,
+		Lacing:          lacing,
+	}
+	s.off = dataOffset + int64(dataSize)
+	return page, s.off, nil
 }
 
 // laceValues returns the page's segment table, synthesizing one (a single

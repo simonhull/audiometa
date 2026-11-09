@@ -5,6 +5,12 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/binary"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -68,6 +74,171 @@ func splitAcrossPages(packet []byte, firstType byte, serial uint32) []pageSpec {
 		lacing = lacing[n:]
 	}
 	return out
+}
+
+// readPage is the reference reader that pageStream must agree with: it reads
+// the Ogg page at offset field by field through a SafeReader and returns the
+// page, the next offset and any error.
+func readPage(sr *binutil.SafeReader, offset int64) (*Page, int64, error) {
+	// Verify "OggS" magic marker
+	magic := make([]byte, 4)
+	if err := sr.ReadAt(magic, offset, "Ogg magic"); err != nil {
+		return nil, 0, err
+	}
+	if string(magic) != capturePattern {
+		return nil, 0, fmt.Errorf("invalid Ogg page at offset %d", offset)
+	}
+
+	// Read stream structure version (should be 0x00)
+	version, err := sr.Read[uint8](offset+4, "version")
+	if err != nil {
+		return nil, 0, err
+	}
+	if version != 0 {
+		return nil, 0, fmt.Errorf("unsupported Ogg version: %d", version)
+	}
+
+	// Read header fields
+	headerType, err := sr.Read[uint8](offset+5, "header type")
+	if err != nil {
+		return nil, 0, err
+	}
+
+	granule, err := sr.ReadLE[uint64](offset+6, "granule position")
+	if err != nil {
+		return nil, 0, err
+	}
+
+	serial, err := sr.ReadLE[uint32](offset+14, "serial number")
+	if err != nil {
+		return nil, 0, err
+	}
+
+	sequence, err := sr.ReadLE[uint32](offset+18, "sequence number")
+	if err != nil {
+		return nil, 0, err
+	}
+
+	segmentCount, err := sr.Read[uint8](offset+26, "segment count")
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Read segment table (each byte is size of a segment, 0-255)
+	segments := make([]byte, segmentCount)
+	if err := sr.ReadAt(segments, offset+27, "segment table"); err != nil {
+		return nil, 0, err
+	}
+
+	dataSize := 0
+	for _, seg := range segments {
+		dataSize += int(seg)
+	}
+
+	// Read page data
+	data := make([]byte, dataSize)
+	dataOffset := offset + 27 + int64(segmentCount)
+	if err := sr.ReadAt(data, dataOffset, "page data"); err != nil {
+		return nil, 0, err
+	}
+
+	page := &Page{
+		HeaderType:      headerType,
+		GranulePosition: int64(granule), //nolint:gosec // G115: RFC 3533 granule position is a signed field; all-ones (-1) means no packet ends on the page
+		SerialNumber:    serial,
+		SequenceNumber:  sequence,
+		Data:            data,
+		Lacing:          segments,
+	}
+	return page, dataOffset + int64(dataSize), nil
+}
+
+// samePageResults compares what readPage and a pageStream return for every
+// page of data, including the error that ends the walk.
+func samePageResults(t *testing.T, data []byte, shared bool) {
+	t.Helper()
+	size := int64(len(data))
+	sr := binutil.NewSafeReader(bytes.NewReader(data), size, "x")
+	ps := newPageStream(bytes.NewReader(data), size, "x", shared)
+	for off, i := int64(0), 0; off < size; i++ {
+		want, wantNext, wantErr := readPage(sr, off)
+		got, gotNext, gotErr := ps.next()
+		if (wantErr == nil) != (gotErr == nil) {
+			t.Fatalf("len %d page %d: err = %v, want %v", len(data), i, gotErr, wantErr)
+		}
+		if wantErr != nil {
+			wantOOB, wantIs := errors.AsType[*binutil.OutOfBoundsError](wantErr)
+			gotOOB, gotIs := errors.AsType[*binutil.OutOfBoundsError](gotErr)
+			if wantIs != gotIs || (wantIs && *wantOOB != *gotOOB) || wantErr.Error() != gotErr.Error() {
+				t.Fatalf("len %d page %d: err = %q, want %q", len(data), i, gotErr, wantErr)
+			}
+			return
+		}
+		if gotNext != wantNext || !reflect.DeepEqual(got, want) {
+			t.Fatalf("len %d page %d: got %+v next %d, want %+v next %d", len(data), i, got, gotNext, want, wantNext)
+		}
+		off = wantNext
+	}
+}
+
+func TestPageStreamMatchesReadPage(t *testing.T) {
+	inputs := map[string][]byte{
+		"opus+cover": ioOpus(true),
+		"empty pages": buildOgg(pageSpec{headerType: 2, serial: 1, lacing: []byte{3}, data: []byte("abc")},
+			pageSpec{serial: 1}, pageSpec{serial: 1, lacing: []byte{0}}, pageSpec{serial: 1, lacing: lacingFor(300), data: make([]byte, 300)}),
+		"leading empty page": buildOgg(pageSpec{serial: 1}, pageSpec{serial: 1, lacing: []byte{2}, data: []byte("ab")}),
+		"bad version":        append(buildOgg(pageSpec{serial: 1, lacing: []byte{1}, data: []byte{1}}), append([]byte("OggS\x01"), make([]byte, 40)...)...),
+		"bad magic":          append(buildOgg(pageSpec{serial: 1, lacing: []byte{1}, data: []byte{1}}), []byte("junk junk junk junk junk junk junk junk")...),
+		"trailing tag":       append(buildOgg(pageSpec{serial: 1, lacing: []byte{1}, data: []byte{1}}), []byte("TAG")...),
+	}
+	for _, name := range []string{"sample.ogg", "sample.opus", "sample_retagged.ogg", "sample_retagged.opus"} {
+		data, err := os.ReadFile(filepath.Join("..", "..", "testdata", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		inputs[name] = data
+	}
+	for name, data := range inputs {
+		t.Run(name, func(t *testing.T) {
+			for _, shared := range []bool{false, true} {
+				samePageResults(t, data, shared)
+				// Every cut inside the first pages, then cuts spread over the file.
+				for n := 0; n <= min(len(data), 400); n++ {
+					samePageResults(t, data[:n], shared)
+				}
+				for n := 400; n < len(data); n += max(len(data)/97, 1) {
+					samePageResults(t, data[:n], shared)
+				}
+			}
+		})
+	}
+}
+
+// failingAt fails every read that reaches offset at, with err.
+type failingAt struct {
+	r   io.ReaderAt
+	at  int64
+	err error
+}
+
+func (f failingAt) ReadAt(p []byte, off int64) (int, error) {
+	if off+int64(len(p)) > f.at {
+		return 0, f.err
+	}
+	return f.r.ReadAt(p, off)
+}
+
+func TestPageStreamReadError(t *testing.T) {
+	errDisk := errors.New("disk on fire")
+	data := ioOpus(false)
+	ps := newPageStream(failingAt{bytes.NewReader(data), 40_000, errDisk}, int64(len(data)), "x", false)
+	var err error
+	for err == nil {
+		_, _, err = ps.next()
+	}
+	if !errors.Is(err, errDisk) {
+		t.Errorf("err = %v, want it to wrap the reader's error", err)
+	}
 }
 
 // pagesOf reads every page of an Ogg file built by buildOgg.
@@ -331,9 +502,8 @@ func TestParseCommentPacketSpanningManyPages(t *testing.T) {
 func TestReadHeaderPacketsCap(t *testing.T) {
 	comment := commentPacket("\x03vorbis", true, "TITLE="+strings.Repeat("x", 200_000))
 	data := multiPageFile(vorbisIDPacket(), comment, 7, pageSpec{headerType: 0x04, serial: 7, lacing: []byte{1}, data: []byte{0}})
-	sr := binutil.NewSafeReader(bytes.NewReader(data), int64(len(data)), "x.ogg")
 	file := &types.File{}
-	h, err := readHeaderPackets(context.Background(), sr, int64(len(data)), file, 70_000)
+	h, err := readHeaderPackets(context.Background(), bytes.NewReader(data), int64(len(data)), "x.ogg", file, 70_000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -358,8 +528,7 @@ func TestReadHeaderPacketsSkipsOtherStreams(t *testing.T) {
 		pageSpec{headerType: 0x02, serial: 2, lacing: []byte{3}, data: []byte("zzz")},
 		pageSpec{serial: 1, lacing: lacingFor(len(comment)), data: comment},
 	)
-	sr := binutil.NewSafeReader(bytes.NewReader(data), int64(len(data)), "x.ogg")
-	h, err := readHeaderPackets(context.Background(), sr, int64(len(data)), &types.File{}, maxHeaderBytes)
+	h, err := readHeaderPackets(context.Background(), bytes.NewReader(data), int64(len(data)), "x.ogg", &types.File{}, maxHeaderBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -400,8 +569,7 @@ func TestReadHeaderPacketsDroppedContinuation(t *testing.T) {
 		pageSpec{serial: 1, lacing: []byte{4}, data: []byte("\x05set")},
 		pageSpec{serial: 1, lacing: []byte{1}, data: []byte{0}},
 	)
-	sr := binutil.NewSafeReader(bytes.NewReader(data), int64(len(data)), "x.ogg")
-	h, err := readHeaderPackets(context.Background(), sr, int64(len(data)), &types.File{}, maxHeaderBytes)
+	h, err := readHeaderPackets(context.Background(), bytes.NewReader(data), int64(len(data)), "x.ogg", &types.File{}, maxHeaderBytes)
 	if err != nil {
 		t.Fatal(err)
 	}

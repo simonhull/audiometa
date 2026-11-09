@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	binutil "github.com/simonhull/audiometa/internal/binary"
 	"github.com/simonhull/audiometa/internal/testbudget"
 	"github.com/simonhull/audiometa/internal/types"
 )
@@ -17,11 +16,10 @@ func TestReadHeaderPackets_EmptyPagesEndTheSearch(t *testing.T) {
 	pages := []pageSpec{{headerType: 2, serial: 1, lacing: lacingFor(len(head)), data: head}}
 	pages = append(pages, slices.Repeat([]pageSpec{{serial: 1}}, 300_000)...)
 	data := buildOgg(pages...)
-	sr := binutil.NewSafeReader(bytes.NewReader(data), int64(len(data)), "x.opus")
 
 	file := &types.File{}
 	alloc := testbudget.Allocated(func() {
-		if _, err := readHeaderPackets(context.Background(), sr, int64(len(data)), file, maxHeaderBytes); err != nil {
+		if _, err := readHeaderPackets(context.Background(), bytes.NewReader(data), int64(len(data)), "x.ogg", file, maxHeaderBytes); err != nil {
 			t.Error(err)
 		}
 	})

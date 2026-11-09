@@ -53,7 +53,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		Audio:  types.AudioInfo{},
 	}
 
-	h, err := readHeaderPackets(ctx, sr, size, file, maxHeaderBytes)
+	h, err := readHeaderPackets(ctx, r, size, path, file, maxHeaderBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -176,7 +176,8 @@ type headers struct {
 //
 // The first audio packet starts a new page (Vorbis I §A.2, RFC 7845 §3), so
 // audioStart is where the audio pages begin.
-func readHeaderPackets(ctx context.Context, sr *binary.SafeReader, size int64, file *types.File, maxBytes int64) (headers, error) {
+func readHeaderPackets(ctx context.Context, r io.ReaderAt, size int64, path string, file *types.File, maxBytes int64) (headers, error) {
+	stream := newPageStream(r, size, path, false)
 	var pages []*Page
 	var serial uint32
 	var read int64
@@ -191,7 +192,7 @@ func readHeaderPackets(ctx context.Context, sr *binary.SafeReader, size int64, f
 			return headers{}, err
 		}
 
-		page, nextOffset, err := readPage(sr, offset)
+		page, nextOffset, err := stream.next()
 		if err != nil {
 			if i == 0 {
 				return headers{}, fmt.Errorf("failed to read first Ogg page: %w", err)
