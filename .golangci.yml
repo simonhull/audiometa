@@ -156,12 +156,6 @@ linters:
       # Format brand constants ("M4A ", "M4B ") are intentionally repeated
       - linters: [goconst]
         text: 'string `M4[AB] ` has .* occurrences'
-      # Format parsers intentionally return (nil, nil) on missing optional data
-      # (no moov/udta/meta/ilst/covr atom, no ID3v2 tag, etc.) so callers see
-      # absent metadata rather than an error. This is the library's documented
-      # "graceful degradation" contract.
-      - linters: [nilerr]
-        path: internal/(m4a|mp3|flac|ogg)/
       # Examples are simple demos; they can use log.Fatalf and don't need
       # the same complexity gates as library code.
       - linters: [gocritic]

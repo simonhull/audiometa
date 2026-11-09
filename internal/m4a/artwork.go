@@ -67,7 +67,7 @@ func extractArtwork(ctx context.Context, sr *binary.SafeReader, size int64) ([]t
 		offset += dataAtom.Size
 	}
 
-	return artwork, nil
+	return artwork, nil //nolint:nilerr // a malformed covr child ends the list; the images before it are still returned
 }
 
 // parseCovrData extracts artwork from a single covr data atom.
