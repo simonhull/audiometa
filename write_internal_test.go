@@ -761,6 +761,33 @@ func TestWrite_Canceled(t *testing.T) {
 	})
 }
 
+// TestWrite_InPlaceReadOnlyFallsBack: a read-only file in a writable directory
+// is rewritten atomically, as without WithInPlace, and keeps its mode.
+func TestWrite_InPlaceReadOnlyFallsBack(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs Unix permissions and a non-root user")
+	}
+	path, data := copySample(t, sampleFLAC)
+	if err := os.Chmod(path, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	off, patch := titlePatch(t, data)
+	// No preserved digest: the fixed one lets the atomic fallback (source +
+	// "FAKE") verify.
+	fw := &inPlaceFake{off: off, patch: patch, fits: true}
+	useWriter(t, fw)
+	if err := Write(path, func(f *File) error { f.Tags.Title = "New"; return nil }, WithInPlace()); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if fw.callCount() != 1 {
+		t.Errorf("WriteFile calls = %d, want 1 (atomic fallback)", fw.callCount())
+	}
+	assertFileBytes(t, path, append(slices.Clone(data), fakeTrailer...))
+	if st, err := os.Stat(path); err != nil || st.Mode().Perm() != 0o444 {
+		t.Errorf("mode = %v, %v; want 0444", st.Mode().Perm(), err)
+	}
+}
+
 // TestWrite_ConcurrentReplace replaces the file with a same-size copy that
 // keeps the original mtime, as another program's atomic save might.
 func TestWrite_ConcurrentReplace(t *testing.T) {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -286,6 +287,9 @@ func (j *writeJob) writeInPlace(ctx context.Context) (done bool, err error) {
 		return true, fmt.Errorf("in-place patch [%d, %d) outside file of %d bytes", off, off+int64(len(patch)), j.f.src.size)
 	}
 	rw, err := os.OpenFile(j.target, os.O_RDWR, 0)
+	if errors.Is(err, fs.ErrPermission) {
+		return false, nil // read-only: the atomic rewrite needs only a writable directory
+	}
 	if err != nil {
 		return true, fmt.Errorf("open for in-place write: %w", err)
 	}

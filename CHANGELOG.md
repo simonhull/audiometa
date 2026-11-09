@@ -6,6 +6,7 @@ All notable changes to this project are documented here.
 
 ### Changed
 
+- `Write` with `WithInPlace` falls back to the atomic rewrite when the file's permissions do not allow opening it for writing, as it already did when the edit does not fit. It used to fail with a permission error, although the same `Write` without the option replaces the file.
 - FLAC: a metadata block chain that ends before a block flagged as last now always adds a `StageMetadata` warning, so `Open` fails on it under `WithStrictParsing`. That used to happen only when the file ended inside a block header; a chain that stopped exactly at the end of the file, or whose last block ran past it, was accepted without a warning. A header cut short by the end of the file still wraps an `*OutOfBoundsError`.
 - `DetectFormat` reports an ID3v2 tag followed by `fLaC` as `FormatFLAC`.
 
