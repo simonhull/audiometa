@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"io"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -109,6 +111,108 @@ func TestWriteFile_OddDS64KeepsItsPad(t *testing.T) {
 	}
 	if !bytes.Equal(preserved(t, types.FormatWAV, out), preserved(t, types.FormatWAV, data)) {
 		t.Error("preserved digest changed")
+	}
+}
+
+// fmtChunk is a fmt payload with the given fields.
+func fmtChunk(tag, channels uint16, rate, byteRate uint32, align, bits uint16) string {
+	le := binary.LittleEndian
+	b := le.AppendUint16(nil, tag)
+	b = le.AppendUint16(b, channels)
+	b = le.AppendUint32(b, rate)
+	b = le.AppendUint32(b, byteRate)
+	b = le.AppendUint16(b, align)
+	b = le.AppendUint16(b, bits)
+	return string(b)
+}
+
+func TestParse_AudioValuesOutOfRange(t *testing.T) {
+	t.Parallel()
+	le := binary.LittleEndian
+	cases := []struct {
+		name          string
+		fmt           string
+		rate, bitrate int
+		warning       bool
+	}{
+		{"ordinary", fmtChunk(wavePCM, 2, 48000, 192000, 4, 16), 48000, 1536000, false},
+		{"sample rate past int32", fmtChunk(wavePCM, 1, 0xFFFFFFFF, 0, 2, 16), 0, 0, true},
+		{"bit rate past int32", fmtChunk(wavePCM, 0xFFFF, 192000, 0, 2, 0xFFFF), 192000, 0, true},
+		{"byte rate past int32", fmtChunk(waveMP3, 1, 8000, 0xFFFFFFFF, 1, 0), 8000, 0, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f := parse(t, types.FormatWAV, riff(le, magicRIFF, "fmt ", tc.fmt, "data", strings.Repeat("\x00", 4000)))
+			if a := f.Audio; a.SampleRate != tc.rate || a.Bitrate != tc.bitrate || a.Duration < 0 {
+				t.Errorf("SampleRate %d, Bitrate %d, Duration %v; want %d, %d and no negative duration", a.SampleRate, a.Bitrate, a.Duration, tc.rate, tc.bitrate)
+			}
+			warned := len(f.Warnings) == 1 && f.Warnings[0].Stage == types.StageTechnical
+			if warned != tc.warning {
+				t.Errorf("Warnings = %v, want one StageTechnical warning: %v", f.Warnings, tc.warning)
+			}
+		})
+	}
+}
+
+// aiffFile builds an AIFF file whose COMM chunk has the given fields.
+func aiffFile(channels, bits uint16, frames uint32, rate float64) []byte {
+	be := binary.BigEndian
+	comm := be.AppendUint16(nil, channels)
+	comm = be.AppendUint32(comm, frames)
+	comm = be.AppendUint16(comm, bits)
+	frac, exp := math.Frexp(rate) // as TestExtendedFloat encodes it
+	comm = be.AppendUint16(comm, uint16(exp-1+16383))
+	comm = be.AppendUint64(comm, uint64(math.Ldexp(frac, 64)))
+	data := riff(be, magicFORM, "COMM", string(comm), "SSND", strings.Repeat("\x00", 8+16))
+	copy(data[8:], formAIFF) // riff writes WAVE as the form type
+	return data
+}
+
+func TestParse_AIFFBitrateOutOfRange(t *testing.T) {
+	t.Parallel()
+	f := parse(t, types.FormatAIFF, aiffFile(0xFFFF, 0xFFFF, 192000, 192000))
+	if a := f.Audio; a.SampleRate != 192000 || a.Bitrate != 0 || a.Duration != time.Second {
+		t.Errorf("SampleRate %d, Bitrate %d, Duration %v; want 192000, 0, 1s", a.SampleRate, a.Bitrate, a.Duration)
+	}
+	if len(f.Warnings) != 1 || f.Warnings[0].Stage != types.StageTechnical {
+		t.Errorf("Warnings = %v, want one StageTechnical warning", f.Warnings)
+	}
+}
+
+// sparse reads as head followed by zeros, up to size.
+type sparse struct {
+	head []byte
+	size int64
+}
+
+func (s sparse) ReadAt(p []byte, off int64) (int, error) {
+	if off >= s.size {
+		return 0, io.EOF
+	}
+	n := copy(p, s.head[min(off, int64(len(s.head))):])
+	clear(p[n:])
+	if rest := s.size - off; int64(len(p)) > rest {
+		return int(rest), io.EOF
+	}
+	return len(p), nil
+}
+
+func TestParse_DurationOutOfRange(t *testing.T) {
+	t.Parallel()
+	le := binary.LittleEndian
+	head := rf64(make([]byte, ds64MinSize), "fmt ", fmtChunk(wavePCM, 1, 1, 1, 1, 8), "data", "")
+	const audio = 1 << 40 // bytes: 2^40 one-byte frames at 1 Hz, past what time.Duration holds
+	le.PutUint64(head[28:], audio)
+	le.PutUint32(head[len(head)-4:], unsetSize) // the data chunk's size comes from ds64
+	size := int64(len(head)) + audio
+	le.PutUint64(head[20:], uint64(size-8))
+	f, err := (&parser{format: types.FormatWAV}).Parse(t.Context(), sparse{head, size}, size, "big")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Audio.Duration != 0 || len(f.Warnings) != 1 || f.Warnings[0].Stage != types.StageTechnical {
+		t.Errorf("Duration %v, Warnings %v; want 0 and one StageTechnical warning", f.Audio.Duration, f.Warnings)
 	}
 }
 
