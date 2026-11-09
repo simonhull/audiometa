@@ -14,6 +14,7 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- MP3, WAV, AIFF: setting `Year` on an ID3v2.3 tag that stores the year in `TDRC`, or on an ID3v2.4 tag that stores it in `TYER`, writes the tag version's own frame (`TYER` or `TDRC`) and removes the other one. It used to fail with `ErrUnsupportedWrite`, and a v2.4 tag holding both kept a stale `TYER`.
 - MP3: a CBR file with an `Info` header (what LAME and ffmpeg write) is no longer reported as `VBR`, and its `Bitrate` is the audio's, not that of the header frame (often half). A VBR file's `Bitrate` is its average, from the Xing or VBRI byte count, instead of the first frame's.
 - MP3: MPEG-2.5 files (8, 11.025 and 12 kHz) are read. They used to report no audio properties, or wrong ones taken from a false frame sync inside the audio; a frame header is now accepted only when the next frame confirms it.
 - MP3: ID3v2.4 tags written by older iTunes, whose frame sizes are plain integers instead of synchsafe ones, are read in full; a frame of 128 bytes or more used to cut off the rest of the tag. Writing such a tag rewrites its frame headers in the standard form.

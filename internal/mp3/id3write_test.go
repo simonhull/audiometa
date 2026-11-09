@@ -647,3 +647,38 @@ func TestApply_OtherV24FramesStayRefusedInV23(t *testing.T) {
 		}
 	}
 }
+
+func TestApply_YearMixedVersions(t *testing.T) {
+	tests := []struct {
+		name     string
+		version  byte
+		frames   [][]byte
+		year     int
+		wantKey  string // frame that holds the year afterwards
+		want     string
+		wantGone string // frame that must be gone
+	}{
+		{"v2.3 with TDRC", 3, [][]byte{id3Frame(3, "TDRC", latin1Text("2001-05-03"))}, 2005, "TYER", "2005", "TDRC"},
+		{"v2.4 with TYER", 4, [][]byte{id3Frame(4, "TYER", latin1Text("2001"))}, 2005, "TDRC", "2005", "TYER"},
+		{"v2.4 with both", 4, [][]byte{id3Frame(4, "TDRC", latin1Text("2001-05-03")), id3Frame(4, "TYER", latin1Text("2001"))}, 2005, "TDRC", "2005-05-03", "TYER"},
+		{"v2.3 with both", 3, [][]byte{id3Frame(3, "TYER", latin1Text("2001")), id3Frame(3, "TDRC", latin1Text("2001"))}, 2005, "TYER", "2005", "TDRC"},
+		{"clear v2.4 with both", 4, [][]byte{id3Frame(4, "TDRC", latin1Text("2001")), id3Frame(4, "TYER", latin1Text("2001"))}, 0, "TDRC", "", "TYER"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			frames := append([][]byte{id3Frame(tt.version, "TSSE", latin1Text("enc"))}, tt.frames...)
+			src := file(id3Tag(tt.version, frames...))
+			out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.Year = tt.year }))
+			tags := parseBytes(t, out).Tags
+			if got := tags.GetFirst(tt.wantKey); got != tt.want {
+				t.Errorf("%s = %q, want %q", tt.wantKey, got, tt.want)
+			}
+			if got := tags.Get(tt.wantGone); got != nil {
+				t.Errorf("%s = %q, want it removed", tt.wantGone, got)
+			}
+			if tags.Year != tt.year {
+				t.Errorf("Year = %d, want %d", tags.Year, tt.year)
+			}
+		})
+	}
+}

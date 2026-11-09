@@ -46,7 +46,7 @@ var (
 
 // canonicalKeys is the raw key a field is written to when the source has
 // none of the field's keys, as a whitespace-separated "Field key" table
-// (keys with spaces use "_"). Year is handled apart (TDRC or TYER by version).
+// (keys with spaces use "_"). Year is handled apart by applyYear (TDRC or TYER by version).
 var canonicalKeys = func() map[types.Field]string {
 	byName := pairsOf(`
 		Title TIT2  Subtitle TIT3  Artist TPE1  Artists TPE1  Album TALB  AlbumArtist TPE2
@@ -380,6 +380,9 @@ func (t *wtag) applyFieldEdit(e types.FieldEdit, edits *types.EditSet) error {
 	if e.Field == types.FieldLyrics {
 		return t.applyLyrics(e.Values)
 	}
+	if e.Field == types.FieldYear {
+		return t.applyYear(e, edits)
+	}
 	targets, err := t.fieldTargetKeys(e, edits)
 	if err != nil {
 		return err
@@ -392,17 +395,25 @@ func (t *wtag) applyFieldEdit(e types.FieldEdit, edits *types.EditSet) error {
 	return nil
 }
 
+// applyYear writes Year to the tag version's own frame (TDRC in ID3v2.4, TYER
+// in ID3v2.3) and removes the other version's frame, which that version
+// cannot hold. Clearing Year removes both.
+func (t *wtag) applyYear(e types.FieldEdit, edits *types.EditSet) error {
+	own, other := keyTDRC, keyTYER
+	if t.outVersion == 3 {
+		own, other = keyTYER, keyTDRC
+	}
+	if err := t.applyKeyEdit(other, nil); err != nil {
+		return err
+	}
+	return t.applyKeyEdit(own, fieldKeyValues(e, own, edits))
+}
+
 // fieldTargetKeys returns the raw keys a field edit writes: when setting, the
 // highest-precedence key present in the source, or the canonical key when
 // none is; when clearing, every present key.
 func (t *wtag) fieldTargetKeys(e types.FieldEdit, edits *types.EditSet) ([]string, error) {
 	canonical, ok := canonicalKeys[e.Field]
-	if e.Field == types.FieldYear {
-		canonical, ok = keyTDRC, true
-		if t.outVersion == 3 {
-			canonical = keyTYER
-		}
-	}
 	if !ok {
 		return nil, fmt.Errorf("%w: %s cannot be written to MP3", types.ErrUnsupportedWrite, e.Field)
 	}
