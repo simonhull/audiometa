@@ -32,6 +32,9 @@ const (
 	ds64EntrySize   = 12 // chunk ID and 64-bit size
 	// maxChunks bounds the chunk list a hostile file can make us hold.
 	maxChunks = 1 << 16
+	// maxDS64Entries bounds the ds64 table. Each entry gives a chunk other than
+	// data a size past 4 GiB, so real files have none or a handful.
+	maxDS64Entries = 1 << 10
 	// unsetSize is the 32-bit size a streaming writer leaves for "unknown",
 	// and RF64's pointer to the ds64 chunk.
 	unsetSize = 0xFFFFFFFF
@@ -126,7 +129,7 @@ func walk(ctx context.Context, sr *binutil.SafeReader, size int64) (*container, 
 	var ds *ds64
 	if c.magic == magicRF64 {
 		var err error
-		if ds, err = readDS64(sr, c.order); err != nil {
+		if ds, err = readDS64(sr, size, c.order); err != nil {
 			return nil, err
 		}
 		declared = chunkHeaderSize + int64(min(ds.riffSize, uint64(size))) //nolint:gosec // G115: bounded by the int64 file size
@@ -229,8 +232,10 @@ func (c *container) readChunk(off, size int64, inside bool, ds *ds64) (chunk, bo
 	return ch, true, nil
 }
 
-// readDS64 reads the ds64 chunk that must follow an RF64 header.
-func readDS64(sr *binutil.SafeReader, order byteOrder) (*ds64, error) {
+// readDS64 reads the ds64 chunk that must follow an RF64 header. Its table
+// is read in one go, cut to the entries the chunk and the file hold; a table
+// longer than maxDS64Entries is refused.
+func readDS64(sr *binutil.SafeReader, fileSize int64, order byteOrder) (*ds64, error) {
 	var hdr [chunkHeaderSize + ds64MinSize]byte
 	if err := sr.ReadAt(hdr[:], headerSize, "ds64 chunk"); err != nil {
 		return nil, corrupted(sr, headerSize, "RF64 file without a ds64 chunk")
@@ -243,17 +248,21 @@ func readDS64(sr *binutil.SafeReader, order byteOrder) (*ds64, error) {
 		return nil, corrupted(sr, headerSize, fmt.Sprintf("ds64 chunk of %d bytes is too short", size))
 	}
 	p := hdr[chunkHeaderSize:]
-	ds := &ds64{riffSize: order.Uint64(p[0:]), dataSize: order.Uint64(p[8:]), table: map[string]uint64{}}
-	entries := int64(order.Uint32(p[24:]))
-	entries = min(entries, (size-ds64MinSize)/ds64EntrySize)
-	off := int64(headerSize + chunkHeaderSize + ds64MinSize)
-	for range entries {
-		var e [ds64EntrySize]byte
-		if err := sr.ReadAt(e[:], off, "ds64 table entry"); err != nil {
+	ds := &ds64{riffSize: order.Uint64(p[0:]), dataSize: order.Uint64(p[8:])}
+	const tableOff = headerSize + chunkHeaderSize + ds64MinSize
+	entries := min(int64(order.Uint32(p[24:])), (size-ds64MinSize)/ds64EntrySize, (fileSize-tableOff)/ds64EntrySize)
+	if entries > maxDS64Entries {
+		return nil, corrupted(sr, headerSize, fmt.Sprintf("ds64 table of %d entries is too long", entries))
+	}
+	table := make([]byte, entries*ds64EntrySize)
+	if entries > 0 {
+		if err := sr.ReadAt(table, tableOff, "ds64 table"); err != nil {
 			return nil, err
 		}
+	}
+	ds.table = make(map[string]uint64, entries)
+	for e := range slices.Chunk(table, ds64EntrySize) {
 		ds.table[string(e[:4])] = order.Uint64(e[4:])
-		off += ds64EntrySize
 	}
 	return ds, nil
 }
