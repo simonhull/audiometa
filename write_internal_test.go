@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -82,13 +83,73 @@ func (w *fakeWriter) callCount() int {
 // inPlaceFake is a fakeWriter that can also patch in place.
 type inPlaceFake struct {
 	fakeWriter
-	off   int64
-	patch []byte
-	fits  bool
+	off     int64
+	patch   []byte
+	fits    bool
+	err     error  // returned by InPlacePatch
+	onPatch func() // side effect while InPlacePatch runs
+
+	// preserved, when set, replaces the fixed PreservedDigest, so a test
+	// can make verification depend on the bytes on disk.
+	preserved func(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error)
 }
 
 func (w *inPlaceFake) InPlacePatch(context.Context, io.ReaderAt, int64, *types.EditSet) (int64, []byte, bool, error) {
-	return w.off, w.patch, w.fits, nil
+	if w.onPatch != nil {
+		w.onPatch()
+	}
+	return w.off, w.patch, w.fits, w.err
+}
+
+func (w *inPlaceFake) PreservedDigest(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error) {
+	if w.preserved != nil {
+		return w.preserved(ctx, src, size)
+	}
+	return w.fakeWriter.PreservedDigest(ctx, src, size)
+}
+
+// digestOutside hashes every byte outside [off, off+n), as an honest
+// in-place writer's PreservedDigest does.
+func digestOutside(off int64, n int) func(context.Context, io.ReaderAt, int64) ([]byte, error) {
+	return func(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error) {
+		h := sha256.New()
+		end := off + int64(n)
+		if _, err := writeutil.CopyRange(ctx, h, src, 0, off); err != nil {
+			return nil, err
+		}
+		if _, err := writeutil.CopyRange(ctx, h, src, end, size-end); err != nil {
+			return nil, err
+		}
+		return h.Sum(nil), nil
+	}
+}
+
+// digestAll hashes the whole file, so any patch that still parses fails
+// verification on the digest.
+func digestAll(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error) {
+	h := sha256.New()
+	if _, err := writeutil.CopyRange(ctx, h, src, 0, size); err != nil {
+		return nil, err
+	}
+	return h.Sum(nil), nil
+}
+
+// titlePatch returns where sample.flac stores "Test Title" and a same-length
+// replacement that still parses.
+func titlePatch(t *testing.T, data []byte) (int64, []byte) {
+	t.Helper()
+	i := bytes.Index(data, []byte("Test Title"))
+	if i < 0 {
+		t.Fatal(`sample has no "Test Title"`)
+	}
+	return int64(i), []byte("Best Title")
+}
+
+// patched returns data with patch written at off.
+func patched(data []byte, off int64, patch []byte) []byte {
+	out := slices.Clone(data)
+	copy(out[off:], patch)
+	return out
 }
 
 // useWriter makes lookupWriter return tw for every format until the test ends.
@@ -474,16 +535,23 @@ func TestWrite_VerifyFailure(t *testing.T) {
 	assertNoTempFiles(t, filepath.Dir(path))
 }
 
+// appendByte appends one zero byte to path, as another writer would.
+func appendByte(t *testing.T, path string) {
+	t.Helper()
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	defer f.Close()
+	if _, err := f.Write([]byte{0}); err != nil {
+		t.Error(err)
+	}
+}
+
 func TestWrite_ConcurrentModification(t *testing.T) {
 	path, data := copySample(t, sampleFLAC)
-	fw := &fakeWriter{onWrite: func() {
-		f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
-		if err != nil {
-			panic(err)
-		}
-		_, _ = f.Write([]byte{0})
-		_ = f.Close()
-	}}
+	fw := &fakeWriter{onWrite: func() { appendByte(t, path) }}
 	useWriter(t, fw)
 	err := Write(path, func(f *File) error { f.Tags.Title = "New"; return nil })
 	if !errors.Is(err, ErrConcurrentModification) {
@@ -514,14 +582,34 @@ func TestWrite_InPlace(t *testing.T) {
 
 	t.Run("patch applied", func(t *testing.T) {
 		path, data := copySample(t, sampleFLAC)
-		fw := &inPlaceFake{off: 0, patch: []byte("fLaC"), fits: true}
+		off, patch := titlePatch(t, data)
+		fw := &inPlaceFake{off: off, patch: patch, fits: true, preserved: digestOutside(off, len(patch))}
 		useWriter(t, fw)
 		if err := Write(path, edit, WithInPlace()); err != nil {
 			t.Fatal(err)
 		}
-		assertFileBytes(t, path, data)
+		assertFileBytes(t, path, patched(data, off, patch))
 		if fw.callCount() != 0 {
 			t.Error("WriteFile called although the patch fit")
+		}
+		if got := openSample(t, path).Tags.Title; got != "Best Title" {
+			t.Errorf("Title = %q, want the patched title", got)
+		}
+	})
+	t.Run("preserve mod time", func(t *testing.T) {
+		path, data := copySample(t, sampleFLAC)
+		mtime := time.Date(2001, 2, 3, 4, 5, 6, 0, time.UTC)
+		if err := os.Chtimes(path, mtime, mtime); err != nil {
+			t.Fatal(err)
+		}
+		off, patch := titlePatch(t, data)
+		useWriter(t, &inPlaceFake{off: off, patch: patch, fits: true, preserved: digestOutside(off, len(patch))})
+		if err := Write(path, edit, WithInPlace(), WithPreserveModTime()); err != nil {
+			t.Fatal(err)
+		}
+		assertFileBytes(t, path, patched(data, off, patch))
+		if st, _ := os.Stat(path); !st.ModTime().Equal(mtime) {
+			t.Errorf("mtime = %v, want preserved %v", st.ModTime(), mtime)
 		}
 	})
 	t.Run("does not fit falls back", func(t *testing.T) {
@@ -533,15 +621,59 @@ func TestWrite_InPlace(t *testing.T) {
 		}
 		assertFileBytes(t, path, append(slices.Clone(data), fakeTrailer...))
 	})
-	t.Run("verify failure restores", func(t *testing.T) {
+	t.Run("unparseable result restores", func(t *testing.T) {
 		path, data := copySample(t, sampleFLAC)
-		fw := &inPlaceFake{off: 0, patch: []byte("XXXX"), fits: true}
-		useWriter(t, fw)
+		useWriter(t, &inPlaceFake{off: 0, patch: []byte("XXXX"), fits: true})
+		if err := Write(path, edit, WithInPlace()); !errors.Is(err, ErrVerifyFailed) {
+			t.Errorf("err = %v, want ErrVerifyFailed", err)
+		}
+		assertFileBytes(t, path, data)
+	})
+	t.Run("digest mismatch restores", func(t *testing.T) {
+		path, data := copySample(t, sampleFLAC)
+		off, patch := titlePatch(t, data)
+		useWriter(t, &inPlaceFake{off: off, patch: patch, fits: true, preserved: digestAll})
 		err := Write(path, edit, WithInPlace())
 		if !errors.Is(err, ErrVerifyFailed) {
 			t.Errorf("err = %v, want ErrVerifyFailed", err)
 		}
 		assertFileBytes(t, path, data)
+	})
+	t.Run("patch outside file", func(t *testing.T) {
+		path, data := copySample(t, sampleFLAC)
+		for _, off := range []int64{-1, int64(len(data)) - 2} {
+			fw := &inPlaceFake{off: off, patch: []byte("ABCD"), fits: true}
+			useWriter(t, fw)
+			if err := Write(path, edit, WithInPlace()); err == nil || !strings.Contains(err.Error(), "outside file") {
+				t.Errorf("off %d: err = %v, want an outside-file error", off, err)
+			}
+			assertFileBytes(t, path, data)
+			if fw.callCount() != 0 {
+				t.Errorf("off %d: fell back to WriteFile after a bad patch", off)
+			}
+		}
+	})
+	t.Run("patch error", func(t *testing.T) {
+		path, data := copySample(t, sampleFLAC)
+		boom := errors.New("boom")
+		fw := &inPlaceFake{err: boom}
+		useWriter(t, fw)
+		if err := Write(path, edit, WithInPlace()); !errors.Is(err, boom) {
+			t.Errorf("err = %v, want boom", err)
+		}
+		assertFileBytes(t, path, data)
+		if fw.callCount() != 0 {
+			t.Error("fell back to WriteFile after InPlacePatch failed")
+		}
+	})
+	t.Run("concurrent modification", func(t *testing.T) {
+		path, data := copySample(t, sampleFLAC)
+		off, patch := titlePatch(t, data)
+		useWriter(t, &inPlaceFake{off: off, patch: patch, fits: true, onPatch: func() { appendByte(t, path) }})
+		if err := Write(path, edit, WithInPlace()); !errors.Is(err, ErrConcurrentModification) {
+			t.Errorf("err = %v, want ErrConcurrentModification", err)
+		}
+		assertFileBytes(t, path, append(slices.Clone(data), 0))
 	})
 	t.Run("not requested", func(t *testing.T) {
 		path, data := copySample(t, sampleFLAC)
@@ -551,6 +683,57 @@ func TestWrite_InPlace(t *testing.T) {
 			t.Fatal(err)
 		}
 		assertFileBytes(t, path, append(slices.Clone(data), fakeTrailer...))
+	})
+}
+
+func TestWrite_Canceled(t *testing.T) {
+	edit := func(f *File) error { f.Tags.Title = "New"; return nil }
+
+	t.Run("before start", func(t *testing.T) {
+		path, data := copySample(t, sampleFLAC)
+		fw := &fakeWriter{}
+		useWriter(t, fw)
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		if err := WriteContext(ctx, path, edit); !errors.Is(err, context.Canceled) {
+			t.Errorf("err = %v, want context.Canceled", err)
+		}
+		assertFileBytes(t, path, data)
+		if fw.callCount() != 0 {
+			t.Error("writer called after cancellation")
+		}
+	})
+	t.Run("during atomic write", func(t *testing.T) {
+		path, data := copySample(t, sampleFLAC)
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		useWriter(t, &fakeWriter{onWrite: cancel})
+		if err := WriteContext(ctx, path, edit); !errors.Is(err, context.Canceled) {
+			t.Errorf("err = %v, want context.Canceled", err)
+		}
+		assertFileBytes(t, path, data)
+		assertNoTempFiles(t, filepath.Dir(path))
+	})
+	t.Run("during in-place verify", func(t *testing.T) {
+		path, data := copySample(t, sampleFLAC)
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		off, patch := titlePatch(t, data)
+		calls := 0
+		honest := digestOutside(off, len(patch))
+		useWriter(t, &inPlaceFake{off: off, patch: patch, fits: true,
+			preserved: func(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error) {
+				if calls++; calls == 2 { // the first call digests the source, the second verifies
+					cancel()
+					return nil, ctx.Err()
+				}
+				return honest(ctx, src, size)
+			}})
+		err := WriteContext(ctx, path, edit, WithInPlace())
+		if !errors.Is(err, context.Canceled) || !errors.Is(err, ErrVerifyFailed) {
+			t.Errorf("err = %v, want context.Canceled and ErrVerifyFailed", err)
+		}
+		assertFileBytes(t, path, data)
 	})
 }
 
