@@ -22,12 +22,7 @@ const (
 	Write
 )
 
-const (
-	mib = 1 << 20
-
-	// m4aGap is the known overrun of the M4A and M4B budgets.
-	m4aGap = "plan 069: repeated ilst items allocate quadratically"
-)
+const mib = 1 << 20
 
 // Budget bounds the bytes one operation may allocate for an n-byte input:
 // PerByte*n + Fixed.
@@ -55,14 +50,9 @@ func For(op Op, format types.Format) Budget {
 		b := Budget{PerByte: 16, Fixed: 64 * mib}
 		switch format {
 		case types.FormatMP3, types.FormatWAV, types.FormatAIFF:
-			// Plan 069: ID3 multi-value frames amplify about 93 B/B on read; 069 sets 64.
-			b.PerByte = 256
-		case types.FormatFLAC:
-			// Plan 069: Vorbis comments amplify about 31 B/B on read; 069 sets 16.
+			// ID3 chunks can carry MediaMarkers, whose XML decoding costs 18-24 B per byte.
 			b.PerByte = 64
-		case types.FormatM4A, types.FormatM4B:
-			b.KnownGap = m4aGap
-		case types.FormatOgg, types.FormatOpus, types.FormatUnknown:
+		case types.FormatFLAC, types.FormatM4A, types.FormatM4B, types.FormatOgg, types.FormatOpus, types.FormatUnknown:
 			// The default budget applies.
 		}
 		return b
@@ -70,14 +60,9 @@ func For(op Op, format types.Format) Budget {
 	b := Budget{PerByte: 4, Fixed: 32 * mib}
 	switch format {
 	case types.FormatMP3, types.FormatWAV, types.FormatAIFF:
-		// Plan 069: ID3 multi-value frames amplify about 93 B/B; 069 sets 32.
-		b.PerByte = 128
-	case types.FormatFLAC, types.FormatOgg, types.FormatOpus:
-		// Plan 069: Vorbis comments amplify about 31 B/B; 069 sets 4.
+		// ID3 chunks can carry MediaMarkers, whose XML decoding costs 18-24 B per byte.
 		b.PerByte = 32
-	case types.FormatM4A, types.FormatM4B:
-		b.KnownGap = m4aGap
-	case types.FormatUnknown:
+	case types.FormatFLAC, types.FormatOgg, types.FormatOpus, types.FormatM4A, types.FormatM4B, types.FormatUnknown:
 		// The default budget applies.
 	}
 	return b
