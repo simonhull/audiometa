@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"slices"
 	"strings"
 	"testing"
 
@@ -74,6 +75,34 @@ func TestParse_BitrateExcludesMetadata(t *testing.T) {
 	file := parseTestFLAC(t, data)
 	if file.Audio.Bitrate != 8000 {
 		t.Errorf("Bitrate = %d, want 8000", file.Audio.Bitrate)
+	}
+}
+
+func TestParse_BitrateExcludesTrailingTags(t *testing.T) {
+	ape := func() []byte {
+		part := func(flags uint32) []byte {
+			b := make([]byte, 32)
+			copy(b, "APETAGEX")
+			binary.LittleEndian.PutUint32(b[8:], 2000)
+			binary.LittleEndian.PutUint32(b[12:], 3000+32)
+			binary.LittleEndian.PutUint32(b[20:], flags)
+			return b
+		}
+		return slices.Concat(part(1<<31|1<<29), make([]byte, 3000), part(1<<31))
+	}()
+	id3v1 := make([]byte, 128)
+	copy(id3v1, "TAG")
+	data := buildFLAC(
+		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100, 441000)), // 10 s
+		flacBlock(false, blockTypePadding, make([]byte, 50000)),
+		flacBlock(true, blockTypeVorbisComment, vorbisCommentPayload("TITLE=x")),
+		make([]byte, 10000), // "audio"
+		ape,
+		id3v1,
+	)
+	file := parseTestFLAC(t, data)
+	if file.Audio.Bitrate != 8000 {
+		t.Errorf("Bitrate = %d, want 8000 (trailing APEv2 and ID3v1 are not audio)", file.Audio.Bitrate)
 	}
 }
 

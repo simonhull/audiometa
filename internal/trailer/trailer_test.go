@@ -248,3 +248,33 @@ func FuzzStart(f *testing.F) {
 		}
 	})
 }
+
+// apeWithTAGInside is an APEv2 tag whose items hold "TAG" 128 bytes before the end.
+func apeWithTAGInside() []byte {
+	tag := ape(200, true)
+	copy(tag[len(tag)-128:], "TAG")
+	return tag
+}
+
+func TestEndsWithID3v1(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		data []byte
+		want bool
+	}{
+		{"ID3v1 last", slices.Concat(audio, ape(40, true), id3v1()), true},
+		{"APEv2 last", slices.Concat(audio, id3v1(), ape(12, false)), false},
+		{"nothing", audio, false},
+		{"TAG inside APEv2", slices.Concat(audio, apeWithTAGInside()), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := EndsWithID3v1(sr(tt.data), 0, int64(len(tt.data)))
+			if err != nil || got != tt.want {
+				t.Errorf("EndsWithID3v1 = %v, %v; want %v", got, err, tt.want)
+			}
+		})
+	}
+}

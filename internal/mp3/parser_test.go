@@ -3,6 +3,7 @@ package mp3
 import (
 	"context"
 	"os"
+	"slices"
 	"testing"
 	"time"
 
@@ -329,5 +330,27 @@ func TestParseChapterFrames(t *testing.T) {
 	}
 	if chapters[1].StartTime != 10*time.Second {
 		t.Errorf("chapter 1: expected start time 10s, got %v", chapters[1].StartTime)
+	}
+}
+
+func TestParse_TrailingAPEv2IsNotAudio(t *testing.T) {
+	data := slices.Concat(id3Tag(4, id3Frame(4, "TIT2", latin1Text("x"))), audioBytes(417*40))
+	plain := parseBytes(t, data)
+	if plain.Audio.Bitrate != 128000 || plain.Audio.Duration == 0 {
+		t.Fatalf("baseline audio = %+v", plain.Audio)
+	}
+	tagged := parseBytes(t, slices.Concat(data, apeWithHeader(64<<10)))
+	if tagged.Audio.Duration != plain.Audio.Duration || tagged.Audio.Bitrate != plain.Audio.Bitrate {
+		t.Errorf("with APEv2 tag: duration %v bitrate %d; without: %v %d",
+			tagged.Audio.Duration, tagged.Audio.Bitrate, plain.Audio.Duration, plain.Audio.Bitrate)
+	}
+}
+
+func TestParse_TAGInsideAPEv2IsNotID3v1(t *testing.T) {
+	ape := apeWithHeader(200)
+	copy(ape[len(ape)-128:], "TAG") // an item value that looks like an ID3v1 trailer
+	f := parseBytes(t, slices.Concat(audioBytes(417*40), ape))
+	if f.Tags.Title != "" || f.Tags.Artist != "" {
+		t.Errorf("tags = %+v, want none: \"TAG\" inside an APEv2 item is not ID3v1", f.Tags)
 	}
 }

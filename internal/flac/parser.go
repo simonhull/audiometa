@@ -10,6 +10,7 @@ import (
 	"github.com/simonhull/audiometa/internal/binary"
 	"github.com/simonhull/audiometa/internal/registry"
 	"github.com/simonhull/audiometa/internal/replaygain"
+	"github.com/simonhull/audiometa/internal/trailer"
 	"github.com/simonhull/audiometa/internal/types"
 	"github.com/simonhull/audiometa/internal/vorbis"
 )
@@ -151,8 +152,13 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 
 	// Approximate bitrate from audio frames only (metadata such as cover art excluded).
 	// Unknown when the metadata chain never reached its last block.
+	// Trailing APEv2, Lyrics3v2 and ID3v1 tags are not audio either.
 	if audioStart > 0 && audioStart < size && file.Audio.Duration > 0 {
-		file.Audio.Bitrate = int(float64(size-audioStart) * 8 / file.Audio.Duration.Seconds())
+		audioEnd, err := trailer.Start(ctx, sr, audioStart, size)
+		if err != nil {
+			return nil, err
+		}
+		file.Audio.Bitrate = types.AverageBitrate(audioEnd-audioStart, file.Audio.Duration)
 	}
 
 	// Set container and codec

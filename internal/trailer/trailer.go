@@ -21,10 +21,11 @@ const (
 	id3v2HasFoot  = 0x10
 )
 
-// tagLens are tried in order. Tags with long, structured markers come first,
-// so a stray "TAG" inside an APEv2 or Lyrics3v2 tag is not taken for ID3v1.
-var tagLens = [...]func(*binutil.SafeReader, int64, int64) (int64, error){
-	apeLen, lyrics3v2Len, id3v2FooterLen, id3v1Len,
+// structuredTagLens recognize tags with long, structured markers. They are
+// tried before id3v1Len, so a stray "TAG" inside an APEv2 or Lyrics3v2 tag
+// is not taken for ID3v1.
+var structuredTagLens = [...]func(*binutil.SafeReader, int64, int64) (int64, error){
+	apeLen, lyrics3v2Len, id3v2FooterLen,
 }
 
 // Start returns where the trailing tags of sr[start:end) begin, or end if
@@ -49,13 +50,39 @@ func Start(ctx context.Context, sr *binutil.SafeReader, start, end int64) (int64
 
 // trailingTag returns the size of the tag block that ends at end, or 0.
 func trailingTag(sr *binutil.SafeReader, start, end int64) (int64, error) {
-	for _, size := range tagLens {
+	n, err := structuredTagLen(sr, start, end)
+	if err != nil || n > 0 {
+		return n, err
+	}
+	return id3v1Len(sr, start, end)
+}
+
+// structuredTagLen returns the size of the structured tag block that ends at
+// end, or 0.
+func structuredTagLen(sr *binutil.SafeReader, start, end int64) (int64, error) {
+	for _, size := range structuredTagLens {
 		n, err := size(sr, start, end)
 		if err != nil || n > 0 {
 			return n, err
 		}
 	}
 	return 0, nil
+}
+
+// EndsWithID3v1 reports whether the last trailing tag block of
+// sr[start:end) is an ID3v1 tag, using the same rules as [Start]: a "TAG"
+// inside an APEv2 or Lyrics3v2 tag does not count.
+//
+// # Errors
+//
+// It returns the error of a failed read of sr.
+func EndsWithID3v1(sr *binutil.SafeReader, start, end int64) (bool, error) {
+	n, err := structuredTagLen(sr, start, end)
+	if err != nil || n > 0 {
+		return false, err
+	}
+	n, err = id3v1Len(sr, start, end)
+	return n > 0, err
 }
 
 func id3v1Len(sr *binutil.SafeReader, start, end int64) (int64, error) {
