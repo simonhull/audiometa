@@ -48,7 +48,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 
 	// ID3v1 trailer: a fallback for tags, and never part of the audio.
 	v1, hasV1 := readID3v1(sr, size)
-	if hasV1 && file.Tags.Title == "" && file.Tags.Artist == "" {
+	if hasV1 && id3v1Fallback(&file.Tags) {
 		applyID3v1(file, v1)
 	}
 	audioEnd := size
