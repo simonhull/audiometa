@@ -469,8 +469,10 @@ func TestWrite_ReplacesFile(t *testing.T) {
 	}
 	assertFileBytes(t, path, append(slices.Clone(data), fakeTrailer...))
 	assertNoTempFiles(t, filepath.Dir(path))
-	if st, err := os.Stat(path); err != nil || st.Mode().Perm() != 0o640 {
-		t.Errorf("mode after Write = %v, %v; want 0640", st.Mode().Perm(), err)
+	if runtime.GOOS != "windows" { // Windows maps only the read-only bit
+		if st, err := os.Stat(path); err != nil || st.Mode().Perm() != 0o640 {
+			t.Errorf("mode after Write = %v, %v; want 0640", st.Mode().Perm(), err)
+		}
 	}
 }
 
