@@ -525,6 +525,26 @@ func TestExtractIlst_GnreRaw(t *testing.T) {
 	}
 }
 
+// Some taggers label integer items implicit (type 0); like ©mvi, they read as
+// their number, not as raw bytes.
+func TestParse_ImplicitIntegerItems(t *testing.T) {
+	tests := []struct {
+		key  string
+		item []byte
+		want string
+	}{
+		{"tmpo", ilstInt("tmpo", dataTypeImplicit, []byte{0, 0x78}), "120"},
+		{"rtng", ilstInt("rtng", dataTypeImplicit, []byte{1}), "1"},
+		{"tmpo", ilstInt("tmpo", dataTypeImplicit, []byte("120")), "120"}, // printable: text
+	}
+	for _, tt := range tests {
+		f := parseBytes(t, buildMP4(false, tt.item))
+		if got := f.Tags.GetFirst(tt.key); got != tt.want {
+			t.Errorf("%s %x = %q, want %q", tt.key, tt.item, got, tt.want)
+		}
+	}
+}
+
 func TestExtractIlstMetadata_MovementIndexDataTypes(t *testing.T) {
 	tests := []struct {
 		name     string
