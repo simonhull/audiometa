@@ -25,25 +25,32 @@ var errShortVC = errors.New("length runs past the end of the block")
 
 // parseVC splits a VORBIS_COMMENT payload: a little-endian 32-bit vendor
 // length and the vendor string, a little-endian 32-bit comment count, then
-// each comment as a little-endian 32-bit length and its bytes.
+// each comment as a little-endian 32-bit length and its bytes. It reads
+// nothing outside payload. The result is never nil: on error it holds the
+// vendor (when that was read) and the comments decoded before the failure,
+// and its tail is nil.
 func parseVC(payload []byte) (*vcomment, error) {
+	v := &vcomment{}
 	vendor, rest, err := takeLE(payload)
 	if err != nil {
-		return nil, fmt.Errorf("vendor string: %w", err)
+		return v, fmt.Errorf("vendor string: %w", err)
 	}
+	v.vendor = vendor
 	if len(rest) < 4 {
-		return nil, fmt.Errorf("comment count: %w", errShortVC)
+		return v, fmt.Errorf("comment count: %w", errShortVC)
 	}
 	count := binary.LittleEndian.Uint32(rest)
 	rest = rest[4:]
-	if uint64(count) > uint64(len(rest)/4) {
-		return nil, fmt.Errorf("comment count %d: %w", count, errShortVC)
+	// Each comment takes at least 4 bytes, so no more than len(rest)/4 fit.
+	n := len(rest) / 4
+	if uint64(count) < uint64(n) {
+		n = int(count)
 	}
-	v := &vcomment{vendor: vendor, comments: make([][]byte, 0, count)}
+	v.comments = make([][]byte, 0, n)
 	for i := range count {
 		var c []byte
 		if c, rest, err = takeLE(rest); err != nil {
-			return nil, fmt.Errorf("comment %d: %w", i, err)
+			return v, fmt.Errorf("comment %d: %w", i, err)
 		}
 		v.comments = append(v.comments, c)
 	}

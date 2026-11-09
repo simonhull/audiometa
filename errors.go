@@ -15,10 +15,11 @@ import (
 type OutOfBoundsError = types.OutOfBoundsError
 
 // UnsupportedFormatError reports that a file is not in a format audiometa can
-// parse: its contents match no known signature, or its header cannot be read.
+// parse: it is not a regular file (Reason "not a regular file"), its contents
+// match no known signature, or its header cannot be read.
 //
-// Path names the file and Reason says why. [Open] and [DetectFormat] return
-// it; match it with [errors.As].
+// Path names the file and Reason says why. [Open], [OpenContext], [OpenMany],
+// [Write] and [DetectFormat] return it; match it with [errors.As].
 type UnsupportedFormatError = types.UnsupportedFormatError
 
 // CorruptedFileError reports that a file's container structure is invalid,

@@ -2,6 +2,7 @@ package flac
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -53,8 +54,9 @@ type fblock struct {
 type fmeta struct {
 	blocks     []fblock
 	path       string
+	prefix     int64 // bytes before the "fLaC" marker: a leading ID3v2 tag, kept verbatim; usually 0
 	audioStart int64 // first byte after the last metadata block
-	oldMetaLen int64 // bytes of metadata blocks in the source: audioStart - 4
+	oldMetaLen int64 // bytes of metadata blocks in the source: audioStart - prefix - 4
 }
 
 // WriteFile streams src with edits applied to out.
@@ -67,6 +69,9 @@ func (w *writer) WriteFile(ctx context.Context, out io.Writer, src io.ReaderAt, 
 		return 0, err
 	}
 	cw := &writeutil.CountingWriter{W: out}
+	if _, err := writeutil.CopyRange(ctx, cw, src, 0, m.prefix); err != nil {
+		return cw.N, err
+	}
 	if _, err := cw.Write([]byte(flacMagic)); err != nil {
 		return cw.N, err
 	}
@@ -85,7 +90,7 @@ func (w *writer) AudioDigest(ctx context.Context, src io.ReaderAt, size int64) (
 		return nil, err
 	}
 	sr := binutil.NewSafeReader(src, size, "")
-	start, err := walkBlocks(ctx, sr, size, nil)
+	_, start, err := walkBlocks(ctx, sr, size, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -96,21 +101,29 @@ func (w *writer) AudioDigest(ctx context.Context, src io.ReaderAt, size int64) (
 	return writeutil.DigestRange(ctx, src, start, end-start)
 }
 
-// PreservedDigest returns the SHA-256 of everything after the last metadata
-// block, including any trailing tags: the bytes WriteFile copies verbatim.
+// PreservedDigest returns the SHA-256 of any leading ID3v2 tag followed by
+// everything after the last metadata block, including any trailing tags: the
+// bytes WriteFile copies verbatim.
 func (w *writer) PreservedDigest(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	start, err := walkBlocks(ctx, binutil.NewSafeReader(src, size, ""), size, nil)
+	prefix, start, err := walkBlocks(ctx, binutil.NewSafeReader(src, size, ""), size, nil)
 	if err != nil {
 		return nil, err
 	}
-	return writeutil.DigestRange(ctx, src, start, size-start)
+	h := sha256.New()
+	if _, err := writeutil.CopyRange(ctx, h, src, 0, prefix); err != nil {
+		return nil, err
+	}
+	if _, err := writeutil.CopyRange(ctx, h, src, start, size-start); err != nil {
+		return nil, err
+	}
+	return h.Sum(nil), nil
 }
 
-// InPlacePatch returns the new metadata blocks to write at offset 4 when they
-// fill exactly the space of the old ones (possibly with a resized PADDING
+// InPlacePatch returns the new metadata blocks to write just after the "fLaC"
+// marker (offset 4, or 4 past a leading ID3v2 tag) when they fill exactly the space of the old ones (possibly with a resized PADDING
 // block). The patch is then exactly what WriteFile writes before the audio.
 func (w *writer) InPlacePatch(ctx context.Context, src io.ReaderAt, size int64, edits *types.EditSet) (int64, []byte, bool, error) {
 	if err := ctx.Err(); err != nil {
@@ -123,7 +136,7 @@ func (w *writer) InPlacePatch(ctx context.Context, src io.ReaderAt, size int64, 
 	if int64(len(meta)) != m.oldMetaLen {
 		return 0, nil, false, nil
 	}
-	return int64(len(flacMagic)), meta, true, nil
+	return m.prefix + int64(len(flacMagic)), meta, true, nil
 }
 
 // buildMeta reads the source blocks, applies edits and serializes the new
@@ -144,48 +157,50 @@ func buildMeta(ctx context.Context, sr *binutil.SafeReader, size int64, edits *t
 }
 
 // walkBlocks follows the metadata block chain, calling visit (when non-nil)
-// with each block's type, payload offset and payload length, and returns the
-// offset just past the last block. A missing "fLaC" marker, a first block
-// other than STREAMINFO, a block running past the end of the file, or a chain
-// that never reaches its last block is a CorruptedFileError.
-func walkBlocks(ctx context.Context, sr *binutil.SafeReader, size int64, visit func(typ uint8, off, n int64) error) (int64, error) {
-	var magic [4]byte
-	if size < int64(len(magic)) {
-		return 0, corrupted(sr.Path(), 0, "invalid FLAC magic bytes")
+// with each block's type, payload offset and payload length. It returns the
+// offset of the "fLaC" marker (the size of a leading ID3v2 tag, usually 0)
+// and the offset just past the last block. A missing "fLaC" marker, a first
+// block other than STREAMINFO, a block running past the end of the file, or a
+// chain that never reaches its last block is a CorruptedFileError.
+func walkBlocks(ctx context.Context, sr *binutil.SafeReader, size int64, visit func(typ uint8, off, n int64) error) (prefix, end int64, err error) {
+	if size < int64(len(flacMagic)) {
+		return 0, 0, corrupted(sr.Path(), 0, errNoMagic.Error())
 	}
-	if err := sr.ReadAt(magic[:], 0, "FLAC magic bytes"); err != nil {
-		return 0, err
+	prefix, err = streamStart(sr, size)
+	switch {
+	case errors.Is(err, errNoMagic):
+		return 0, 0, corrupted(sr.Path(), 0, errNoMagic.Error())
+	case err != nil:
+		return 0, 0, err
 	}
-	if string(magic[:]) != flacMagic {
-		return 0, corrupted(sr.Path(), 0, "invalid FLAC magic bytes")
-	}
-	for b, err := range blocks(ctx, sr, size) {
+	first := prefix + int64(len(flacMagic))
+	for b, err := range blocks(ctx, sr, prefix, size) {
 		switch {
 		case errors.Is(err, errNoLastBlock):
-			return 0, corrupted(sr.Path(), b.off, err.Error())
+			return 0, 0, corrupted(sr.Path(), b.off, err.Error())
 		case err != nil:
-			return 0, err
-		case b.off == int64(len(flacMagic)) && b.typ != blockTypeStreamInfo:
-			return 0, corrupted(sr.Path(), b.off, "first metadata block is not STREAMINFO")
+			return 0, 0, err
+		case b.off == first && b.typ != blockTypeStreamInfo:
+			return 0, 0, corrupted(sr.Path(), b.off, "first metadata block is not STREAMINFO")
 		case b.n > size-b.payload():
-			return 0, corrupted(sr.Path(), b.off, fmt.Sprintf("metadata block of %d bytes runs past the end of the file", b.n))
+			return 0, 0, corrupted(sr.Path(), b.off, fmt.Sprintf("metadata block of %d bytes runs past the end of the file", b.n))
 		}
 		if visit != nil {
 			if err := visit(b.typ, b.payload(), b.n); err != nil {
-				return 0, err
+				return 0, 0, err
 			}
 		}
 		if b.last {
-			return b.end(), nil
+			return prefix, b.end(), nil
 		}
 	}
-	return 0, corrupted(sr.Path(), size, errNoLastBlock.Error()) // not reached: blocks ends with the last block or an error
+	return 0, 0, corrupted(sr.Path(), size, errNoLastBlock.Error()) // not reached: blocks ends with the last block or an error
 }
 
 // readFMeta reads every metadata block of the file behind sr.
 func readFMeta(ctx context.Context, sr *binutil.SafeReader, size int64) (*fmeta, error) {
 	m := &fmeta{path: sr.Path()}
-	end, err := walkBlocks(ctx, sr, size, func(typ uint8, off, n int64) error {
+	prefix, end, err := walkBlocks(ctx, sr, size, func(typ uint8, off, n int64) error {
 		if err := sr.CheckLen(off, int(n), 1, "metadata block"); err != nil {
 			return err
 		}
@@ -199,8 +214,9 @@ func readFMeta(ctx context.Context, sr *binutil.SafeReader, size int64) (*fmeta,
 	if err != nil {
 		return nil, err
 	}
+	m.prefix = prefix
 	m.audioStart = end
-	m.oldMetaLen = end - int64(len(flacMagic))
+	m.oldMetaLen = end - prefix - int64(len(flacMagic))
 	return m, nil
 }
 

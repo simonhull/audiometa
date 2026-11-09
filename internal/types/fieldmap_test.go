@@ -59,8 +59,8 @@ func TestFieldBindings_NativeTextAfterID3(t *testing.T) {
 			}
 		}
 	}
-	track := FieldBindings(FormatWAV)[9]
-	if track.Field != FieldTrackNumber || !slices.Equal(track.Keys, []string{"TRCK", "ITRK", "IPRT"}) {
+	i := slices.IndexFunc(FieldBindings(FormatWAV), func(b FieldBinding) bool { return b.Field == FieldTrackNumber })
+	if track := FieldBindings(FormatWAV)[i]; !slices.Equal(track.Keys, []string{"TRCK", "ITRK", "IPRT"}) {
 		t.Errorf("WAV track binding = %v", track)
 	}
 }
@@ -126,5 +126,33 @@ func TestDecodeField(t *testing.T) {
 				t.Errorf("field = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestNativeTextBindings(t *testing.T) {
+	mp3 := FieldBindings(FormatMP3)
+	for _, format := range []Format{FormatWAV, FormatAIFF} {
+		all := FieldBindings(format)
+		native := NativeTextBindings(format)
+		if len(native) == 0 {
+			t.Fatalf("%s: no native text bindings", format)
+		}
+		for _, n := range native {
+			i := slices.IndexFunc(mp3, func(b FieldBinding) bool { return b.Field == n.Field })
+			if i < 0 {
+				t.Errorf("%s: native %s has no MP3 binding to extend", format, n.Field)
+				continue
+			}
+			if keys := all[i].Keys; !slices.Equal(keys[len(keys)-len(n.Keys):], n.Keys) {
+				t.Errorf("%s: %s keys %v do not end with the native %v", format, n.Field, keys, n.Keys)
+			}
+		}
+		native[0].Keys[0] = "MUTATED"
+		if NativeTextBindings(format)[0].Keys[0] == "MUTATED" {
+			t.Errorf("%s: mutating the result changed shared state", format)
+		}
+	}
+	if b := NativeTextBindings(FormatMP3); b != nil {
+		t.Errorf("MP3: native text bindings = %v, want nil", b)
 	}
 }

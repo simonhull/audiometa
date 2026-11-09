@@ -312,3 +312,27 @@ func TestParse_Cancel(t *testing.T) {
 func newReader(data []byte) *binutil.SafeReader {
 	return binutil.NewSafeReader(bytes.NewReader(data), int64(len(data)), "test")
 }
+
+func TestExtractArtwork_UnsynchronisedID3Chunk(t *testing.T) {
+	t.Parallel()
+	le := binary.LittleEndian
+	image := []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 'J', 'F', 'I', 'F', 0xFF, 0x00, 0x01, 0xFF}
+	apic := append([]byte("\x00image/jpeg\x00\x03\x00"), image...)
+	frame := append([]byte{'A', 'P', 'I', 'C', 0, 0, 0, byte(len(apic)), 0, 0}, apic...)
+	var body []byte // the frame, unsynchronised
+	for i, c := range frame {
+		body = append(body, c)
+		if c == 0xFF && (i+1 == len(frame) || frame[i+1] == 0x00 || frame[i+1] >= 0xE0) {
+			body = append(body, 0x00)
+		}
+	}
+	tag := append([]byte{'I', 'D', '3', 3, 0, 0x80, 0, 0, 0, byte(len(body))}, body...)
+	data := riff(le, magicRIFF, "fmt ", pcmFmt(le), "data", "\x00\x00", "id3 ", string(tag))
+	art, err := (&parser{format: types.FormatWAV}).ExtractArtwork(t.Context(), bytes.NewReader(data), int64(len(data)), "t.wav")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(art) != 1 || !bytes.Equal(art[0].Data, image) {
+		t.Errorf("artwork = %+v, want one picture holding %x", art, image)
+	}
+}

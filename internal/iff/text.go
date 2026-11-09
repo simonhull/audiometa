@@ -16,6 +16,9 @@ import (
 // AIFF text chunk. Its id is its raw tag key.
 type entry struct {
 	id, value string
+	// raw is the payload as stored in the source, written back unchanged
+	// while the entry is not edited; nil for an entry a write sets.
+	raw []byte
 }
 
 // infoIDs are the LIST/INFO subchunk IDs of the RIFF specification and the
@@ -63,10 +66,12 @@ func (c *container) readInfo(ch chunk) ([]entry, error) {
 		start := off + chunkHeaderSize
 		if !validID(id) || size64 > int64(len(payload)-start) {
 			c.warn(ch.data()+int64(off), fmt.Sprintf("unreadable INFO subchunk %q; the rest of the list is ignored", id))
+			c.infoDamaged = true
 			break
 		}
 		size := int(size64)
-		entries = append(entries, entry{id: string(id), value: decodeText(payload[start : start+size])})
+		raw := payload[start : start+size]
+		entries = append(entries, entry{id: string(id), value: decodeText(raw), raw: raw})
 		off = start + size + size&1
 	}
 	return entries, nil
@@ -83,7 +88,7 @@ func (c *container) readAIFFText() ([]entry, error) {
 		if err != nil {
 			return nil, err
 		}
-		entries = append(entries, entry{id: ch.id, value: decodeText(b)})
+		entries = append(entries, entry{id: ch.id, value: decodeText(b), raw: b})
 	}
 	return entries, nil
 }
@@ -135,7 +140,11 @@ func addRaw(file *types.File, entries []entry, commentID string) {
 func encodeInfo(entries []entry, order byteOrder) []byte {
 	out := []byte("INFO")
 	for _, e := range entries {
-		out = appendChunk(out, e.id, append([]byte(e.value), 0), order)
+		p := e.raw
+		if p == nil {
+			p = append([]byte(e.value), 0)
+		}
+		out = appendChunk(out, e.id, p, order)
 	}
 	return out
 }
@@ -153,7 +162,12 @@ func appendChunk(b []byte, id string, p []byte, order byteOrder) []byte {
 
 // setEntries replaces every entry of id with one entry per value, at the place
 // of the first; with no values it removes them. A new id goes at the end.
-func setEntries(entries []entry, id string, values []string) []entry {
+// changed is false, and entries are returned as they are, when id already
+// holds exactly values.
+func setEntries(entries []entry, id string, values []string) (_ []entry, changed bool) {
+	if slices.Equal(valuesOf(entries, id), values) {
+		return entries, false
+	}
 	at := slices.IndexFunc(entries, func(e entry) bool { return e.id == id })
 	entries = slices.DeleteFunc(entries, func(e entry) bool { return e.id == id })
 	if at < 0 {
@@ -163,7 +177,18 @@ func setEntries(entries []entry, id string, values []string) []entry {
 	for i, v := range values {
 		add[i] = entry{id: id, value: v}
 	}
-	return slices.Insert(entries, at, add...)
+	return slices.Insert(entries, at, add...), true
+}
+
+// valuesOf returns the values of id in entries, in order.
+func valuesOf(entries []entry, id string) []string {
+	var out []string
+	for _, e := range entries {
+		if e.id == id {
+			out = append(out, e.value)
+		}
+	}
+	return out
 }
 
 // has reports whether entries hold id.

@@ -131,28 +131,36 @@ var (
 	}
 )
 
-// WAV and AIFF raw keys: the ID3v2 chunk's, as for MP3, then the native text
-// tags that fill the same fields, which the ID3 frames outrank. Mirrors
-// internal/iff. A native comment (ICMT, ANNO) fills Comment only when there is
-// no ID3 comment, which is not a raw key, so Comment has no binding.
+// The native text tags of WAV (LIST/INFO subchunks) and AIFF (text chunks)
+// that hold a typed field, in the order the writer prefers them: a field's
+// first key is the one written to a file that has none. internal/iff mirrors
+// typed-field edits into exactly these keys. The native comment (ICMT, ANNO)
+// is not here: it fills Comment only when there is no ID3 comment, which is
+// not a raw key, so Comment has no binding.
 var (
-	wavBindings  = withNative(mp3Bindings, nativeKeys(`Title INAM  Artist IART  Artists IART  Album IPRD  Genres IGNR  Year ICRD  TrackNumber ITRK  TrackNumber IPRT`))
-	aiffBindings = withNative(mp3Bindings, nativeKeys(`Title NAME  Artist AUTH  Artists AUTH`))
+	wavNative = []FieldBinding{
+		{FieldTitle, []string{"INAM"}},
+		{FieldArtist, []string{"IART"}},
+		{FieldArtists, []string{"IART"}},
+		{FieldAlbum, []string{"IPRD"}},
+		{FieldGenres, []string{"IGNR"}},
+		{FieldYear, []string{"ICRD"}},
+		{FieldTrackNumber, []string{"ITRK", "IPRT"}},
+	}
+	aiffNative = []FieldBinding{
+		{FieldTitle, []string{"NAME"}},
+		{FieldArtist, []string{"AUTH"}},
+		{FieldArtists, []string{"AUTH"}},
+	}
 )
 
-// nativeKeys parses a whitespace-separated "Field key" table, in order.
-func nativeKeys(s string) []FieldBinding {
-	words := strings.Fields(s)
-	var out []FieldBinding
-	for i := 0; i+1 < len(words); i += 2 {
-		for f := range AllFields() {
-			if f.String() == words[i] {
-				out = append(out, FieldBinding{Field: f, Keys: []string{words[i+1]}})
-			}
-		}
-	}
-	return out
-}
+// WAV and AIFF raw keys: the ID3v2 chunk's, as for MP3, then the native text
+// tags that fill the same fields, which the ID3 frames outrank. Mirrors
+// internal/iff.
+var (
+	wavBindings  = withNative(mp3Bindings, wavNative)
+	aiffBindings = withNative(mp3Bindings, aiffNative)
+)
 
 // withNative returns base with each native key appended to its field's keys.
 func withNative(base, native []FieldBinding) []FieldBinding {
@@ -198,6 +206,21 @@ func bindingsFor(format Format) []FieldBinding {
 // mutate shared state). Formats without bindings return nil.
 func FieldBindings(format Format) []FieldBinding {
 	src := bindingsFor(format)
+	if src == nil {
+		return nil
+	}
+	out := make([]FieldBinding, len(src))
+	for i, b := range src {
+		out[i] = FieldBinding{Field: b.Field, Keys: slices.Clone(b.Keys)}
+	}
+	return out
+}
+
+// NativeTextBindings returns the native text keys of format that hold a
+// typed field (a fresh copy): LIST/INFO subchunk IDs for WAV, text chunk IDs
+// for AIFF, nil for other formats.
+func NativeTextBindings(format Format) []FieldBinding {
+	src := map[Format][]FieldBinding{FormatWAV: wavNative, FormatAIFF: aiffNative}[format]
 	if src == nil {
 		return nil
 	}

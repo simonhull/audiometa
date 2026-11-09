@@ -231,7 +231,7 @@ and does not touch.
 
 Tag formats:
 
-- **FLAC**: Vorbis comments, PICTURE blocks
+- **FLAC**: Vorbis comments, PICTURE blocks (a non-standard ID3v2 tag in front of the stream is skipped with a warning, and kept on write)
 - **WAV and AIFF**: an ID3v2 chunk (`id3 ` or `ID3 `), read as MP3's ID3v2 tag is, and the
   format's own text: WAV's `LIST`/`INFO` chunk (`INAM`, `IART`, `IPRD`, `ICRD`, `ITRK`, `ICMT`,
   `ISFT`, ...) and AIFF's `NAME`, `AUTH`, `(c) ` and `ANNO` chunks, each under its ID as a raw
@@ -297,7 +297,8 @@ _, err := f.WriteTo(w) // any io.Writer; WriteToContext takes a context
   leaves the composer alone, and setting `Series` does not rewrite the grouping.
 - **Safety.** The new file is written to a temporary file in the same directory, synced,
   verified (it must parse, with bit-identical audio and unchanged chapters) and renamed over
-  the original. On any error the original is untouched.
+  the original. On any error the original is untouched. A crash can leave a temporary file named
+  `.<name>.audiometa-<digits>.tmp` (the name cut to 100 bytes) next to the original; delete it.
 - **Preservation.** Unknown frames, atoms and blocks, and every tag you did not edit, are kept
   byte for byte.
 - **Chapters** are preserved but not editable: they stay as they are, and an edit that

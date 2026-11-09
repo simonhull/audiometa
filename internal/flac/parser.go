@@ -2,6 +2,7 @@ package flac
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -39,17 +40,17 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	// Create safe reader
 	sr := binary.NewSafeReader(r, size, path)
 
-	// Verify FLAC magic bytes ("fLaC")
-	magic := make([]byte, 4)
-	if err := sr.ReadAt(magic, 0, "FLAC magic bytes"); err != nil {
-		return nil, fmt.Errorf("read FLAC magic: %w", err)
-	}
-	if string(magic) != "fLaC" {
+	// The "fLaC" marker starts the file, or follows a leading ID3v2 tag.
+	start, err := streamStart(sr, size)
+	switch {
+	case errors.Is(err, errNoMagic):
 		return nil, &types.CorruptedFileError{
 			Path:   path,
 			Offset: 0,
 			Reason: "invalid FLAC magic bytes",
 		}
+	case err != nil:
+		return nil, fmt.Errorf("read FLAC magic: %w", err)
 	}
 
 	// Initialize file
@@ -60,10 +61,16 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		Tags:   types.Tags{},
 		Audio:  types.AudioInfo{},
 	}
+	if start > 0 {
+		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
+			Stage:   types.StageMetadata,
+			Message: fmt.Sprintf("non-standard ID3v2 tag of %d bytes before the FLAC stream; its frames are ignored", start),
+		})
+	}
 
 	var vorbisComments []string
 	var audioStart int64 // first audio byte; 0 until the chain's last block is read
-	for b, err := range blocks(ctx, sr, size) {
+	for b, err := range blocks(ctx, sr, start, size) {
 		if err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return nil, ctxErr
@@ -89,7 +96,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 			}
 
 		case blockTypeVorbisComment:
-			comments, err := parseVorbisComment(ctx, sr, offset, blockLength, file)
+			comments, err := parseVorbisComment(ctx, sr, b, size, file)
 			vorbisComments = append(vorbisComments, comments...)
 			if err != nil {
 				if ctxErr := ctx.Err(); ctxErr != nil {
@@ -165,9 +172,14 @@ func (p *parser) ExtractArtwork(ctx context.Context, r io.ReaderAt, size int64, 
 	}
 	sr := binary.NewSafeReader(r, size, path)
 
+	start, err := streamStart(sr, size)
+	if err != nil {
+		return nil, nil // as for a broken chain below: the parser reports it
+	}
+
 	var artwork []types.Artwork
 
-	for b, err := range blocks(ctx, sr, size) {
+	for b, err := range blocks(ctx, sr, start, size) {
 		if err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return nil, ctxErr
@@ -177,8 +189,13 @@ func (p *parser) ExtractArtwork(ctx context.Context, r io.ReaderAt, size int64, 
 		if b.typ != blockTypePicture {
 			continue
 		}
-		// An unparseable picture is skipped; the block chain is still followed normally.
-		if pic, err := parsePicture(sr, b.payload(), b.n); err == nil {
+		// An unreadable or unparseable picture is skipped; the block chain is
+		// still followed normally.
+		payload, err := readPayload(sr, b, size)
+		if err != nil {
+			continue
+		}
+		if pic, err := decodePicture(payload); err == nil {
 			artwork = append(artwork, pic)
 		}
 	}
@@ -237,53 +254,22 @@ func parseStreamInfo(sr *binary.SafeReader, offset, blockLength int64, file *typ
 	return nil
 }
 
-// parseVorbisComment extracts tags from VORBIS_COMMENT block.
-func parseVorbisComment(ctx context.Context, sr *binary.SafeReader, offset, _ int64, file *types.File) ([]string, error) {
-	var comments []string
-	currentOffset := offset
-
-	// Read vendor string length (32-bit little-endian)
-	vendorLength, err := sr.ReadLE[uint32](currentOffset, "vendor string length")
+// parseVorbisComment decodes the VORBIS_COMMENT block b and maps each
+// comment onto file. Nothing outside the block's payload is read: a length
+// that runs past it ends the block with an error wrapping errShortVC. The
+// comments decoded before an error are still applied and returned.
+func parseVorbisComment(ctx context.Context, sr *binary.SafeReader, b block, size int64, file *types.File) ([]string, error) {
+	payload, err := readPayload(sr, b, size)
 	if err != nil {
-		return comments, err
+		return nil, err
 	}
-	currentOffset += 4
-
-	// Skip vendor string
-	currentOffset += int64(vendorLength)
-
-	// Read number of comments (32-bit little-endian)
-	numComments, err := sr.ReadLE[uint32](currentOffset, "number of comments")
-	if err != nil {
-		return comments, err
-	}
-	currentOffset += 4
-
-	// Parse each comment
-	for i := range numComments {
-		if err := binary.Canceled(ctx, int(i)); err != nil {
+	v, decodeErr := parseVC(payload)
+	comments := make([]string, 0, len(v.comments))
+	for i, c := range v.comments {
+		if err := binary.Canceled(ctx, i); err != nil {
 			return comments, err
 		}
-
-		// Read comment length (32-bit little-endian)
-		commentLength, err := sr.ReadLE[uint32](currentOffset, "comment length")
-		if err != nil {
-			return comments, fmt.Errorf("read comment %d length: %w", i, err)
-		}
-		currentOffset += 4
-
-		// Read comment string (UTF-8)
-		if err := sr.CheckLen(currentOffset, int(commentLength), 1, fmt.Sprintf("comment %d", i)); err != nil {
-			return comments, fmt.Errorf("read comment %d: %w", i, err)
-		}
-		commentData := make([]byte, commentLength)
-		if err := sr.ReadAt(commentData, currentOffset, fmt.Sprintf("comment %d", i)); err != nil {
-			return comments, fmt.Errorf("read comment %d: %w", i, err)
-		}
-		currentOffset += int64(commentLength)
-
-		// Parse "KEY=VALUE" format
-		comment := string(commentData)
+		comment := string(c)
 		comments = append(comments, comment)
 		if err := vorbis.ParseComment(comment, file); err != nil {
 			// Non-fatal - add warning and continue
@@ -294,102 +280,7 @@ func parseVorbisComment(ctx context.Context, sr *binary.SafeReader, offset, _ in
 			})
 		}
 	}
-
-	return comments, nil
-}
-
-// parsePicture extracts artwork from PICTURE block.
-func parsePicture(sr *binary.SafeReader, offset, _ int64) (types.Artwork, error) {
-	currentOffset := offset
-
-	// Read picture type (32-bit big-endian)
-	pictureType, err := sr.Read[uint32](currentOffset, "picture type")
-	if err != nil {
-		return types.Artwork{}, err
-	}
-	currentOffset += 4
-
-	// Read MIME type length (32-bit big-endian)
-	mimeLength, err := sr.Read[uint32](currentOffset, "MIME type length")
-	if err != nil {
-		return types.Artwork{}, err
-	}
-	currentOffset += 4
-
-	// Read MIME type string
-	if err := sr.CheckLen(currentOffset, int(mimeLength), 1, "MIME type"); err != nil {
-		return types.Artwork{}, err
-	}
-	mimeData := make([]byte, mimeLength)
-	if err := sr.ReadAt(mimeData, currentOffset, "MIME type"); err != nil {
-		return types.Artwork{}, err
-	}
-	mimeType := string(mimeData)
-	currentOffset += int64(mimeLength)
-
-	// Read description length (32-bit big-endian)
-	descLength, err := sr.Read[uint32](currentOffset, "description length")
-	if err != nil {
-		return types.Artwork{}, err
-	}
-	currentOffset += 4
-
-	// Read description string (UTF-8)
-	if err := sr.CheckLen(currentOffset, int(descLength), 1, "description"); err != nil {
-		return types.Artwork{}, err
-	}
-	descData := make([]byte, descLength)
-	if descLength > 0 {
-		if err := sr.ReadAt(descData, currentOffset, "description"); err != nil {
-			return types.Artwork{}, err
-		}
-	}
-	description := string(descData)
-	currentOffset += int64(descLength)
-
-	// Read width, height, color depth, indexed colors (4 × 32-bit big-endian)
-	width, err := sr.Read[uint32](currentOffset, "width")
-	if err != nil {
-		return types.Artwork{}, err
-	}
-	currentOffset += 4
-
-	height, err := sr.Read[uint32](currentOffset, "height")
-	if err != nil {
-		return types.Artwork{}, err
-	}
-	currentOffset += 4
-
-	// Skip color depth and indexed colors (not used)
-	currentOffset += 8
-
-	// Read picture data length (32-bit big-endian)
-	dataLength, err := sr.Read[uint32](currentOffset, "picture data length")
-	if err != nil {
-		return types.Artwork{}, err
-	}
-	currentOffset += 4
-
-	// Read picture data
-	if err := sr.CheckLen(currentOffset, int(dataLength), 1, "picture data"); err != nil {
-		return types.Artwork{}, err
-	}
-	pictureData := make([]byte, dataLength)
-	if err := sr.ReadAt(pictureData, currentOffset, "picture data"); err != nil {
-		return types.Artwork{}, err
-	}
-
-	// Map FLAC picture type to types.ArtworkType
-	artType := types.ArtworkTypeFromPictureType(pictureType)
-
-	return types.Artwork{
-		Data:        pictureData,
-		MIMEType:    mimeType,
-		Type:        artType,
-		Description: description,
-		Width:       int(width),
-		Height:      int(height),
-	}, nil
+	return comments, decodeErr
 }
 
 // init registers the FLAC parser.

@@ -38,12 +38,19 @@ const (
 	extendedSize      = 10
 )
 
+// Limits of the values audio properties are reported in. A rate is an int,
+// which is 32 bits on some platforms; a duration is a time.Duration.
+const (
+	maxRate    = math.MaxInt32
+	maxSeconds = int64(math.MaxInt64 / time.Second)
+)
+
 // sampleFormat is what a fmt or COMM chunk says about the audio.
 type sampleFormat struct {
 	codec      string
 	lossless   bool
 	channels   int
-	sampleRate int
+	sampleRate int64
 	bits       int
 	frameSize  int // bytes per sample frame, when constant
 }
@@ -60,7 +67,7 @@ func (c *container) parseFmt(file *types.File) error {
 	}
 	data, ok := c.first(idData)
 	if !ok {
-		c.technical(file, "WAV file without a data chunk")
+		technical(file, "WAV file without a data chunk")
 		sf.apply(file, 0, 0)
 		return nil
 	}
@@ -73,11 +80,15 @@ func (c *container) parseFmt(file *types.File) error {
 		frames = c.factFrames()
 	}
 	sf.apply(file, frames, bytes)
-	if frames == 0 && byteRate > 0 && sf.sampleRate > 0 {
+	if frames == 0 && byteRate > 0 && file.Audio.SampleRate > 0 {
 		// A compressed format without a fact chunk: its average byte rate is
 		// all there is.
+		if secs := bytes / byteRate; secs >= maxSeconds {
+			technical(file, fmt.Sprintf("duration of %d bytes at %d bytes per second is out of range", bytes, byteRate))
+			return nil
+		}
 		file.Audio.Duration = time.Duration(float64(bytes) / float64(byteRate) * float64(time.Second))
-		file.Audio.Bitrate = int(byteRate * 8)
+		setBitrate(file, byteRate, 8)
 	}
 	return nil
 }
@@ -99,7 +110,7 @@ func (c *container) readFmt() (sampleFormat, uint16, int64, error) {
 	tag := c.order.Uint16(b[0:])
 	sf := sampleFormat{
 		channels:   int(c.order.Uint16(b[2:])),
-		sampleRate: int(c.order.Uint32(b[4:])),
+		sampleRate: int64(c.order.Uint32(b[4:])),
 		frameSize:  int(c.order.Uint16(b[12:])),
 		bits:       int(c.order.Uint16(b[14:])),
 	}
@@ -170,7 +181,7 @@ func (c *container) parseCOMM(file *types.File) error {
 	frames := int64(binary.BigEndian.Uint32(b[2:]))
 	rate := extendedFloat([extendedSize]byte(b[8:18]))
 	if rate > 0 && rate < math.MaxInt32 {
-		sf.sampleRate = int(math.Round(rate))
+		sf.sampleRate = int64(math.Round(rate))
 	}
 	file.Audio.Container = "AIFF"
 	sf.codec, sf.lossless = codecPCM, true
@@ -183,7 +194,7 @@ func (c *container) parseCOMM(file *types.File) error {
 	if ssnd, ok := c.first(idSSND); ok {
 		bytes = max(c.present(ssnd)-ssndHeaderSize, 0)
 	} else if frames > 0 {
-		c.technical(file, "AIFF file without an SSND chunk")
+		technical(file, "AIFF file without an SSND chunk")
 	}
 	sf.apply(file, frames, bytes)
 	return nil
@@ -221,27 +232,55 @@ func extendedFloat(b [extendedSize]byte) float64 {
 }
 
 // apply sets file.Audio from the sample format, frames of audio and the bytes
-// they take.
+// they take. A value too large to report is left at 0 with a StageTechnical
+// warning.
 func (sf sampleFormat) apply(file *types.File, frames, bytes int64) {
 	a := &file.Audio
 	a.Codec, a.Lossless = sf.codec, sf.lossless
-	a.Channels, a.SampleRate, a.BitDepth = sf.channels, sf.sampleRate, sf.bits
+	a.Channels, a.BitDepth = sf.channels, sf.bits
 	if !sf.lossless {
 		a.BitDepth = 0 // A compressed codec's bits per sample are not its depth.
 	}
+	if sf.sampleRate > maxRate {
+		technical(file, fmt.Sprintf("sample rate of %d Hz is out of range", sf.sampleRate))
+		return
+	}
+	a.SampleRate = int(sf.sampleRate)
 	if sf.sampleRate <= 0 || frames <= 0 {
 		return
 	}
-	rate := int64(sf.sampleRate)
+	rate := sf.sampleRate
+	if frames/rate >= maxSeconds {
+		technical(file, fmt.Sprintf("duration of %d frames at %d Hz is out of range", frames, rate))
+		return
+	}
 	a.Duration = time.Duration(frames/rate)*time.Second + time.Duration(frames%rate)*time.Second/time.Duration(rate)
 	if sf.lossless {
-		a.Bitrate = sf.sampleRate * sf.channels * sf.bits
+		setBitrate(file, rate, int64(sf.channels), int64(sf.bits))
 	} else if secs := a.Duration.Seconds(); secs > 0 {
-		a.Bitrate = int(float64(bytes) * 8 / secs)
+		if bps := float64(bytes) * 8 / secs; bps <= maxRate {
+			a.Bitrate = int(bps)
+		} else {
+			technical(file, fmt.Sprintf("bit rate of %.0f bits per second is out of range", bps))
+		}
 	}
 }
 
+// setBitrate sets file.Audio.Bitrate to the product of factors, or warns and
+// leaves it 0 when the product is past maxRate.
+func setBitrate(file *types.File, factors ...int64) {
+	r := int64(1)
+	for _, f := range factors {
+		if f > 0 && r > maxRate/f {
+			technical(file, "bit rate is out of range")
+			return
+		}
+		r *= f
+	}
+	file.Audio.Bitrate = int(r)
+}
+
 // technical records a StageTechnical warning.
-func (c *container) technical(file *types.File, msg string) {
+func technical(file *types.File, msg string) {
 	file.Warnings = types.AppendWarning(file.Warnings, types.Warning{Stage: types.StageTechnical, Message: msg})
 }

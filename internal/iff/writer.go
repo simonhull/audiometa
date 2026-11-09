@@ -28,7 +28,10 @@ const maxFormSize = unsetSize - 1
 // field, so another reader of it never sees a stale value: on WAV INAM, IART,
 // IPRD, IGNR, ICRD, ITRK (or IPRT) and ICMT, on AIFF NAME, AUTH and ANNO. It
 // takes the value the new ID3 tag holds, and writes it only when the file has
-// native text already, so a file without any gets none.
+// native text already, so a file without any gets none. Native text no edit
+// changes is copied byte for byte; when an edit changes some, the entries it
+// leaves alone keep their stored bytes, and a LIST/INFO chunk holding an
+// unreadable subchunk is refused rather than rewritten.
 //
 // Every other chunk is copied byte for byte, in order, with its pad byte
 // zeroed; so is anything after the form. The form's size, and the RF64 ds64
@@ -40,13 +43,15 @@ type writer struct {
 
 // rewrite is a planned rewrite of one container.
 type rewrite struct {
-	c       *container
-	id3     []byte  // the new ID3 tag; nil leaves the file without one
-	id3ID   string  // the chunk ID it goes in
-	id3At   int     // index of the source's ID3 chunk, or -1
-	text    []entry // the new native text tags
-	textAt  int     // index of the source's INFO chunk or first AIFF text chunk, or -1
-	keepID3 bool    // the edits leave the ID3 chunk as it is
+	c          *container
+	id3        []byte  // the new ID3 tag; nil leaves the file without one
+	id3ID      string  // the chunk ID it goes in
+	id3At      int     // index of the source's ID3 chunk, or -1
+	text       []entry // the new native text tags
+	textAt     int     // index of the source's INFO chunk or first AIFF text chunk, or -1
+	infoAt     int     // index of the source's LIST/INFO chunk (WAV), or -1
+	keepID3    bool    // the edits leave the ID3 chunk as it is
+	textEdited bool    // an edit changed the native text
 }
 
 // WriteFile streams src with edits applied to out.
@@ -94,7 +99,9 @@ func (w *writer) plan(ctx context.Context, c *container, src io.ReaderAt, edits 
 		if err := checkText(e.Key, e.Values); err != nil {
 			return nil, err
 		}
-		text = setEntries(text, e.Key, e.Values)
+		var changed bool
+		text, changed = setEntries(text, e.Key, e.Values)
+		rw.textEdited = rw.textEdited || changed
 		textKeys[e.Key] = true
 	}
 
@@ -106,13 +113,16 @@ func (w *writer) plan(ctx context.Context, c *container, src io.ReaderAt, edits 
 			return nil, err
 		}
 	}
+	if rw.textEdited && c.infoDamaged {
+		return nil, corrupted(c.sr, 0, "LIST/INFO chunk holds an unreadable subchunk; its text cannot be rewritten without losing it")
+	}
 	rw.text = text
 	return rw, nil
 }
 
 // newRewrite locates the tag chunks of c.
 func newRewrite(c *container) *rewrite {
-	rw := &rewrite{c: c, id3ID: idID3WAV, id3At: -1, textAt: -1}
+	rw := &rewrite{c: c, id3ID: idID3WAV, id3At: -1, textAt: -1, infoAt: c.infoIndex()}
 	if c.magic == magicFORM {
 		rw.id3ID = idID3AIFF
 	}
@@ -150,12 +160,10 @@ func (rw *rewrite) editID3(ctx context.Context, src io.ReaderAt, edits *types.Ed
 
 // isText reports whether chunk i of the source holds native text tags.
 func (rw *rewrite) isText(i int) bool {
-	ch := rw.c.chunks[i]
 	if rw.c.magic == magicFORM {
-		return isAIFFText(ch.id)
+		return isAIFFText(rw.c.chunks[i].id)
 	}
-	info, ok := rw.c.infoList()
-	return ok && ch.off == info.off
+	return i == rw.infoAt
 }
 
 // isTextKey reports whether a raw key edit goes to the native text tags.
@@ -183,25 +191,32 @@ type mirror struct {
 	value func(tag *types.Tags, old string) []string
 }
 
-// The mirrors of each format.
+// The mirrors of each format: the native keys types binds to a field, and the
+// native comment.
 var (
-	wavMirrors = []mirror{
-		{types.FieldTitle, []string{"INAM"}, frame("TIT2")},
-		{types.FieldArtist, []string{"IART"}, frame("TPE1")},
-		{types.FieldArtists, []string{"IART"}, frame("TPE1")},
-		{types.FieldAlbum, []string{"IPRD"}, frame("TALB")},
-		{types.FieldGenres, []string{"IGNR"}, frame("TCON")},
-		{types.FieldYear, []string{"ICRD"}, year},
-		{types.FieldTrackNumber, []string{"ITRK", "IPRT"}, track},
-		{types.FieldComment, []string{keyICMT}, comment},
-	}
-	aiffMirrors = []mirror{
-		{types.FieldTitle, []string{"NAME"}, frame("TIT2")},
-		{types.FieldArtist, []string{"AUTH"}, frame("TPE1")},
-		{types.FieldArtists, []string{"AUTH"}, frame("TPE1")},
-		{types.FieldComment, []string{keyANNO}, comment},
-	}
+	wavMirrors  = mirrorsOf(types.FormatWAV, keyICMT)
+	aiffMirrors = mirrorsOf(types.FormatAIFF, keyANNO)
 )
+
+// mirrorsOf builds the mirrors of format from types.NativeTextBindings, each
+// taking its value from the ID3 frame MP3 binds to the field, and adds the
+// native comment commentID.
+func mirrorsOf(format types.Format, commentID string) []mirror {
+	id3 := map[types.Field]string{}
+	for _, b := range types.FieldBindings(types.FormatMP3) {
+		id3[b.Field] = b.Keys[0]
+	}
+	special := map[types.Field]func(*types.Tags, string) []string{types.FieldYear: year, types.FieldTrackNumber: track}
+	var out []mirror
+	for _, b := range types.NativeTextBindings(format) {
+		value, ok := special[b.Field]
+		if !ok {
+			value = frame(id3[b.Field])
+		}
+		out = append(out, mirror{b.Field, b.Keys, value})
+	}
+	return append(out, mirror{types.FieldComment, []string{commentID}, comment})
+}
 
 // frame mirrors the values of an ID3 frame.
 func frame(id string) func(*types.Tags, string) []string {
@@ -260,7 +275,9 @@ func (rw *rewrite) mirror(ctx context.Context, format types.Format, text []entry
 				if skip[id] {
 					continue
 				}
-				text = setEntries(text, id, m.value(&tag.Tags, firstValue(text, id)))
+				var changed bool
+				text, changed = setEntries(text, id, m.value(&tag.Tags, firstValue(text, id)))
+				rw.textEdited = rw.textEdited || changed
 			}
 		}
 	}
@@ -355,7 +372,7 @@ func (rw *rewrite) pieces() ([]piece, int, error) {
 		switch {
 		case i == rw.id3At:
 			pieces = append(pieces, rw.id3Pieces(ch)...)
-		case rw.isText(i):
+		case rw.textEdited && rw.isText(i):
 			if !textDone {
 				textDone = true
 				pieces = append(pieces, piece{b: rw.textChunks()})
@@ -365,11 +382,14 @@ func (rw *rewrite) pieces() ([]piece, int, error) {
 			b := make([]byte, chunkHeaderSize+8)
 			copyHeader(b, ch, rw.c.order)
 			pieces = append(pieces, piece{b: b}, piece{off: ch.data() + 8, n: ch.size - 8})
+			if ch.size%2 == 1 {
+				pieces = append(pieces, piece{b: []byte{0}})
+			}
 		default:
 			pieces = append(pieces, verbatim(ch)...)
 		}
 	}
-	if !textDone && len(rw.text) > 0 {
+	if rw.textEdited && !textDone && len(rw.text) > 0 {
 		pieces = append(pieces, piece{b: rw.textChunks()})
 	}
 	if rw.id3At < 0 && rw.id3 != nil {
@@ -427,7 +447,11 @@ func (rw *rewrite) textChunks() []byte {
 	}
 	var b []byte
 	for _, e := range rw.text {
-		b = appendChunk(b, e.id, []byte(e.value), rw.c.order)
+		p := e.raw
+		if p == nil {
+			p = []byte(e.value)
+		}
+		b = appendChunk(b, e.id, p, rw.c.order)
 	}
 	return b
 }

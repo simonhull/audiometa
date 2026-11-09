@@ -26,7 +26,10 @@ import (
 //
 // The parsed data lives in the promoted fields of the embedded data payload:
 //
-//   - Path, Format and Size describe the file.
+//   - Path, Format and Size describe the file as Open found it. They are
+//     for reading only: changing them does not change what
+//     [File.ExtractArtwork], [File.AudioDigest], [File.WriteTo] or [Write]
+//     read, which always use the values from Open.
 //   - Tags holds the format-agnostic tags ([Tags]).
 //   - Audio holds the technical properties ([AudioInfo]).
 //   - Chapters lists the chapter markers ([Chapter]), in playback order.
@@ -46,6 +49,7 @@ type File struct {
 	types.File
 
 	reader  io.ReaderAt
+	src     source // what Open read; see source
 	parser  FormatParser
 	artwork []Artwork
 
@@ -75,7 +79,8 @@ type File struct {
 // Open returns an error, and no File, when:
 //
 //   - the file cannot be opened or stat'ed: the error wraps the [*os.PathError];
-//   - the format is unknown or has no parser: [*UnsupportedFormatError];
+//   - the path is not a regular file (a directory, FIFO, socket or device), or
+//     the format is unknown or has no parser: [*UnsupportedFormatError];
 //   - the container structure is unusable: often a [*CorruptedFileError],
 //     or an [*OutOfBoundsError] for a required read past the end of the file;
 //   - [WithStrictParsing] is set and parsing produced a warning.
@@ -93,17 +98,9 @@ func openWithContext(ctx context.Context, path string, opts ...Option) (*File, e
 		opt(options)
 	}
 
-	// Open file
-	f, err := os.Open(path)
+	f, stat, err := openRegular(path)
 	if err != nil {
-		return nil, fmt.Errorf("open file: %w", err)
-	}
-
-	// Get file size
-	stat, err := f.Stat()
-	if err != nil {
-		_ = f.Close()
-		return nil, fmt.Errorf("stat file: %w", err)
+		return nil, err
 	}
 	size := stat.Size()
 
@@ -117,6 +114,7 @@ func openWithContext(ctx context.Context, path string, opts ...Option) (*File, e
 	// Wrap in File struct
 	file := &File{
 		File:   *typesFile.file,
+		src:    typesFile.source(),
 		reader: f,
 		parser: typesFile.parser,
 
@@ -141,6 +139,36 @@ func openWithContext(ctx context.Context, path string, opts ...Option) (*File, e
 		return nil, err
 	}
 	return file, nil
+}
+
+// openRegular opens path for reading and returns the handle and its
+// FileInfo. Anything but a regular file (a directory, FIFO, socket or
+// device) is refused with an UnsupportedFormatError: first by a stat, so it
+// is not even opened, then on the open handle, so a path swapped in between
+// is caught too; openFlags keeps that open from blocking.
+func openRegular(path string) (*os.File, os.FileInfo, error) {
+	if st, err := os.Stat(path); err == nil && !st.Mode().IsRegular() {
+		return nil, nil, notRegular(path)
+	}
+	f, err := os.OpenFile(path, openFlags, 0)
+	if err != nil {
+		return nil, nil, fmt.Errorf("open file: %w", err)
+	}
+	st, err := f.Stat()
+	if err != nil {
+		_ = f.Close()
+		return nil, nil, fmt.Errorf("stat file: %w", err)
+	}
+	if !st.Mode().IsRegular() {
+		_ = f.Close()
+		return nil, nil, notRegular(path)
+	}
+	return f, st, nil
+}
+
+// notRegular is the error for a path that is not a regular file.
+func notRegular(path string) error {
+	return &UnsupportedFormatError{Path: path, Reason: "not a regular file"}
 }
 
 // strictParsingError reports that WithStrictParsing rejected a file. Its message
@@ -219,6 +247,21 @@ func extractSafely(ctx context.Context, e ArtworkExtractor, r io.ReaderAt, size 
 type parsedFile struct {
 	file   *types.File
 	parser FormatParser
+}
+
+// source identifies the file a File was opened from, as Open saw it. The
+// exported Path, Format and Size are copies that callers may change;
+// everything that reads the file again (artwork, digests, writes) uses
+// these instead.
+type source struct {
+	path   string
+	format Format
+	size   int64
+}
+
+// source returns what Open saw of the parsed file.
+func (p *parsedFile) source() source {
+	return source{path: p.file.Path, format: p.file.Format, size: p.file.Size}
 }
 
 // openReader opens from an io.ReaderAt (internal, for testing).
@@ -301,7 +344,7 @@ func (f *File) ExtractArtworkContext(ctx context.Context) ([]Artwork, error) {
 
 	artwork := []Artwork{}
 	if extractor, ok := f.parser.(ArtworkExtractor); ok {
-		extracted, err := extractSafely(ctx, extractor, f.reader, f.Size, f.Path)
+		extracted, err := extractSafely(ctx, extractor, f.reader, f.src.size, f.src.path)
 		if err != nil {
 			return nil, fmt.Errorf("extract artwork: %w", err) // Not cached: a later call may retry.
 		}

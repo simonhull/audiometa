@@ -56,11 +56,11 @@ func (c *container) text() ([]entry, string, error) {
 		entries, err := c.readAIFFText()
 		return entries, keyANNO, err
 	}
-	ch, ok := c.infoList()
-	if !ok {
+	i := c.infoIndex()
+	if i < 0 {
 		return nil, keyICMT, nil
 	}
-	entries, err := c.readInfo(ch)
+	entries, err := c.readInfo(c.chunks[i])
 	return entries, keyICMT, err
 }
 

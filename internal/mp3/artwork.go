@@ -19,84 +19,36 @@ var (
 	errAPICNoImageData = errors.New("APIC frame has no image data")
 )
 
-// extractArtwork extracts embedded artwork from MP3 files.
-// Parses ID3v2 APIC (Attached Picture) frames.
+// extractArtwork returns the pictures (APIC, or PIC in ID3v2.2) of the ID3v2
+// tag at the start of r, in tag order, decoded exactly as metadata frames are.
+// Space without a supported ID3v2 tag has none.
 func extractArtwork(ctx context.Context, r io.ReaderAt, size int64, path string) ([]types.Artwork, error) {
-	sr := binutil.NewSafeReader(r, size, path)
-
-	// Parse ID3v2 header
-	header, err := parseID3v2Header(sr)
+	tag, err := openID3v2Tag(binutil.NewSafeReader(r, size, path), ignoreWarning)
 	if err != nil {
-		// No ID3v2 tag = no embedded artwork
-		return nil, nil
+		return nil, nil // no supported ID3v2 tag: no embedded artwork
 	}
-
-	frameDataOffset := skipExtendedHeader(sr, header)
-	tagEnd := header.totalSize()
-	offset := frameDataOffset
-
+	parse := parseAPICFrame
+	if tag.header.Version == 2 {
+		parse = parsePICFrame
+	}
 	var artwork []types.Artwork
-
-	// Scan through frames looking for APIC
-	for i := 0; offset < tagEnd; i++ {
-		if err := binutil.Canceled(ctx, i); err != nil {
+	for frame, err := range tag.frames(ctx, isPictureFrame, ignoreWarning) {
+		if err != nil {
 			return nil, err
 		}
-
-		frame, bytesRead, stop := readFrameForArtwork(sr, header, offset)
-		if stop {
-			break
+		if art, err := parse(frame.Data); err == nil {
+			artwork = append(artwork, art)
 		}
-
-		if frame != nil && frame.ID == frameIDAPIC {
-			parse := parseAPICFrame
-			if header.Version == 2 {
-				parse = parsePICFrame
-			}
-			art, err := parse(frame.Data)
-			if err == nil {
-				artwork = append(artwork, art)
-			}
-		}
-
-		offset += bytesRead
 	}
-
 	return artwork, nil
 }
 
-// readFrameForArtwork reads a single frame header and data.
-// Similar to readSingleFrame but doesn't need the file parameter.
-func readFrameForArtwork(sr *binutil.SafeReader, header ID3v2Header, offset int64) (*ID3v2Frame, int64, bool) {
-	frameID, frameSize, _, headerLen, ok := readFrameHeader(sr, header.Version, offset)
-	if !ok {
-		return nil, 0, true
-	}
+// isPictureFrame reports whether a frame holds a picture.
+func isPictureFrame(id string) bool { return id == frameIDAPIC }
 
-	// Sanity check frame size
-	if frameSize == 0 || frameSize > 100*1024*1024 { // 100MB max
-		return nil, 0, true
-	}
-
-	// Only read data for APIC frames to save memory
-	if frameID != frameIDAPIC {
-		return nil, headerLen + int64(frameSize), false
-	}
-
-	// Read frame data
-	frameData := make([]byte, frameSize)
-	if err := sr.ReadAt(frameData, offset+headerLen, "APIC frame data"); err != nil {
-		return nil, headerLen + int64(frameSize), false
-	}
-
-	frame := &ID3v2Frame{
-		ID:   frameID,
-		Size: frameSize,
-		Data: frameData,
-	}
-
-	return frame, headerLen + int64(frameSize), false
-}
+// ignoreWarning drops a warning. ExtractArtwork walks the same tag Open
+// already walked, and Open reported its problems.
+func ignoreWarning(types.Warning) {}
 
 // parseAPICFrame parses an APIC (Attached Picture) frame.
 // Format:
