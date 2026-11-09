@@ -195,20 +195,6 @@ func (s *pageStream) next() (*Page, int64, error) {
 	return page, s.off, nil
 }
 
-// laceValues returns the page's segment table, synthesizing one (a single
-// packet filling the page) for pages built without it.
-func (p *Page) laceValues() []byte {
-	if p.Lacing != nil {
-		return p.Lacing
-	}
-	n := len(p.Data)
-	lacing := make([]byte, 0, n/255+1)
-	for ; n >= 255; n -= 255 {
-		lacing = append(lacing, 255)
-	}
-	return append(lacing, byte(n)) //nolint:gosec // G115: the loop above leaves 0 <= n < 255
-}
-
 // pageContinued marks a page whose first segment continues the packet left
 // open by the previous page of its stream (RFC 3533 §6).
 const pageContinued = 0x01
@@ -242,7 +228,7 @@ func (t *packetTracker) segments(page *Page) iter.Seq[segment] {
 			}
 		}
 		data := page.Data
-		for _, lace := range page.laceValues() {
+		for _, lace := range page.Lacing {
 			n := min(int(lace), len(data))
 			seg := segment{data: data[:n], ends: lace < 255}
 			data = data[n:]
