@@ -46,6 +46,7 @@ var (
 	// ErrVerifyFailed is returned (wrapped) by [Write] when the new file,
 	// read back before it replaces the original, cannot be parsed, has
 	// different audio data or has different chapters. The original file is
-	// left untouched.
+	// left as it was: its contents and modification time are restored after a
+	// failed in-place write ([WithInPlace]).
 	ErrVerifyFailed = types.ErrVerifyFailed
 )

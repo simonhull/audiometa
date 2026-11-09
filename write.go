@@ -279,12 +279,17 @@ func (j *writeJob) patch(ctx context.Context, off int64, patch []byte) (err erro
 	if err != nil {
 		return fmt.Errorf("open for in-place write: %w", err)
 	}
+	written, restored := false, false
 	defer func() {
 		if cerr := rw.Close(); cerr != nil && err == nil {
 			err = fmt.Errorf("close after in-place write: %w", cerr)
 		}
-		if err == nil && j.opts.preserveModTime {
-			err = os.Chtimes(j.target, time.Time{}, j.st0.ModTime())
+		// A restored file gets its mtime back too, so a failed Write leaves it
+		// as it was. A failed restore leaves the new mtime: the file is damaged.
+		if (err == nil && j.opts.preserveModTime) || (err != nil && written && restored) {
+			if terr := os.Chtimes(j.target, time.Time{}, j.st0.ModTime()); terr != nil {
+				err = errors.Join(err, fmt.Errorf("restore modification time: %w", terr))
+			}
 		}
 	}()
 
@@ -292,11 +297,16 @@ func (j *writeJob) patch(ctx context.Context, off int64, patch []byte) (err erro
 	if _, err := rw.ReadAt(backup, off); err != nil {
 		return fmt.Errorf("back up metadata region: %w", err)
 	}
+	written = true
 	if err := writeSync(rw, patch, off); err != nil {
-		return errors.Join(fmt.Errorf("in-place write: %w", err), restore(rw, backup, off))
+		rerr := restore(rw, backup, off)
+		restored = rerr == nil
+		return errors.Join(fmt.Errorf("in-place write: %w", err), rerr)
 	}
 	if err := verifyFile(ctx, rw, j.st0.Size(), j.target, j.tw, j.ref); err != nil {
-		return errors.Join(err, restore(rw, backup, off))
+		rerr := restore(rw, backup, off)
+		restored = rerr == nil
+		return errors.Join(err, rerr)
 	}
 	return nil
 }

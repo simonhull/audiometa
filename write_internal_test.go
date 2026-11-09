@@ -623,21 +623,35 @@ func TestWrite_InPlace(t *testing.T) {
 	})
 	t.Run("unparseable result restores", func(t *testing.T) {
 		path, data := copySample(t, sampleFLAC)
+		mtime := time.Date(2001, 2, 3, 4, 5, 6, 0, time.UTC)
+		if err := os.Chtimes(path, mtime, mtime); err != nil {
+			t.Fatal(err)
+		}
 		useWriter(t, &inPlaceFake{off: 0, patch: []byte("XXXX"), fits: true})
 		if err := Write(path, edit, WithInPlace()); !errors.Is(err, ErrVerifyFailed) {
 			t.Errorf("err = %v, want ErrVerifyFailed", err)
 		}
 		assertFileBytes(t, path, data)
+		if st, _ := os.Stat(path); !st.ModTime().Equal(mtime) {
+			t.Errorf("mtime after restore = %v, want the original %v", st.ModTime(), mtime)
+		}
 	})
 	t.Run("digest mismatch restores", func(t *testing.T) {
 		path, data := copySample(t, sampleFLAC)
 		off, patch := titlePatch(t, data)
+		mtime := time.Date(2001, 2, 3, 4, 5, 6, 0, time.UTC)
+		if err := os.Chtimes(path, mtime, mtime); err != nil {
+			t.Fatal(err)
+		}
 		useWriter(t, &inPlaceFake{off: off, patch: patch, fits: true, preserved: digestAll})
 		err := Write(path, edit, WithInPlace())
 		if !errors.Is(err, ErrVerifyFailed) {
 			t.Errorf("err = %v, want ErrVerifyFailed", err)
 		}
 		assertFileBytes(t, path, data)
+		if st, _ := os.Stat(path); !st.ModTime().Equal(mtime) {
+			t.Errorf("mtime after restore = %v, want the original %v", st.ModTime(), mtime)
+		}
 	})
 	t.Run("patch outside file", func(t *testing.T) {
 		path, data := copySample(t, sampleFLAC)
@@ -718,6 +732,10 @@ func TestWrite_Canceled(t *testing.T) {
 		path, data := copySample(t, sampleFLAC)
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
+		mtime := time.Date(2001, 2, 3, 4, 5, 6, 0, time.UTC)
+		if err := os.Chtimes(path, mtime, mtime); err != nil {
+			t.Fatal(err)
+		}
 		off, patch := titlePatch(t, data)
 		calls := 0
 		honest := digestOutside(off, len(patch))
@@ -734,6 +752,9 @@ func TestWrite_Canceled(t *testing.T) {
 			t.Errorf("err = %v, want context.Canceled and ErrVerifyFailed", err)
 		}
 		assertFileBytes(t, path, data)
+		if st, _ := os.Stat(path); !st.ModTime().Equal(mtime) {
+			t.Errorf("mtime after restore = %v, want the original %v", st.ModTime(), mtime)
+		}
 	})
 }
 
