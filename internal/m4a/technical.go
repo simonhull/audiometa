@@ -2,6 +2,8 @@ package m4a
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"math"
 	"time"
 
@@ -9,59 +11,62 @@ import (
 	"github.com/simonhull/audiometa/internal/types"
 )
 
-// parseTechnicalInfo extracts duration, bitrate, sample rate, channels, and codec.
-// Returns nil (no error) even if atoms are missing - technical info is best-effort.
-func parseTechnicalInfo(ctx context.Context, sr *binary.SafeReader, moovAtom *Atom, file *types.File) error {
-	// Find mvhd (movie header) atom for duration
+// parseDuration reads the movie duration from moov's mvhd. An absent mvhd is
+// not an error; an unreadable one is returned for a warning, and leaves the
+// duration unset.
+func parseDuration(ctx context.Context, sr *binary.SafeReader, moovAtom *Atom, file *types.File) error {
 	mvhdAtom, err := moovAtom.child(ctx, sr, "mvhd")
+	if errors.Is(err, errAtomNotFound) {
+		return nil
+	}
 	if err != nil {
-		return nil
+		return fmt.Errorf("mvhd: %w", err)
 	}
-
-	// Parse mvhd for duration
 	if err := parseMvhd(sr, mvhdAtom, file); err != nil {
-		return nil
+		return fmt.Errorf("mvhd: %w", err)
 	}
+	return nil
+}
 
+// parseAudioTrack reads the codec, sample rate, channels and bitrate of the
+// audio track. Absent atoms on the way to the sample description are not an
+// error; a corrupt or unreadable one is returned for a warning. The bitrate
+// divides by file.Audio.Duration, so parseDuration runs first.
+func parseAudioTrack(ctx context.Context, sr *binary.SafeReader, moovAtom *Atom, file *types.File) error {
 	// Find the audio trak for format info
 	// Path: moov -> trak (handler type "soun")
-	trakAtom := selectAudioTrak(ctx, sr, moovAtom)
-	if trakAtom == nil {
-		return nil
+	trakAtom, err := selectAudioTrak(ctx, sr, moovAtom)
+	if err != nil || trakAtom == nil {
+		return err
 	}
 
-	// Find mdia atom
-	// Path: trak -> mdia
+	// Path: trak -> mdia -> minf -> stbl -> stsd
 	mdiaAtom, err := trakAtom.child(ctx, sr, "mdia")
-	if err != nil {
+	if errors.Is(err, errAtomNotFound) {
 		return nil
 	}
-
-	// Find minf atom
-	// Path: mdia -> minf
-	minfAtom, err := mdiaAtom.child(ctx, sr, "minf")
 	if err != nil {
+		return fmt.Errorf("mdia: %w", err)
+	}
+	stblAtom, err := mdiaAtom.path(ctx, sr, "minf", "stbl")
+	if errors.Is(err, errAtomNotFound) {
 		return nil
 	}
-
-	// Find stbl atom
-	// Path: minf -> stbl
-	stblAtom, err := minfAtom.child(ctx, sr, "stbl")
 	if err != nil {
-		return nil
+		return fmt.Errorf("stbl: %w", err)
 	}
-
-	// Find stsd (sample description) atom
-	// Path: stbl -> stsd
 	stsdAtom, err := stblAtom.child(ctx, sr, "stsd")
-	if err != nil {
+	if errors.Is(err, errAtomNotFound) {
 		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("stsd: %w", err)
 	}
 
 	// Parse stsd for codec, sample rate, channels
 	source, err := parseStsd(ctx, sr, stsdAtom, file)
 	if err != nil {
-		return nil
+		return fmt.Errorf("stsd: %w", err)
 	}
 
 	// The legacy 16.16 field cannot hold rates above 65535 Hz (writers store
@@ -145,16 +150,20 @@ const handlerSound = "soun"
 // selectAudioTrak returns the first trak under moov whose handler type is
 // "soun". Files whose first track is something else (a chapter text track, say)
 // would otherwise yield channels and sample rate from the wrong track. If no
-// track declares a sound handler, it falls back to the first trak.
-func selectAudioTrak(ctx context.Context, sr *binary.SafeReader, moovAtom *Atom) *Atom {
+// track declares a sound handler, it falls back to the first trak, and to nil
+// when there is none. A malformed header among moov's children is returned.
+func selectAudioTrak(ctx context.Context, sr *binary.SafeReader, moovAtom *Atom) (*Atom, error) {
 	offset := moovAtom.DataOffset()
 	end := offset + moovAtom.DataSize()
 
 	var first *Atom
-	for offset < end {
+	for i := 0; offset < end; i++ {
+		if err := binary.Canceled(ctx, i); err != nil {
+			return nil, err
+		}
 		atom, err := readAtomHeader(sr, offset, end)
 		if err != nil {
-			break
+			return nil, fmt.Errorf("moov: %w", err)
 		}
 		offset += atom.Size
 		if atom.Type != atomTrak {
@@ -163,29 +172,36 @@ func selectAudioTrak(ctx context.Context, sr *binary.SafeReader, moovAtom *Atom)
 		if first == nil {
 			first = atom
 		}
-		if trakHandlerType(ctx, sr, atom) == handlerSound {
-			return atom
+		handler, err := trakHandlerType(ctx, sr, atom)
+		if err != nil {
+			return nil, err
+		}
+		if handler == handlerSound {
+			return atom, nil
 		}
 	}
-	return first
+	return first, nil
 }
 
 // trakHandlerType returns the trak's mdia/hdlr handler type, or "" if absent.
-func trakHandlerType(ctx context.Context, sr *binary.SafeReader, trak *Atom) string {
-	mdia, err := trak.child(ctx, sr, "mdia")
-	if err != nil {
-		return ""
+// A corrupt mdia or hdlr is returned as an error.
+func trakHandlerType(ctx context.Context, sr *binary.SafeReader, trak *Atom) (string, error) {
+	hdlr, err := trak.path(ctx, sr, "mdia", "hdlr")
+	if errors.Is(err, errAtomNotFound) {
+		return "", nil
 	}
-	hdlr, err := mdia.child(ctx, sr, "hdlr")
-	if err != nil || hdlr.DataSize() < 12 {
-		return ""
+	if err != nil {
+		return "", fmt.Errorf("hdlr: %w", err)
 	}
 	// hdlr: version/flags(4) pre_defined(4) handler_type(4)
+	if hdlr.DataSize() < 12 {
+		return "", corrupted(sr, hdlr.Offset, "hdlr atom too short")
+	}
 	buf := make([]byte, 4)
 	if err := sr.ReadAt(buf, hdlr.DataOffset()+8, "hdlr handler type"); err != nil {
-		return ""
+		return "", fmt.Errorf("hdlr: %w", err)
 	}
-	return string(buf)
+	return string(buf), nil
 }
 
 // parseMvhd parses the movie header atom for duration.
@@ -201,6 +217,15 @@ func parseMvhd(sr *binary.SafeReader, mvhdAtom *Atom, file *types.File) error {
 
 	// Skip flags (3 bytes)
 	offset += 3
+
+	// version/flags(4), creation, modification, timescale, duration.
+	minSize := int64(20)
+	if version == 1 {
+		minSize = 32
+	}
+	if mvhdAtom.DataSize() < minSize {
+		return corrupted(sr, mvhdAtom.Offset, fmt.Sprintf("mvhd atom too short (%d bytes, need %d)", mvhdAtom.DataSize(), minSize))
+	}
 
 	var timescale uint32
 	var duration uint64

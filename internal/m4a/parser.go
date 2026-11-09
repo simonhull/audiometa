@@ -81,13 +81,13 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		}
 	}
 
-	// Parse technical info (duration, bitrate, codec, sample rate, channels)
-	if err := parseTechnicalInfo(ctx, sr, moovAtom, file); err != nil {
-		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-			Stage:   types.StageTechnical,
-			Message: err.Error(),
-			Err:     err,
-		})
+	// Technical info is two independent stages: the movie duration, and the
+	// audio track (codec, sample rate, channels, bitrate).
+	if err := parseDuration(ctx, sr, moovAtom, file); err != nil {
+		warn(file, types.StageTechnical, err)
+	}
+	if err := parseAudioTrack(ctx, sr, moovAtom, file); err != nil {
+		warn(file, types.StageTechnical, err)
 	}
 
 	// Parse chapters
@@ -121,6 +121,15 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	replaygain.Apply(file)
 
 	return file, nil
+}
+
+// warn records err as a warning of stage on file.
+func warn(file *types.File, stage string, err error) {
+	file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
+		Stage:   stage,
+		Message: err.Error(),
+		Err:     err,
+	})
 }
 
 // findIlst navigates moov → udta → meta → ilst and returns the ilst atom.

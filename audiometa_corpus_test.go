@@ -2,6 +2,7 @@ package audiometa_test
 
 import (
 	"bytes"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -163,6 +164,33 @@ func TestExtractArtwork_NoArtwork(t *testing.T) {
 			}
 			if len(art) != 0 {
 				t.Errorf("got %d artworks, want 0", len(art))
+			}
+		})
+	}
+}
+
+// TestOpen_Corpus_MP4Strict opens every MP4-family fixture under strict
+// parsing: a well-formed file must not draw a warning.
+func TestOpen_Corpus_MP4Strict(t *testing.T) {
+	var paths []string
+	for _, pattern := range []string{"testdata/*.m4a", "testdata/*.m4b", "testdata/*.mp4"} {
+		matches, err := filepath.Glob(pattern)
+		if err != nil {
+			t.Fatal(err)
+		}
+		paths = append(paths, matches...)
+	}
+	if len(paths) == 0 {
+		t.Fatal("no MP4-family fixtures found")
+	}
+	for _, path := range paths {
+		t.Run(path, func(t *testing.T) {
+			f, err := audiometa.Open(path, audiometa.WithStrictParsing())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := f.Close(); err != nil {
+				t.Error(err)
 			}
 		})
 	}
