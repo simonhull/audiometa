@@ -18,6 +18,7 @@ linters:
     - bidichk
     - bodyclose
     - containedctx
+    - contextcheck
     - copyloopvar
     - durationcheck
     - errcheck
@@ -50,6 +51,7 @@ linters:
     - testifylint
     - thelper
     - unconvert
+    - unparam
     - unused
     - usestdlibvars
     - whitespace
@@ -134,6 +136,7 @@ linters:
           - revive
           - testifylint
           - thelper
+          - unparam
       - path: _test\.go
         linters:
           - staticcheck
@@ -153,9 +156,6 @@ linters:
       # Default file permissions - intentional 0o644 for artwork extraction
       - linters: [gosec]
         text: "G301|G306"
-      # Format brand constants ("M4A ", "M4B ") are intentionally repeated
-      - linters: [goconst]
-        text: 'string `M4[AB] ` has .* occurrences'
       # Examples are simple demos; they can use log.Fatalf and don't need
       # the same complexity gates as library code.
       - linters: [gocritic]
@@ -172,16 +172,9 @@ linters:
       # an upper bound, not a length guarantee.
       - linters: [makezero]
         path: _test\.go
-      # Stringly-typed table-driven tests in technical.go intentionally use
-      # nested if blocks to mirror MP3 frame parsing structure.
-      - linters: [nestif]
-        path: internal/mp3/technical\.go
       # Map keys with trailing spaces are part of the audio format spec (4-char atom names)
       - linters: [gocritic]
         text: "mapKey: suspicious whitespace"
-      # Unnamed results are idiomatic for simple returns
-      - linters: [gocritic]
-        text: "unnamedResult"
 
 issues:
   max-issues-per-linter: 0

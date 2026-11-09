@@ -145,7 +145,7 @@ func buildMeta(ctx context.Context, sr *binutil.SafeReader, size int64, edits *t
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := m.apply(edits); err != nil {
+	if err := m.apply(ctx, edits); err != nil {
 		return nil, nil, err
 	}
 	meta, err := m.serialize()
@@ -221,9 +221,9 @@ func readFMeta(ctx context.Context, sr *binutil.SafeReader, size int64) (*fmeta,
 
 // apply applies tag edits (when there are any) and then the artwork
 // operations. Without tag edits every VORBIS_COMMENT block stays verbatim.
-func (m *fmeta) apply(edits *types.EditSet) error {
+func (m *fmeta) apply(ctx context.Context, edits *types.EditSet) error {
 	if len(edits.Keys) > 0 || len(edits.Fields) > 0 {
-		if err := m.applyTags(edits); err != nil {
+		if err := m.applyTags(ctx, edits); err != nil {
 			return err
 		}
 	}
@@ -232,7 +232,7 @@ func (m *fmeta) apply(edits *types.EditSet) error {
 
 // applyTags applies the key and field edits to the file's VORBIS_COMMENT
 // block, creating one when the file has none.
-func (m *fmeta) applyTags(edits *types.EditSet) error {
+func (m *fmeta) applyTags(ctx context.Context, edits *types.EditSet) error {
 	var at []int
 	for i, b := range m.blocks {
 		if b.typ == blockTypeVorbisComment {
@@ -245,9 +245,11 @@ func (m *fmeta) applyTags(edits *types.EditSet) error {
 	v := &vcomment{vorbis.Comments{Vendor: []byte("audiometa")}}
 	if len(at) == 1 {
 		b := m.blocks[at[0]]
-		// A block holds at most 16 MiB, so the split needs no cancellation.
-		c, err := vorbis.Split(context.Background(), b.payload)
+		c, err := vorbis.Split(ctx, b.payload)
 		if err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return ctxErr
+			}
 			return corrupted(m.path, b.off, "malformed VORBIS_COMMENT block: "+err.Error())
 		}
 		v = &vcomment{c}
