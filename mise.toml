@@ -23,3 +23,7 @@ run = "go generate ./..."
 [tasks.check]
 description = "Everything CI checks, locally"
 depends = ["build", "test", "lint"]
+
+[tasks.fuzz]
+description = "Fuzz every target for 30s each (scripts/fuzz.sh; not part of check)"
+run = "scripts/fuzz.sh"
