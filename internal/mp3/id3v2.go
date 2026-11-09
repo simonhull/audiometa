@@ -847,13 +847,21 @@ func terminatorSize(encoding byte) int {
 	}
 }
 
+// validID3Year reports whether year is one the reader keeps from an ID3 tag
+// (1900 to 2100), and so the only years the writer can store. The same range
+// is applied to WAV and AIFF by types.decodeYear, which cannot import this
+// package; keep the two in step.
+func validID3Year(year int) bool {
+	return year >= 1900 && year <= 2100
+}
+
 // parseYear extracts year from various date formats.
 func parseYear(text string) int {
 	// YYYY format
 	if len(text) >= 4 {
 		var year int
 		if _, err := fmt.Sscanf(text[:4], "%d", &year); err == nil {
-			if year >= 1900 && year <= 2100 {
+			if validID3Year(year) {
 				return year
 			}
 		}

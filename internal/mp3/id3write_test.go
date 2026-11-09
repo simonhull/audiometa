@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/png"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/simonhull/audiometa/internal/types"
@@ -644,6 +645,34 @@ func TestApply_OtherV24FramesStayRefusedInV23(t *testing.T) {
 	for _, id := range []string{"TDRC", "TDOR", "TDRL", "TDEN", "TDTG", "TIPL", "TMCL", "TMOO", "TPRO", "TSST"} {
 		if _, err := tryWrite(src, editsFor(t, src, func(tg *types.Tags) { tg.Set(id, "x") })); !errors.Is(err, types.ErrUnsupportedWrite) {
 			t.Errorf("%s: err = %v, want ErrUnsupportedWrite", id, err)
+		}
+	}
+}
+
+// The reader keeps only ID3 years from 1900 to 2100, so the writer refuses
+// the others instead of writing a year that reads back as 0.
+func TestApply_YearOutsideReadableRangeRefused(t *testing.T) {
+	for _, v := range []byte{3, 4} {
+		src := file(id3Tag(v, id3Frame(v, "TIT2", latin1Text("x"))))
+		for _, year := range []int{1899, 2101, -5, 10000} {
+			_, err := tryWrite(src, editsFor(t, src, func(tg *types.Tags) { tg.Year = year }))
+			if !errors.Is(err, types.ErrUnsupportedWrite) || !strings.Contains(err.Error(), "1900-2100") {
+				t.Errorf("v2.%d: Year %d: err = %v, want ErrUnsupportedWrite naming 1900-2100", v, year, err)
+			}
+		}
+		for _, year := range []int{1900, 2100} {
+			out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.Year = year }))
+			if got := parseBytes(t, out).Tags.Year; got != year {
+				t.Errorf("v2.%d: Year = %d, want %d", v, got, year)
+			}
+		}
+	}
+}
+
+func TestValidID3Year(t *testing.T) {
+	for year, want := range map[int]bool{1899: false, 1900: true, 2000: true, 2100: true, 2101: false, 0: false} {
+		if got := validID3Year(year); got != want {
+			t.Errorf("validID3Year(%d) = %v, want %v", year, got, want)
 		}
 	}
 }

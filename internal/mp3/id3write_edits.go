@@ -412,8 +412,14 @@ func (t *wtag) applyFieldEdit(e types.FieldEdit, edits *types.EditSet) error {
 
 // applyYear writes Year to the tag version's own frame (TDRC in ID3v2.4, TYER
 // in ID3v2.3) and removes the other version's frame, which that version
-// cannot hold. Clearing Year removes both.
+// cannot hold. Clearing Year removes both. A year the reader would drop
+// (outside 1900-2100) is refused, as it would read back as 0.
 func (t *wtag) applyYear(e types.FieldEdit, edits *types.EditSet) error {
+	if len(e.Values) > 0 {
+		if year, err := strconv.Atoi(e.Values[0]); err == nil && year != 0 && !validID3Year(year) {
+			return fmt.Errorf("%w: Year %d is outside 1900-2100, the years an ID3 tag can hold", types.ErrUnsupportedWrite, year)
+		}
+	}
 	own, other := keyTDRC, keyTYER
 	if t.outVersion == 3 {
 		own, other = keyTYER, keyTDRC

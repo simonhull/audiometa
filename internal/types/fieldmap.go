@@ -268,6 +268,8 @@ func decodeField(t *Tags, format Format, f Field, key string, values []string) b
 
 // decodeYear sets Year from the leading four characters of value. MP3 accepts
 // only 1900-2100, as its parser does; other formats accept any positive year.
+// The range must match validID3Year in internal/mp3, which this package cannot
+// import and which the MP3 writer uses to refuse other years.
 func decodeYear(t *Tags, format Format, value string) bool {
 	year := leadingYear(value)
 	if year <= 0 || (usesID3(format) && (year < 1900 || year > 2100)) {

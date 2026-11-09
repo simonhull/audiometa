@@ -5,6 +5,20 @@ import (
 	"testing"
 )
 
+// ID3 formats keep only years 1900-2100; internal/mp3's validID3Year (which
+// the MP3 writer uses to refuse others) has the same bounds and is tested
+// there.
+func TestDecodeYear_ID3Bounds(t *testing.T) {
+	for _, format := range []Format{FormatMP3, FormatWAV, FormatAIFF} {
+		for year, want := range map[string]bool{"1899": false, "1900": true, "2100": true, "2101": false} {
+			var tags Tags
+			if got := decodeYear(&tags, format, year); got != want {
+				t.Errorf("%s: decodeYear(%s) = %v, want %v", format, year, got, want)
+			}
+		}
+	}
+}
+
 var bindingFormats = []Format{FormatMP3, FormatFLAC, FormatOgg, FormatOpus, FormatM4A, FormatM4B, FormatWAV, FormatAIFF}
 
 func TestFieldBindings_KeysAreNonEmpty(t *testing.T) {

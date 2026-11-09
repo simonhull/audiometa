@@ -14,6 +14,7 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- MP3, WAV and AIFF: setting `Tags.Year` outside 1900–2100 returns `ErrUnsupportedWrite`. The ID3 reader ignores such years, so the write used to succeed and the year read back as 0.
 - M4A: an integer item (`tmpo`, `cpil`, `pgap`, `stik`, `rtng` and the like) whose data atom is labeled implicit or text but holds a binary number is read as that number and, when edited, stays an integer of the same width and label. Such items used to read as raw bytes and be rewritten as UTF-8 text, which Apple apps misread. `©mvi` was already read this way.
 - MP3, WAV, AIFF: setting or deleting a text frame's raw key such as `TIT2` also replaces the `TXXX` frames whose description is that frame ID in another case (`tit2`), which are read under the same key. It used to leave their values behind, so `Tags.Get` returned them after the edit.
 - MP3, WAV, AIFF: a raw key that contains a NUL or is not valid UTF-8 is refused with `ErrUnsupportedWrite`, as FLAC and M4A already did. It used to be written as a `TXXX` description that read back as a different key with extra values, and could slip past the refusal of `OVERDRIVE MEDIAMARKERS`.
