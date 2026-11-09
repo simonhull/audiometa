@@ -229,7 +229,9 @@ func checkInPlace(ctx context.Context, t *testing.T, tw registry.TagWriter, file
 		err error
 	)
 	testbudget.Check(t, testbudget.For(testbudget.Write, file.Format), len(data), "InPlacePatch", func() {
-		p, err = patchSafely(ctx, ip, bytes.NewReader(data), int64(len(data)), "fuzz", edits)
+		p, err = safely("fuzz", func() (*registry.Patch, error) {
+			return ip.InPlacePatch(ctx, bytes.NewReader(data), int64(len(data)), edits)
+		})
 	})
 	if err != nil {
 		t.Fatalf("%v: InPlacePatch failed after WriteToContext succeeded: %v", file.Format, err)

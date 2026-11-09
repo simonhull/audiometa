@@ -56,7 +56,7 @@ func (f *File) AudioDigestContext(ctx context.Context) ([sha256.Size]byte, error
 	if d == nil {
 		return sum, fmt.Errorf("audio digest: %w", &UnsupportedFormatError{Path: f.src.path, Reason: fmt.Sprintf("no digest for %s files", f.src.format)})
 	}
-	digest, err := digestSafely(ctx, d, f.reader, f.src.size, f.src.path)
+	digest, err := safely(f.src.path, func() ([]byte, error) { return d.AudioDigest(ctx, f.reader, f.src.size) })
 	if err != nil {
 		return sum, fmt.Errorf("audio digest: %w", withPath(err, f.src.path))
 	}

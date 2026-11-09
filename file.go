@@ -226,24 +226,15 @@ func panicError(path string, rec any) error {
 	return &types.CorruptedFileError{Path: path, Reason: "parser panic: " + detail}
 }
 
-// parseSafely calls p.Parse, converting a panic into a CorruptedFileError.
-func parseSafely(ctx context.Context, p FormatParser, r io.ReaderAt, size int64, path string) (file *types.File, err error) {
+// safely calls call, converting a panic into a CorruptedFileError for path.
+func safely[T any](path string, call func() (T, error)) (v T, err error) {
 	defer func() {
 		if rec := recover(); rec != nil {
-			file, err = nil, panicError(path, rec)
+			var zero T
+			v, err = zero, panicError(path, rec)
 		}
 	}()
-	return p.Parse(ctx, r, size, path)
-}
-
-// extractSafely calls e.ExtractArtwork, converting a panic into a CorruptedFileError.
-func extractSafely(ctx context.Context, e ArtworkExtractor, r io.ReaderAt, size int64, path string) (art []Artwork, err error) {
-	defer func() {
-		if rec := recover(); rec != nil {
-			art, err = nil, panicError(path, rec)
-		}
-	}()
-	return e.ExtractArtwork(ctx, r, size, path)
+	return call()
 }
 
 // parsedFile bundles the parsed data payload with the parser that produced it,
@@ -300,7 +291,7 @@ func openReader(ctx context.Context, r io.ReaderAt, size int64, path string) (*p
 	}
 
 	// Parse metadata; parsers check ctx at major boundaries.
-	file, err := parseSafely(ctx, parser, r, size, path)
+	file, err := safely(path, func() (*types.File, error) { return parser.Parse(ctx, r, size, path) })
 	if err != nil {
 		return nil, fmt.Errorf("parse %s: %w", format, err)
 	}
@@ -364,7 +355,7 @@ func (f *File) ExtractArtworkContext(ctx context.Context) ([]Artwork, error) {
 
 	artwork := []Artwork{}
 	if extractor, ok := f.parser.(ArtworkExtractor); ok {
-		extracted, err := extractSafely(ctx, extractor, f.reader, f.src.size, f.src.path)
+		extracted, err := safely(f.src.path, func() ([]Artwork, error) { return extractor.ExtractArtwork(ctx, f.reader, f.src.size, f.src.path) })
 		if err != nil {
 			return nil, fmt.Errorf("extract artwork: %w", err) // Not cached: a later call may retry.
 		}
@@ -473,12 +464,7 @@ func OpenMany(ctx context.Context, paths ...string) ([]*File, error) {
 
 	for i, path := range paths {
 		g.Go(func() error {
-			defer func() {
-				if rec := recover(); rec != nil {
-					errs[i] = fmt.Errorf("%s: %w", path, panicError(path, rec))
-				}
-			}()
-			file, err := openWithContext(ctx, path)
+			file, err := safely(path, func() (*File, error) { return openWithContext(ctx, path) })
 			if err != nil {
 				errs[i] = fmt.Errorf("%s: %w", path, err)
 				return nil // Don't cancel siblings on individual file failure.
