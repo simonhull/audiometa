@@ -495,125 +495,55 @@ func (t *Tags) Clone() *Tags {
 	if t == nil {
 		return nil
 	}
-
-	clone := &Tags{
-		format: t.format,
-
-		// Copy all standard fields
-		Title:               t.Title,
-		Subtitle:            t.Subtitle,
-		Artist:              t.Artist,
-		Album:               t.Album,
-		AlbumArtist:         t.AlbumArtist,
-		Year:                t.Year,
-		Date:                t.Date,
-		OriginalDate:        t.OriginalDate,
-		TrackNumber:         t.TrackNumber,
-		TrackTotal:          t.TrackTotal,
-		DiscNumber:          t.DiscNumber,
-		DiscTotal:           t.DiscTotal,
-		Comment:             t.Comment,
-		Description:         t.Description,
-		Lyrics:              t.Lyrics,
-		Narrator:            t.Narrator,
-		Publisher:           t.Publisher,
-		Series:              t.Series,
-		Grouping:            t.Grouping,
-		SeriesPart:          t.SeriesPart,
-		ISBN:                t.ISBN,
-		ASIN:                t.ASIN,
-		Language:            t.Language,
-		MusicBrainzTrackID:  t.MusicBrainzTrackID,
-		MusicBrainzAlbumID:  t.MusicBrainzAlbumID,
-		MusicBrainzArtistID: t.MusicBrainzArtistID,
-		ISRC:                t.ISRC,
-		Barcode:             t.Barcode,
-		CatalogNumber:       t.CatalogNumber,
-		Label:               t.Label,
-		Copyright:           t.Copyright,
-
-		// Clone slices
-		Artists:    slices.Clone(t.Artists),
-		Genres:     slices.Clone(t.Genres),
-		Composers:  slices.Clone(t.Composers),
-		Performers: slices.Clone(t.Performers),
-	}
-
-	// Clone raw tags
-	if t.raw != nil {
-		clone.raw = make(map[string][]string, len(t.raw))
-		for key, values := range t.raw {
-			clone.raw[key] = slices.Clone(values)
+	c := *t
+	for f := range AllFields() {
+		if p := sliceField(&c, f); p != nil {
+			*p = slices.Clone(*p)
 		}
 	}
-	clone.names = maps.Clone(t.names)
-
-	return clone
+	if t.raw != nil {
+		c.raw = make(map[string][]string, len(t.raw))
+		for key, values := range t.raw {
+			c.raw[key] = slices.Clone(values)
+		}
+	}
+	c.names = maps.Clone(t.names)
+	return &c
 }
 
 // Equal checks if two Tags are equal.
 //
 // Compares all standard fields, raw tags and the spelling of their names
-// ([Tags.Name]) for equality.
+// ([Tags.Name]) for equality. The format a Tags is bound to is not compared.
 //
 // Example:
 //
 //	if !tags1.Equal(tags2) {
 //		fmt.Println("Tags differ")
 //	}
-func (t *Tags) Equal(other *Tags) bool { //nolint:gocyclo // Equality check requires comparing all tag fields individually
-	if t == nil && other == nil {
-		return true
-	}
+func (t *Tags) Equal(other *Tags) bool {
 	if t == nil || other == nil {
-		return false
+		return t == other
 	}
-
-	// Compare standard fields
-	if t.Title != other.Title ||
-		t.Subtitle != other.Subtitle ||
-		t.Artist != other.Artist ||
-		t.Album != other.Album ||
-		t.AlbumArtist != other.AlbumArtist ||
-		t.Year != other.Year ||
-		t.Date != other.Date ||
-		t.OriginalDate != other.OriginalDate ||
-		t.TrackNumber != other.TrackNumber ||
-		t.TrackTotal != other.TrackTotal ||
-		t.DiscNumber != other.DiscNumber ||
-		t.DiscTotal != other.DiscTotal ||
-		t.Comment != other.Comment ||
-		t.Description != other.Description ||
-		t.Lyrics != other.Lyrics ||
-		t.Narrator != other.Narrator ||
-		t.Publisher != other.Publisher ||
-		t.Series != other.Series ||
-		t.Grouping != other.Grouping ||
-		t.SeriesPart != other.SeriesPart ||
-		t.ISBN != other.ISBN ||
-		t.ASIN != other.ASIN ||
-		t.Language != other.Language ||
-		t.MusicBrainzTrackID != other.MusicBrainzTrackID ||
-		t.MusicBrainzAlbumID != other.MusicBrainzAlbumID ||
-		t.MusicBrainzArtistID != other.MusicBrainzArtistID ||
-		t.ISRC != other.ISRC ||
-		t.Barcode != other.Barcode ||
-		t.CatalogNumber != other.CatalogNumber ||
-		t.Label != other.Label ||
-		t.Copyright != other.Copyright {
-		return false
+	for f := range AllFields() {
+		if !fieldEqual(t, other, f) {
+			return false
+		}
 	}
-
-	// Compare slices
-	if !slices.Equal(t.Artists, other.Artists) ||
-		!slices.Equal(t.Genres, other.Genres) ||
-		!slices.Equal(t.Composers, other.Composers) ||
-		!slices.Equal(t.Performers, other.Performers) {
-		return false
-	}
-
-	// Compare raw tags and the spelling of their names.
 	return maps.EqualFunc(t.raw, other.raw, slices.Equal) && maps.Equal(t.names, other.names)
+}
+
+// fieldEqual reports whether field f holds the same value in a and b. It
+// dereferences the storage pointers without nil checks because every valid
+// Field has exactly one storage table entry (see TestFieldValuesRoundTrip).
+func fieldEqual(a, b *Tags, f Field) bool {
+	if p := stringField(a, f); p != nil {
+		return *p == *stringField(b, f)
+	}
+	if p := sliceField(a, f); p != nil {
+		return slices.Equal(*p, *sliceField(b, f))
+	}
+	return *intField(a, f) == *intField(b, f)
 }
 
 // Filter returns an iterator over tags matching a predicate.
