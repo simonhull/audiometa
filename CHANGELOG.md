@@ -14,6 +14,9 @@ All notable changes to this project are documented here.
 - `DetectFormat` reports an ID3v2 tag followed by `fLaC` as `FormatFLAC`.
 - `Tags.Merge` no longer replaces anything the receiver already holds: a raw key of the other `Tags` is copied, with its spelling (`Tags.Name`), only when the receiver has no entry for it and does not already hold the typed fields that key fills, and on tags returned by `Open` those fields are decoded from the copied key, as `Tags.Set` does. Merging into a `File`'s tags no longer makes the next `WriteTo` or `Write` fail with `ErrConflictingEdits`. Raw keys are no longer copied between tags of two different formats, where they named unrelated tags; the typed fields still merge.
 - MP3: `Duration` leaves out the encoder delay and padding that a LAME tag records, as ffmpeg does, so a 10-second file reports 10 s instead of 10.03 s. Files without a LAME tag are unchanged.
+- M4A: a corrupt movie header, track header, sample description, chapter table, ilst item or artwork container now adds a warning of its stage (`StageTechnical`, `StageChapters`, `StageMetadata`) instead of being skipped silently, so `Open` fails on such files under `WithStrictParsing`. Absent atoms are still not reported. Values read before the damage are kept, including chapters from a table that is cut short, and a damaged movie header no longer hides the codec, sample rate and channels.
+- M4A: `ExtractArtwork` returns an error when the atoms leading to the cover art are corrupt, instead of reporting no artwork.
+- M4A: a top-level atom whose size field is 0 is read as running to the end of the file, as the MP4 format allows and the writer already did, so a `moov` stored that way is found.
 
 ### Fixed
 
