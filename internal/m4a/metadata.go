@@ -81,10 +81,7 @@ func parseMetadataValues(sr *binary.SafeReader, tagAtom *Atom, file *types.File)
 			return values, nil
 		}
 		if child.Type == atomData {
-			value, err := parseDataValue(sr, child)
-			if err == nil && tagAtom.Type == itemMvi && strings.ContainsFunc(value, unicode.IsControl) {
-				value, err = parseBinaryMovementIndex(sr, child)
-			}
+			value, err := parseItemValue(sr, tagAtom, child)
 			if err != nil {
 				return values, err
 			}
@@ -99,6 +96,16 @@ func parseMetadataValues(sr *binary.SafeReader, tagAtom *Atom, file *types.File)
 		off += child.Size
 	}
 	return values, nil
+}
+
+// parseItemValue returns the text or integer value of the data atom data of
+// the item tagAtom, decoding a ©mvi labeled as text as the integer it holds.
+func parseItemValue(sr *binary.SafeReader, tagAtom, data *Atom) (string, error) {
+	value, err := parseDataValue(sr, data)
+	if err == nil && tagAtom.Type == itemMvi && strings.ContainsFunc(value, unicode.IsControl) {
+		return parseBinaryMovementIndex(sr, data)
+	}
+	return value, err
 }
 
 // parseBinaryMovementIndex decodes a ©mvi whose integer payload is labeled as
