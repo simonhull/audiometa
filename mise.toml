@@ -3,14 +3,25 @@ go = "1.27.3"
 golangci-lint = "2.15.0"
 "go:golang.org/x/tools/cmd/stringer" = "0.52.0"
 "go:golang.org/x/tools/cmd/goimports" = "0.52.0"
+"go:golang.org/x/vuln/cmd/govulncheck" = "1.9.0"
+goreleaser = "2.19.0"
 
 [tasks.build]
-description = "Build library and race build (mirrors CI build job)"
+description = "Build library and race build"
 run = ["go build ./...", "go build -race ./..."]
 
 [tasks.test]
-description = "Race tests with coverage (mirrors CI test job)"
+description = "Race tests with coverage"
 run = "go test -race -coverprofile=coverage.out -covermode=atomic ./..."
+
+[tasks.test386]
+description = "Tests on GOARCH=386 (32-bit int overflow checks)"
+env = { GOARCH = "386" }
+run = "go test ./..."
+
+[tasks.tidy-check]
+description = "Fail when go.mod or go.sum is not tidy"
+run = "go mod tidy -diff"
 
 [tasks.lint]
 description = "golangci-lint, go vet and gofmt at the pinned toolchain (scripts/lint.sh)"
@@ -20,9 +31,34 @@ run = "scripts/lint.sh"
 description = "Regenerate stringer output"
 run = "go generate ./..."
 
+[tasks.generate-check]
+description = "Fail when go generate output is stale (rewrites stale files; run on a clean tree)"
+run = ["go generate ./...", "git diff --exit-code"]
+
+[tasks.verify-mod]
+description = "Verify downloaded module checksums (needs network on a cold cache)"
+run = ["go mod download", "go mod verify"]
+
+[tasks.vuln]
+description = "govulncheck at the pinned version (needs network)"
+run = "govulncheck ./..."
+
+[tasks.write-gate]
+description = "Write gate: corpus round-trip, external oracles (ffmpeg, ffprobe, flac) and 120 s write fuzzing"
+env = { AUDIOMETA_REQUIRE_ORACLES = "1" }
+run = [
+  "go test -race -count=1 -run 'WriteRoundTrip|AudioDigest|Example' .",
+  "go test -race -count=1 -run 'WriteOracle' .",
+  "go test -run '^$' -fuzz '^FuzzWriteRoundTrip$' -fuzztime 120s .",
+]
+
 [tasks.check]
-description = "Everything CI checks, locally"
-depends = ["build", "test", "lint"]
+description = "Fast local gate (no network, no external tools): build, race and 32-bit tests, lint, tidy, generated code"
+depends = ["build", "test", "test386", "lint", "tidy-check", "generate-check"]
+
+[tasks.ci]
+description = "Everything CI runs: check, module verification, govulncheck and the write gate"
+depends = ["check", "verify-mod", "vuln", "write-gate"]
 
 [tasks.fuzz]
 description = "Fuzz every target for 30s each (scripts/fuzz.sh; not part of check)"
