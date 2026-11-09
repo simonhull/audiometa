@@ -2,6 +2,7 @@ package m4a
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -353,7 +354,12 @@ type TrackData struct {
 	Total  int
 }
 
-// parseTrackNumber extracts track number and total from trkn atom.
+// errShortNumberAtom reports a trkn or disk data atom too short to hold a number.
+var errShortNumberAtom = errors.New("track number atom too short")
+
+// parseTrackNumber extracts track number and total from a trkn or disk atom,
+// reading only inside its data atom: fewer than 4 payload bytes is an error,
+// 4-5 bytes give the number alone, and 6 or more give number and total.
 func parseTrackNumber(sr *binary.SafeReader, atom *Atom) (TrackData, error) {
 	result := TrackData{}
 
@@ -363,7 +369,11 @@ func parseTrackNumber(sr *binary.SafeReader, atom *Atom) (TrackData, error) {
 		return result, err
 	}
 
-	// Skip version (1) + flags (3) + reserved (4) = 8 bytes
+	// Version (1) + flags (3) + reserved (4) = 8 bytes precede the payload.
+	payload := dataAtom.DataSize() - 8
+	if payload < 4 {
+		return result, errShortNumberAtom
+	}
 	offset := dataAtom.DataOffset() + 8
 
 	// Track number structure:
@@ -380,6 +390,10 @@ func parseTrackNumber(sr *binary.SafeReader, atom *Atom) (TrackData, error) {
 	}
 	result.Number = int(trackNum)
 	offset += 2
+
+	if payload < 6 {
+		return result, nil
+	}
 
 	trackTotal, err := sr.Read[uint16](offset, "track total")
 	if err != nil {

@@ -261,6 +261,29 @@ func TestParseTrackNumber_NoDataAtom(t *testing.T) {
 	}
 }
 
+func TestParseTrackNumber_StaysInsideDataAtom(t *testing.T) {
+	tests := []struct {
+		name             string
+		payload          []byte
+		wantNum, wantTot int
+	}{
+		{"full 8 bytes", []byte{0, 0, 0, 3, 0, 12, 0, 0}, 3, 12},
+		{"6-byte disk", []byte{0, 0, 0, 1, 0, 2}, 1, 2},
+		{"number only", []byte{0, 0, 0, 7}, 7, 0},
+		{"too short", []byte{0, 0}, 0, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// The next item's bytes must not be read as part of trkn.
+			f := runIlst(t, createTypedMetadataItem([]byte("trkn"), 0, tt.payload),
+				createTypedMetadataItem([]byte("\xa9nam"), 1, []byte("Title")))
+			if f.Tags.TrackNumber != tt.wantNum || f.Tags.TrackTotal != tt.wantTot {
+				t.Errorf("track %d/%d, want %d/%d", f.Tags.TrackNumber, f.Tags.TrackTotal, tt.wantNum, tt.wantTot)
+			}
+		})
+	}
+}
+
 // createTypedMetadataItem builds an ilst item whose data atom has the given type indicator.
 func createTypedMetadataItem(itemType []byte, typeIndicator uint32, payload []byte) []byte {
 	data := &bytes.Buffer{}
