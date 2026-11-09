@@ -62,26 +62,52 @@ func ExampleWrite() {
 	// Output: New Title
 }
 
-// ExampleFile_ReplaceArtwork replaces the front cover. The MIME type and
-// dimensions are detected from the image data.
+// ExampleFile_ReplaceArtwork replaces the front cover of a FLAC file. The
+// MIME type and dimensions are detected from the image data. The cover comes
+// from another test file and the edit applies to a copy.
 func ExampleFile_ReplaceArtwork() {
-	cover, err := os.ReadFile("cover.png")
+	src, err := audiometa.Open("testdata/sample.mp3")
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer src.Close()
+	covers, err := src.ExtractArtwork()
+	if err != nil || len(covers) == 0 {
+		log.Fatal("no cover to copy: ", err)
+	}
 
-	err = audiometa.Write("song.flac", func(f *audiometa.File) error {
+	path := copyToTemp("testdata/sample.flac")
+	defer os.RemoveAll(filepath.Dir(path))
+
+	err = audiometa.Write(path, func(f *audiometa.File) error {
 		return f.ReplaceArtwork(audiometa.Artwork{
-			Data: cover,
+			Data: covers[0].Data,
 			Type: audiometa.ArtworkFrontCover,
 		})
 	})
 	if errors.Is(err, audiometa.ErrInvalidArtwork) {
-		log.Fatal("cover.png is not a usable image")
+		log.Fatal("the cover is not a usable image")
 	}
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	f, err := audiometa.Open(path)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+	art, err := f.ExtractArtwork()
+	if err != nil {
+		log.Fatal(err)
+	}
+	// The file's existing "Other" picture is kept: only front covers are replaced.
+	for _, a := range art {
+		fmt.Println(a.Type, a.MIMEType, a.Width, a.Height)
+	}
+	// Output:
+	// Other image/jpeg 16 16
+	// Front cover image/jpeg 16 16
 }
 
 // ExampleTags_SetNamed writes MusicBrainz IDs to an MP3 the way MusicBrainz
@@ -121,4 +147,22 @@ func ExampleTags_SetNamed() {
 	// Output:
 	// MusicBrainz Album Id f3c0fd5e-ba3e-4a2c-8fd3-6e4a6f0c1b2d
 	// 8f3471b5-7e6a-48da-86a9-c1c07a0f47ae
+}
+
+// copyToTemp copies a testdata file into a new temporary directory and
+// returns the copy's path. The caller removes the directory.
+func copyToTemp(src string) string {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		log.Fatal(err)
+	}
+	dir, err := os.MkdirTemp("", "audiometa-example")
+	if err != nil {
+		log.Fatal(err)
+	}
+	path := filepath.Join(dir, filepath.Base(src))
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		log.Fatal(err)
+	}
+	return path
 }
