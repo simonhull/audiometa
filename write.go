@@ -106,10 +106,16 @@ func (f *File) WriteToContext(ctx context.Context, w io.Writer) (int64, error) {
 // link itself is kept. [WithInPlace] trades that atomicity for speed, and
 // [WithPreserveModTime] keeps the modification time.
 //
-// Write does not lock the file. If it changes on disk while Write runs, Write
-// returns [ErrConcurrentModification] and leaves it alone, but concurrent
-// Writes to the same path are not otherwise coordinated: serialize them.
-// Writes to different files may run concurrently.
+// Write does not lock the file. Just before it renames the new file into
+// place (or, with [WithInPlace], before it overwrites anything), it checks
+// that the file is still the one it opened, with the same size and
+// modification time and, on Linux and macOS, the same inode change time. If
+// not, Write returns [ErrConcurrentModification] and leaves the file as the
+// other writer left it. A change after that check is not detected, and a
+// process that only changes the file's permissions, owner or extended
+// attributes also triggers the error. Concurrent Writes to the same path are
+// not otherwise coordinated: serialize them. Writes to different files may
+// run concurrently.
 //
 // # Errors
 //
@@ -211,15 +217,28 @@ type verifyRef struct {
 	format   Format
 }
 
-// unchanged returns ErrConcurrentModification if the target's size or
-// modification time differ from when Write opened it.
+// unchanged returns ErrConcurrentModification unless the file at the target
+// path is still the one Write opened, unmodified.
 func (j *writeJob) unchanged() error {
 	st, err := os.Stat(j.target)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrConcurrentModification, err)
 	}
-	if st.Size() != j.st0.Size() || !st.ModTime().Equal(j.st0.ModTime()) {
+	return j.sameAsOpened(st)
+}
+
+// sameAsOpened returns ErrConcurrentModification unless st describes the file
+// Write opened (same file, size and modification time, and the same inode
+// change time where the platform reports one). Changing a file's contents,
+// or setting its mtime back afterwards, bumps its change time.
+func (j *writeJob) sameAsOpened(st os.FileInfo) error {
+	if !os.SameFile(j.st0, st) || st.Size() != j.st0.Size() || !st.ModTime().Equal(j.st0.ModTime()) {
 		return fmt.Errorf("%w: %s", ErrConcurrentModification, j.target)
+	}
+	if c0, ok := changeTime(j.st0); ok {
+		if c, ok := changeTime(st); ok && !c.Equal(c0) {
+			return fmt.Errorf("%w: %s: inode change time differs", ErrConcurrentModification, j.target)
+		}
 	}
 	return nil
 }
@@ -266,19 +285,16 @@ func (j *writeJob) writeInPlace(ctx context.Context) (done bool, err error) {
 	if off < 0 || off+int64(len(patch)) > j.f.src.size {
 		return true, fmt.Errorf("in-place patch [%d, %d) outside file of %d bytes", off, off+int64(len(patch)), j.f.src.size)
 	}
-	if err := j.unchanged(); err != nil {
-		return true, err
-	}
-	return true, j.patch(ctx, off, patch)
-}
-
-// patch overwrites len(patch) bytes at off, verifies the result and restores
-// the original bytes if verification fails.
-func (j *writeJob) patch(ctx context.Context, off int64, patch []byte) (err error) {
 	rw, err := os.OpenFile(j.target, os.O_RDWR, 0)
 	if err != nil {
-		return fmt.Errorf("open for in-place write: %w", err)
+		return true, fmt.Errorf("open for in-place write: %w", err)
 	}
+	return true, j.patch(ctx, rw, off, patch)
+}
+
+// patch overwrites len(patch) bytes of rw at off, verifies the result and
+// restores the original bytes if verification fails. It closes rw.
+func (j *writeJob) patch(ctx context.Context, rw *os.File, off int64, patch []byte) (err error) {
 	written, restored := false, false
 	defer func() {
 		if cerr := rw.Close(); cerr != nil && err == nil {
@@ -293,6 +309,13 @@ func (j *writeJob) patch(ctx context.Context, off int64, patch []byte) (err erro
 		}
 	}()
 
+	st, err := rw.Stat()
+	if err != nil {
+		return fmt.Errorf("stat for in-place write: %w", err)
+	}
+	if err := j.sameAsOpened(st); err != nil {
+		return err
+	}
 	backup := make([]byte, len(patch))
 	if _, err := rw.ReadAt(backup, off); err != nil {
 		return fmt.Errorf("back up metadata region: %w", err)

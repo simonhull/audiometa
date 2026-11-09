@@ -8,11 +8,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"image"
 	"image/png"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -756,6 +759,104 @@ func TestWrite_Canceled(t *testing.T) {
 			t.Errorf("mtime after restore = %v, want the original %v", st.ModTime(), mtime)
 		}
 	})
+}
+
+// TestWrite_ConcurrentReplace replaces the file with a same-size copy that
+// keeps the original mtime, as another program's atomic save might.
+func TestWrite_ConcurrentReplace(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows cannot rename over a file that Write holds open")
+	}
+	path, data := copySample(t, sampleFLAC)
+	st0, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := slices.Clone(data)
+	other[len(other)-1] ^= 0xFF
+	useWriter(t, &fakeWriter{onWrite: func() {
+		tmp := path + ".other"
+		if err := os.WriteFile(tmp, other, 0o600); err != nil {
+			t.Error(err)
+		}
+		if err := os.Chtimes(tmp, st0.ModTime(), st0.ModTime()); err != nil {
+			t.Error(err)
+		}
+		if err := os.Rename(tmp, path); err != nil {
+			t.Error(err)
+		}
+	}})
+	if err := Write(path, func(f *File) error { f.Tags.Title = "New"; return nil }); !errors.Is(err, ErrConcurrentModification) {
+		t.Errorf("err = %v, want ErrConcurrentModification", err)
+	}
+	assertFileBytes(t, path, other)
+	assertNoTempFiles(t, filepath.Dir(path))
+}
+
+// TestWrite_ConcurrentSameSizeRewrite rewrites the file in place with the same
+// size and puts the mtime back, as another in-place writer with
+// WithPreserveModTime does. Only the inode change time reveals it.
+func TestWrite_ConcurrentSameSizeRewrite(t *testing.T) {
+	st, err := os.Stat(sampleFLAC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := changeTime(st); !ok {
+		t.Skip("no inode change time on this platform")
+	}
+	for _, inPlace := range []bool{false, true} {
+		t.Run(fmt.Sprintf("inPlace=%v", inPlace), func(t *testing.T) {
+			path, data := copySample(t, sampleFLAC)
+			st0, err := os.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			other := slices.Clone(data)
+			other[len(other)-1] ^= 0xFF
+			rewrite := func() {
+				time.Sleep(20 * time.Millisecond) // ctime has clock-tick granularity
+				if err := os.WriteFile(path, other, 0o600); err != nil {
+					t.Error(err)
+				}
+				if err := os.Chtimes(path, st0.ModTime(), st0.ModTime()); err != nil {
+					t.Error(err)
+				}
+			}
+			var opts []WriteOption
+			if inPlace {
+				off, patch := titlePatch(t, data)
+				useWriter(t, &inPlaceFake{off: off, patch: patch, fits: true, onPatch: rewrite})
+				opts = append(opts, WithInPlace())
+			} else {
+				useWriter(t, &fakeWriter{onWrite: rewrite})
+			}
+			if err := Write(path, func(f *File) error { f.Tags.Title = "New"; return nil }, opts...); !errors.Is(err, ErrConcurrentModification) {
+				t.Errorf("err = %v, want ErrConcurrentModification", err)
+			}
+			assertFileBytes(t, path, other)
+		})
+	}
+}
+
+// TestWrite_ConcurrentDelete removes the file while Write runs.
+func TestWrite_ConcurrentDelete(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows cannot remove a file that Write holds open")
+	}
+	path, _ := copySample(t, sampleFLAC)
+	useWriter(t, &fakeWriter{onWrite: func() {
+		if err := os.Remove(path); err != nil {
+			t.Error(err)
+		}
+	}})
+	err := Write(path, func(f *File) error { f.Tags.Title = "New"; return nil })
+	if !errors.Is(err, ErrConcurrentModification) || !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("err = %v, want ErrConcurrentModification wrapping fs.ErrNotExist", err)
+	}
+	if _, err := os.Stat(path); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("file recreated: %v", err)
+	}
+	assertNoTempFiles(t, filepath.Dir(path))
 }
 
 // TestSetSync_MatchesParser checks that the field bindings mirror the

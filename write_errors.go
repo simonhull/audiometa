@@ -38,8 +38,9 @@ var (
 	ErrInvalidArtwork = types.ErrInvalidArtwork
 
 	// ErrConcurrentModification is returned (wrapped) by [Write] when the file
-	// changed on disk (its size or modification time) between the moment
-	// Write opened it and the moment it would have been replaced. The file is
+	// was replaced or changed on disk (its identity, size, modification time
+	// or, on Linux and macOS, inode change time) between the moment Write
+	// opened it and the moment it would have been replaced. The file is
 	// left as the other writer left it.
 	ErrConcurrentModification = types.ErrConcurrentModification
 
