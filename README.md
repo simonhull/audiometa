@@ -418,15 +418,17 @@ programs:
 
 Measured with `go test -run '^$' -bench 'BenchmarkParse|BenchmarkOpenFile' -benchmem -count 6 .`
 on an AMD Ryzen 9 5950X (Linux, Go 1.27.3). The fixtures in `testdata/bench/` are
-10-second audiobook files with a full tag set and 50 chapters. Medians of six runs; the memory column is `Open` on a real file (`BenchmarkOpenFile`):
+10-second audiobook files with a full tag set and 50 chapters. Medians of six runs. The `Open` and memory columns come from `BenchmarkOpenFile`;
+the parse-only and `ReadAt` columns come from `BenchmarkParse`:
 
 | Fixture | `Open` (real file) | Parse only (in memory) | `ReadAt` calls | Memory / allocs per open |
 |---------|-------------------:|-----------------------:|---------------:|-------------------------:|
-| `book.flac` | 22 µs | 11 µs | 1 | 39 KiB / 109 |
-| `book.m4b`  | 27 µs | 21 µs | 1 | 44 KiB / 543 |
-| `book.mp3`  | 43 µs | 33 µs | 4 | 98 KiB / 440 |
-| `book.opus` | 58 µs | 49 µs | 1 | 85 KiB / 444 |
+| `book.flac` | 19 µs | 12 µs | 1 | 39 KiB / 108 |
+| `book.m4b`  | 26 µs | 19 µs | 1 | 45 KiB / 543 |
+| `book.mp3`  | 39 µs | 30 µs | 4 | 98 KiB / 440 |
+| `book.opus` | 58 µs | 50 µs | 1 | 86 KiB / 440 |
 
+The fixtures carry modest tags, so a file with larger tags can need more `ReadAt` calls.
 Numbers depend on the machine and on the files, so treat them as an order of magnitude and
 run the benchmarks on your own hardware. Artwork is not included: it is read only by
 `ExtractArtwork`.
