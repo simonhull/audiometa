@@ -74,3 +74,55 @@ func TestSetFieldValues_IntParseError(t *testing.T) {
 		t.Errorf("Year = %d, want 0 for unparsable value", tags.Year)
 	}
 }
+
+// TestCloneEqual_CoverEveryField sets every field, so a field that Clone
+// forgets to copy or Equal forgets to compare fails here.
+func TestCloneEqual_CoverEveryField(t *testing.T) {
+	sample := func(f Field, alt bool) []string {
+		switch {
+		case intField(&Tags{}, f) != nil:
+			return []string{map[bool]string{false: "7", true: "8"}[alt]}
+		case sliceField(&Tags{}, f) != nil:
+			return []string{"a", map[bool]string{false: "b", true: "c"}[alt]}
+		default:
+			return []string{map[bool]string{false: "x", true: "y"}[alt]}
+		}
+	}
+	full := &Tags{}
+	for f := range AllFields() {
+		setFieldValues(full, f, sample(f, false))
+	}
+	full.Set("CUSTOM", "v")
+	full.SetNamed("Mixed Case", "w") // fills names, which Clone must copy and Equal compare
+	BindFormat(full, FormatFLAC)
+
+	c := full.Clone()
+	if !reflect.DeepEqual(c, full) {
+		t.Fatalf("Clone differs:\n got  %+v\n want %+v", c, full)
+	}
+	if !c.Equal(full) {
+		t.Fatal("Equal(Clone) = false")
+	}
+	if renamed := full.Clone(); true {
+		renamed.setName("MIXED CASE", "MIXED case")
+		if renamed.Equal(full) {
+			t.Error("Equal ignores the spelling of names")
+		}
+		if full.Name("MIXED CASE") != "Mixed Case" {
+			t.Error("Clone shares the names map")
+		}
+	}
+	for f := range AllFields() {
+		d := full.Clone()
+		setFieldValues(d, f, sample(f, true))
+		if d.Equal(full) {
+			t.Errorf("Equal ignores %s", f)
+		}
+		if p := sliceField(c, f); p != nil {
+			(*p)[0] = "mutated"
+			if sliceField(full, f) != nil && (*sliceField(full, f))[0] == "mutated" {
+				t.Errorf("Clone shares the %s slice", f)
+			}
+		}
+	}
+}
