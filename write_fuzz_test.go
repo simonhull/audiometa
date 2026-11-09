@@ -3,6 +3,7 @@ package audiometa
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"image"
 	"image/png"
@@ -139,6 +140,8 @@ func FuzzWriteRoundTrip(f *testing.F) {
 	}
 	f.Add([]byte("ID3\x04\x00\x00\x00\x00\x00\x00"), []byte{0})
 	f.Add([]byte("fLaC"), []byte{0})
+	// A raw TYER edit on an empty ID3v2.2 tag, which is rewritten as v2.4 (plan 085).
+	f.Add([]byte("ID3\x0200\x00\x00\x00\x00"), []byte("0000"))
 	// An empty text chunk last in the file (plan 058).
 	f.Add([]byte("FORM0000AIFFCOMM\x00\x00\x00\x12000000000000000000"), []byte("00"))
 
@@ -269,7 +272,7 @@ func checkLanded(t *testing.T, format Format, data []byte, orig, final *Tags, ed
 		if reason := landedExempt(format, data, 0, e.Values); reason != "" {
 			continue
 		}
-		if got := final.Get(e.Key); !slices.Equal(got, e.Values) {
+		if got := final.Get(landedKey(format, data, e.Key)); !slices.Equal(got, e.Values) {
 			t.Errorf("%v: key %q = %q, want %q", format, e.Key, got, e.Values)
 		}
 	}
@@ -285,6 +288,7 @@ func checkLanded(t *testing.T, format Format, data []byte, orig, final *Tags, ed
 	touched := map[string]bool{}
 	for _, e := range edits.Keys {
 		touched[e.Key] = true
+		touched[landedKey(format, data, e.Key)] = true
 	}
 	for _, b := range types.FieldBindings(format) {
 		for _, k := range b.Keys {
@@ -292,7 +296,7 @@ func checkLanded(t *testing.T, format Format, data []byte, orig, final *Tags, ed
 		}
 	}
 	for key, want := range orig.All() {
-		if touched[key] {
+		if touched[key] || touched[landedKey(format, data, key)] {
 			continue
 		}
 		if got := final.Get(key); !slices.Equal(got, want) {
@@ -339,6 +343,65 @@ func typedValues(t *Tags, f types.Field) []string {
 	default:
 		return nil
 	}
+}
+
+// v22Renames maps the raw keys an ID3v2.2 tag exposes to the ID3v2.4 frame
+// that holds the value once the tag is rewritten. The reader normalizes the
+// year frame to TYER and keeps the other 3-character text frames under their
+// ID3v2.2 IDs.
+var v22Renames = map[string]string{
+	"TYER": "TDRC",
+	"TBP":  "TBPM", "TCP": "TCMP", "TCR": "TCOP", "TDY": "TDLY", "TEN": "TENC",
+	"TFT": "TFLT", "TKE": "TKEY", "TLA": "TLAN", "TLE": "TLEN", "TMT": "TMED",
+	"TOA": "TOPE", "TOF": "TOFN", "TOL": "TOLY", "TOR": "TDOR", "TOT": "TOAL",
+	"TP3": "TPE3", "TP4": "TPE4", "TPB": "TPUB", "TRC": "TSRC", "TS2": "TSO2",
+	"TSA": "TSOA", "TSC": "TSOC", "TSP": "TSOP", "TSS": "TSSE", "TST": "TSOT",
+	"TXT": "TEXT",
+}
+
+// landedKey returns the raw key an edit of key reads back under. A v2.2 tag is
+// rewritten as v2.4; (*wtag).normalizeKey moves edits of v2.3-only keys to
+// their v2.4 frames. Keep this table in sync with it.
+func landedKey(format Format, data []byte, key string) string {
+	if hasID3v22Tag(format, data) {
+		if renamed, ok := v22Renames[key]; ok {
+			return renamed
+		}
+	}
+	return key
+}
+
+// hasID3v22Tag reports whether the ID3v2 tag Write edits in data, at the start
+// of an MP3 or in the ID3 chunk of a WAV or AIFF file, is version 2.2.
+func hasID3v22Tag(format Format, data []byte) bool {
+	if format == FormatMP3 {
+		return bytes.HasPrefix(data, []byte("ID3\x02"))
+	}
+	return (format == FormatWAV || format == FormatAIFF) && id3ChunkIsV22(data)
+}
+
+// id3ChunkIsV22 walks the chunks of a RIFF, RIFX, RF64 or FORM file and reports
+// whether its "id3 " or "ID3 " chunk starts an ID3v2.2 tag.
+func id3ChunkIsV22(data []byte) bool {
+	if len(data) < 12 {
+		return false
+	}
+	order := binary.ByteOrder(binary.LittleEndian)
+	if m := string(data[:4]); m == "RIFX" || m == "FORM" {
+		order = binary.BigEndian
+	}
+	for off := 12; off+8 <= len(data); {
+		id, size := string(data[off:off+4]), int(order.Uint32(data[off+4:off+8]))
+		if size < 0 || size > len(data)-off-8 {
+			return false // truncated, or an RF64 placeholder size
+		}
+		body := data[off+8 : off+8+size]
+		if strings.EqualFold(id, "id3 ") {
+			return bytes.HasPrefix(body, []byte("ID3\x02"))
+		}
+		off += 8 + size + size&1
+	}
+	return false
 }
 
 // landedExempt names why an edit of field (0 for a raw key) to values may
