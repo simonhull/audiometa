@@ -305,9 +305,149 @@ func parseStsd(sr *binary.SafeReader, stsdAtom *Atom, file *types.File) error {
 	file.Audio.Lossless = codec == codecALAC || codec == codecFLAC
 
 	// Parse enhanced codec details (non-fatal if it fails)
-	_ = parseCodecDetails(sr, offset-8, entrySize, codec, file)
+	entry := offset - 8 // the offset of the entry's size field
+	_ = parseCodecDetails(sr, entry, entrySize, codec, file)
 
-	return parseSoundSampleEntry(sr, offset-8, file)
+	if err := parseSoundSampleEntry(sr, entry, file); err != nil {
+		return err
+	}
+	applyLosslessConfig(sr, entry, entrySize, codec, file)
+	return nil
+}
+
+// losslessConfig holds the stream properties a lossless codec's configuration
+// box declares. A zero field is absent or failed validation.
+type losslessConfig struct {
+	sampleRate int
+	bitDepth   int
+	channels   int
+}
+
+// valid reports which fields of c are plausible, zeroing the others.
+func (c losslessConfig) valid() losslessConfig {
+	if c.sampleRate < 1 || c.sampleRate > math.MaxInt32 {
+		c.sampleRate = 0
+	}
+	if c.bitDepth < 4 || c.bitDepth > 32 {
+		c.bitDepth = 0
+	}
+	if c.channels < 1 || c.channels > 8 {
+		c.channels = 0
+	}
+	return c
+}
+
+// soundEntryChildren returns where the child boxes of an audio sample entry
+// start, relative to the entry: after the 36-byte version 0 layout and the
+// 16 (version 1) or 36 (version 2) bytes that later versions add. ok is false
+// for versions this package does not know.
+func soundEntryChildren(version uint16) (offset int64, ok bool) {
+	switch version {
+	case 0:
+		return 36, true
+	case 1:
+		return 52, true
+	case 2:
+		return 72, true
+	}
+	return 0, false
+}
+
+// applyLosslessConfig overrides the sample entry's channels and sample rate
+// with those of the codec's own configuration box, and sets the bit depth,
+// for ALAC and FLAC. entry is the offset of the sample entry's size field. It
+// is best effort: whatever is missing or implausible leaves file untouched.
+func applyLosslessConfig(sr *binary.SafeReader, entry int64, entrySize uint32, codec string, file *types.File) {
+	var boxType string
+	var decode func(*binary.SafeReader, *Atom) (losslessConfig, bool)
+	switch codec {
+	case codecALAC:
+		boxType, decode = "alac", alacConfig
+	case codecFLAC:
+		boxType, decode = "dfLa", flacConfig
+	default:
+		return
+	}
+
+	version, err := sr.Read[uint16](entry+16, "sound sample entry version")
+	if err != nil {
+		return
+	}
+	children, ok := soundEntryChildren(version)
+	if !ok || int64(entrySize) < children {
+		return
+	}
+	box, err := findAtom(sr, entry+children, entry+int64(entrySize), boxType)
+	if err != nil {
+		return
+	}
+	cfg, ok := decode(sr, box)
+	if !ok {
+		return
+	}
+
+	cfg = cfg.valid()
+	if cfg.sampleRate != 0 {
+		file.Audio.SampleRate = cfg.sampleRate
+	}
+	if cfg.bitDepth != 0 {
+		file.Audio.BitDepth = cfg.bitDepth
+	}
+	if cfg.channels != 0 {
+		file.Audio.Channels = cfg.channels
+	}
+}
+
+// alacConfig decodes the ALACSpecificConfig held by an "alac" child box. The
+// box is a FullBox in files ffmpeg and iTunes write; the version and flags are
+// absent in some, so the config is located by the box's size.
+func alacConfig(sr *binary.SafeReader, box *Atom) (losslessConfig, bool) {
+	const configSize = 24
+	start := box.DataOffset()
+	switch size := box.DataSize(); {
+	case size == configSize:
+	case size >= configSize+4:
+		start += 4
+	default:
+		return losslessConfig{}, false
+	}
+	var cfg [configSize]byte
+	if err := sr.ReadAt(cfg[:], start, "ALAC magic cookie"); err != nil {
+		return losslessConfig{}, false
+	}
+	// frameLength(4) compatibleVersion(1) bitDepth(1) pb(1) mb(1) kb(1)
+	// numChannels(1) maxRun(2) maxFrameBytes(4) avgBitRate(4) sampleRate(4)
+	return losslessConfig{
+		bitDepth:   int(cfg[5]),
+		channels:   int(cfg[9]),
+		sampleRate: int(uint32(cfg[20])<<24 | uint32(cfg[21])<<16 | uint32(cfg[22])<<8 | uint32(cfg[23])),
+	}, true
+}
+
+// flacConfig decodes the STREAMINFO block that opens the "dfLa" child box of a
+// FLAC sample entry: a FullBox, then FLAC metadata blocks.
+func flacConfig(sr *binary.SafeReader, box *Atom) (losslessConfig, bool) {
+	const streamInfoSize = 34
+	if box.DataSize() < 4+4+streamInfoSize {
+		return losslessConfig{}, false
+	}
+	var buf [4 + streamInfoSize]byte
+	if err := sr.ReadAt(buf[:], box.DataOffset()+4, "dfLa STREAMINFO"); err != nil {
+		return losslessConfig{}, false
+	}
+	// Block header: last-block flag and type (1 byte), length (3 bytes).
+	length := int(buf[1])<<16 | int(buf[2])<<8 | int(buf[3])
+	if buf[0]&0x7F != 0 || length != streamInfoSize {
+		return losslessConfig{}, false
+	}
+	// STREAMINFO bytes 10-13: sample rate (20 bits), channels-1 (3 bits),
+	// bits per sample-1 (5 bits), then the high bits of the sample count.
+	si := buf[4:]
+	return losslessConfig{
+		sampleRate: int(si[10])<<12 | int(si[11])<<4 | int(si[12])>>4,
+		channels:   int(si[12]>>1&0x07) + 1,
+		bitDepth:   int(si[12]&1)<<4 | int(si[13]>>4) + 1,
+	}, true
 }
 
 // parseSoundSampleEntry reads channels and sample rate from an audio sample

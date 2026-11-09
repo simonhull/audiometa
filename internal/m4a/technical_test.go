@@ -277,3 +277,53 @@ func TestParseTechnicalInfo_Lossless(t *testing.T) {
 		})
 	}
 }
+
+// alacCookie is an "alac" child box: FullBox header plus ALACSpecificConfig.
+func alacCookie(bitDepth, channels byte, rate uint32) []byte {
+	cfg := u32be(4096)                                   // frameLength
+	cfg = append(cfg, 0, bitDepth, 40, 10, 14, channels) // compatibleVersion, bitDepth, pb, mb, kb, numChannels
+	cfg = append(cfg, 0, 0)                              // maxRun
+	cfg = append(cfg, u32be(0, 0, rate)...)              // maxFrameBytes, avgBitRate, sampleRate
+	return fullAtom("alac", cfg)
+}
+
+// dfLaBox is a "dfLa" child box holding one STREAMINFO block.
+func dfLaBox(rate uint32, channels, bits byte) []byte {
+	si := make([]byte, 34)
+	si[10] = byte(rate >> 12)
+	si[11] = byte(rate >> 4)
+	si[12] = byte(rate<<4) | (channels-1)<<1 | (bits-1)>>4
+	si[13] = (bits - 1) << 4
+	return fullAtom("dfLa", append([]byte{0x80, 0, 0, 34}, si...))
+}
+
+func TestDfLaBox_MatchesFFmpegBytes(t *testing.T) {
+	box := dfLaBox(96000, 2, 24)
+	// Atom header(8) + FullBox(4) + block header(4), then STREAMINFO bytes 10-13.
+	if got := box[16+10 : 16+14]; !bytes.Equal(got, []byte{0x17, 0x70, 0x03, 0x70}) {
+		t.Errorf("STREAMINFO bytes 10-13 = % x, want 17 70 03 70", got)
+	}
+}
+
+func TestParseTechnicalInfo_LosslessConfig(t *testing.T) {
+	tests := []struct {
+		name                 string
+		codec                string
+		entry                []byte
+		rate, bits, channels int
+	}{
+		{"ALAC 96k/24", "alac", append(sampleEntryV01(0, 2, 48000)[:20:20], alacCookie(24, 2, 96000)...), 96000, 24, 2},
+		{"ALAC 44.1k/16 mono", "alac", append(sampleEntryV01(0, 1, 44100)[:20:20], alacCookie(16, 1, 44100)...), 44100, 16, 1},
+		{"FLAC 96k/24", "fLaC", append(sampleEntryV01(0, 2, 48000)[:20:20], dfLaBox(96000, 2, 24)...), 96000, 24, 2},
+		{"ALAC without cookie", "alac", sampleEntryV01(0, 2, 44100)[:20:20], 44100, 0, 2},
+		{"ALAC cookie with bad depth", "alac", append(sampleEntryV01(0, 2, 44100)[:20:20], alacCookie(3, 2, 44100)...), 44100, 0, 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := parseMoovTech(t, trakWith("soun", stsdFor(tt.codec, tt.entry))).Audio
+			if a.SampleRate != tt.rate || a.BitDepth != tt.bits || a.Channels != tt.channels {
+				t.Errorf("rate %d bits %d channels %d, want %d/%d/%d", a.SampleRate, a.BitDepth, a.Channels, tt.rate, tt.bits, tt.channels)
+			}
+		})
+	}
+}
