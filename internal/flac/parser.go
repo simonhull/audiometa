@@ -2,6 +2,7 @@ package flac
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -39,17 +40,17 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	// Create safe reader
 	sr := binary.NewSafeReader(r, size, path)
 
-	// Verify FLAC magic bytes ("fLaC")
-	magic := make([]byte, 4)
-	if err := sr.ReadAt(magic, 0, "FLAC magic bytes"); err != nil {
-		return nil, fmt.Errorf("read FLAC magic: %w", err)
-	}
-	if string(magic) != "fLaC" {
+	// The "fLaC" marker starts the file, or follows a leading ID3v2 tag.
+	start, err := streamStart(sr, size)
+	switch {
+	case errors.Is(err, errNoMagic):
 		return nil, &types.CorruptedFileError{
 			Path:   path,
 			Offset: 0,
 			Reason: "invalid FLAC magic bytes",
 		}
+	case err != nil:
+		return nil, fmt.Errorf("read FLAC magic: %w", err)
 	}
 
 	// Initialize file
@@ -60,10 +61,16 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		Tags:   types.Tags{},
 		Audio:  types.AudioInfo{},
 	}
+	if start > 0 {
+		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
+			Stage:   types.StageMetadata,
+			Message: fmt.Sprintf("non-standard ID3v2 tag of %d bytes before the FLAC stream; its frames are ignored", start),
+		})
+	}
 
 	var vorbisComments []string
 	var audioStart int64 // first audio byte; 0 until the chain's last block is read
-	for b, err := range blocks(ctx, sr, size) {
+	for b, err := range blocks(ctx, sr, start, size) {
 		if err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return nil, ctxErr
@@ -165,9 +172,14 @@ func (p *parser) ExtractArtwork(ctx context.Context, r io.ReaderAt, size int64, 
 	}
 	sr := binary.NewSafeReader(r, size, path)
 
+	start, err := streamStart(sr, size)
+	if err != nil {
+		return nil, nil // as for a broken chain below: the parser reports it
+	}
+
 	var artwork []types.Artwork
 
-	for b, err := range blocks(ctx, sr, size) {
+	for b, err := range blocks(ctx, sr, start, size) {
 		if err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return nil, ctxErr
