@@ -32,18 +32,22 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		Audio:  types.AudioInfo{},
 	}
 
-	// Parse ID3v2 tag (if present)
-	tagSize, err := parseID3v2(ctx, sr, file)
-	if err != nil {
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, ctxErr
+	// ID3v2 tag. A file without one (untagged, or with only an ID3v1
+	// trailer) is valid and gets no warning; a tag that is there but cannot
+	// be read does, and the frame scan below still runs.
+	var tagSize int64
+	if hasID3Magic(sr, size) {
+		var err error
+		if tagSize, err = parseID3v2(ctx, sr, file); err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, ctxErr
+			}
+			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
+				Stage:   types.StageMetadata,
+				Message: fmt.Sprintf("ID3v2 parsing failed: %v", err),
+				Err:     err,
+			})
 		}
-		// Not an ID3v2 file or parse error - try to find MP3 frames anyway
-		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-			Stage:   types.StageMetadata,
-			Message: fmt.Sprintf("ID3v2 parsing failed: %v", err),
-			Err:     err,
-		})
 	}
 
 	// ID3v1 trailer: a fallback for tags, and never part of the audio.
