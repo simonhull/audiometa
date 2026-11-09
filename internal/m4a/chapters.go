@@ -339,7 +339,7 @@ func readChapterTables(ctx context.Context, sr *binary.SafeReader, stblAtom *Ato
 	}
 
 	var err error
-	t.times, err = parseChapterTimings(ctx, sr, stblAtom, timescale)
+	t.times, err = parseChapterTimings(ctx, sr, stblAtom, timescale, chapterSampleBound(ctx, sr, stblAtom))
 	if err := cut(err); err != nil {
 		return t, cuts, err
 	}
@@ -379,10 +379,36 @@ func parseTrackTimescale(ctx context.Context, sr *binary.SafeReader, mdiaAtom *A
 // have thousands of chapters, never a million.
 const maxChapterSamples = 1 << 20
 
-// parseChapterTimings extracts chapter start times from the stts atom. A table
-// that holds fewer entries than it declares returns the times it does hold,
-// with errTruncatedTable.
-func parseChapterTimings(ctx context.Context, sr *binary.SafeReader, stblAtom *Atom, timescale uint32) ([]time.Duration, error) {
+// chapterSampleBound returns how many samples the chapter track's stsz can
+// describe in this file, at most maxChapterSamples: the entries a per-sample
+// table holds, or, for a uniform sample size, as many samples as the file has
+// room for. Every chapter sample takes at least 2 bytes, its title length. A
+// missing or unreadable stsz gives maxChapterSamples; its readers report it.
+func chapterSampleBound(ctx context.Context, sr *binary.SafeReader, stblAtom *Atom) int {
+	stszAtom, err := stblAtom.child(ctx, sr, "stsz")
+	if err != nil || stszAtom.DataSize() < 12 {
+		return maxChapterSamples
+	}
+	defaultSize, err := sr.Read[uint32](stszAtom.DataOffset()+4, "default sample size")
+	if err != nil {
+		return maxChapterSamples
+	}
+	count, err := sr.Read[uint32](stszAtom.DataOffset()+8, "sample count")
+	if err != nil {
+		return maxChapterSamples
+	}
+
+	room := (stszAtom.DataSize() - 12) / 4 // entries of a per-sample table
+	if defaultSize != 0 {
+		room = sr.Size() / int64(max(defaultSize, 2))
+	}
+	return int(min(int64(count), room, maxChapterSamples))
+}
+
+// parseChapterTimings extracts chapter start times from the stts atom, at most
+// maxSamples of them. A table that holds fewer entries than it declares returns
+// the times it does hold, with errTruncatedTable.
+func parseChapterTimings(ctx context.Context, sr *binary.SafeReader, stblAtom *Atom, timescale uint32, maxSamples int) ([]time.Duration, error) {
 	sttsAtom, err := stblAtom.child(ctx, sr, "stts")
 	if err != nil {
 		return nil, err
@@ -423,7 +449,7 @@ func parseChapterTimings(ctx context.Context, sr *binary.SafeReader, stblAtom *A
 		offset += 8
 
 		for range sampleCount {
-			if len(chapterTimes) >= maxChapterSamples {
+			if len(chapterTimes) >= maxSamples {
 				return chapterTimes, nil // Bounded: stop accumulating on pathological input.
 			}
 			chapterTimes = append(chapterTimes, mvhdDuration(currentTime, timescale))
@@ -657,9 +683,10 @@ func parseChunkOffsets(ctx context.Context, sr *binary.SafeReader, stblAtom *Ato
 // sampleOffsets[i] is the file offset of sample i (see computeSampleOffsets); samples
 // without an offset yield a chapter with an empty title.
 func buildChaptersFromText(ctx context.Context, sr *binary.SafeReader, chapterTimes []time.Duration, sampleSizes []uint32, sampleOffsets []uint64) []types.Chapter {
-	chapters := make([]types.Chapter, 0, len(chapterTimes))
+	n := min(len(sampleSizes), len(chapterTimes))
+	chapters := make([]types.Chapter, 0, n)
 
-	for i := range min(len(sampleSizes), len(chapterTimes)) {
+	for i := range n {
 		if binary.Canceled(ctx, i) != nil {
 			return chapters // Partial; the caller observes ctx.Err().
 		}

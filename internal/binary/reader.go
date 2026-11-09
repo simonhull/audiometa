@@ -88,6 +88,9 @@ func (sr *SafeReader) Path() string {
 	return sr.path
 }
 
+// Size returns the size of the data the reader covers.
+func (sr *SafeReader) Size() int64 { return sr.size }
+
 // ReadAt reads bytes at the given offset with context for error messages.
 // A zero-length read anywhere in [0, size] succeeds without reading.
 func (sr *SafeReader) ReadAt(b []byte, off int64, what string) error {

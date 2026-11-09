@@ -9,6 +9,7 @@ import (
 	"time"
 
 	audiobinary "github.com/simonhull/audiometa/internal/binary"
+	"github.com/simonhull/audiometa/internal/testbudget"
 	"github.com/simonhull/audiometa/internal/types"
 )
 
@@ -400,6 +401,45 @@ func TestQTChapters_HugeSttsCountIsBounded(t *testing.T) {
 	}
 }
 
+func TestQTChapters_TimingsBoundedByTheSamplesTheFileHolds(t *testing.T) {
+	titles := []string{"Chapter1", "Chapter2", "Chapter3"} // 10-byte samples with the length prefix
+	payload := slices.Concat(textSample(titles[0]), textSample(titles[1]), textSample(titles[2]))
+	for _, tc := range []struct {
+		name    string
+		stsz    []byte
+		stsc    []byte
+		stco    []byte
+		exactly bool // the table holds only 3 samples, so exactly 3 chapters come out
+	}{
+		{"table", stszAtom(0, 3, 10, 10, 10), stscAtom([3]uint32{1, 1, 1}), stcoAtom(8, 18, 28), true},
+		{"uniform", stszAtom(10, 1<<20), stscAtom([3]uint32{1, 3, 1}), stcoAtom(8), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data, moovOff := buildQTChapterFile(1000, payload,
+				sttsAtom([2]uint32{1 << 20, 1000}), tc.stsz, tc.stsc, tc.stco)
+			var chapters []types.Chapter
+			alloc := testbudget.Allocated(func() {
+				chapters = parseQTChapters(t, data, moovOff, time.Hour)
+			})
+			if alloc > 1<<20 {
+				t.Errorf("allocated %d bytes for a %d-byte file, want under 1 MiB", alloc, len(data))
+			}
+			if tc.exactly && len(chapters) != 3 {
+				t.Fatalf("got %d chapters, want 3", len(chapters))
+			}
+			if len(chapters) < 3 || len(chapters) > len(data)/2 {
+				t.Fatalf("got %d chapters from a %d-byte file", len(chapters), len(data))
+			}
+			for i, title := range titles {
+				want := time.Duration(i) * time.Second
+				if chapters[i].Title != title || chapters[i].StartTime != want {
+					t.Errorf("chapter %d = %q at %v, want %q at %v", i, chapters[i].Title, chapters[i].StartTime, title, want)
+				}
+			}
+		})
+	}
+}
+
 func TestParseChapterTimings_CapsAccumulation(t *testing.T) {
 	stts := sttsAtom([2]uint32{0xFFFFFFFF, 1})
 	stbl := createMockAtom("stbl", stts)
@@ -408,7 +448,7 @@ func TestParseChapterTimings_CapsAccumulation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	times, err := parseChapterTimings(context.Background(), sr, atom, 1000)
+	times, err := parseChapterTimings(context.Background(), sr, atom, 1000, maxChapterSamples)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -456,7 +496,7 @@ func TestParseChapterTimings_HugeAccumulationDoesNotWrap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	times, err := parseChapterTimings(context.Background(), sr, atom, 1)
+	times, err := parseChapterTimings(context.Background(), sr, atom, 1, maxChapterSamples)
 	if err != nil {
 		t.Fatal(err)
 	}
