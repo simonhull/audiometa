@@ -80,11 +80,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		duration, err := calculateDuration(ctx, sr, size, h, file.Audio.SampleRate)
 		if err != nil {
 			// Non-fatal - add warning
-			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-				Stage:   types.StageTechnical,
-				Message: fmt.Sprintf("failed to calculate duration: %v", err),
-				Err:     err,
-			})
+			types.Warn(file, types.StageTechnical, 0, err, fmt.Sprintf("failed to calculate duration: %v", err))
 		} else {
 			file.Audio.Duration = duration
 		}
@@ -100,11 +96,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 			return nil, ctxErr
 		}
 		// Non-fatal - add warning
-		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-			Stage:   types.StageMetadata,
-			Message: fmt.Sprintf("failed to parse %s: %v", c.commentName, err),
-			Err:     err,
-		})
+		types.Warn(file, types.StageMetadata, 0, err, fmt.Sprintf("failed to parse %s: %v", c.commentName, err))
 	}
 
 	replaygain.Apply(file)
@@ -161,28 +153,17 @@ func readHeaderPackets(ctx context.Context, r io.ReaderAt, size int64, path stri
 			if i == 0 {
 				return headers{}, fmt.Errorf("failed to read first Ogg page: %w", err)
 			}
-			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-				Stage:   types.StageMetadata,
-				Message: fmt.Sprintf("failed to read Ogg page %d: %v", i, err),
-				Err:     err,
-				Offset:  offset,
-			})
+			types.Warn(file, types.StageMetadata, offset, err, fmt.Sprintf("failed to read Ogg page %d: %v", i, err))
 			break
 		}
 		read += nextOffset - offset
 		offset = nextOffset
 		if read > maxBytes {
-			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-				Stage:   types.StageMetadata,
-				Message: fmt.Sprintf("Ogg header search exceeds %d bytes; truncated", maxBytes),
-			})
+			types.Warn(file, types.StageMetadata, offset, nil, fmt.Sprintf("Ogg header search exceeds %d bytes; truncated", maxBytes))
 			break
 		}
 		if i >= maxHeaderPages {
-			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-				Stage:   types.StageMetadata,
-				Message: fmt.Sprintf("Ogg header search exceeds %d pages; truncated", maxHeaderPages),
-			})
+			types.Warn(file, types.StageMetadata, offset, nil, fmt.Sprintf("Ogg header search exceeds %d pages; truncated", maxHeaderPages))
 			break
 		}
 		if i == 0 {

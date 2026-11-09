@@ -282,11 +282,7 @@ func mapTextItem(sr *binary.SafeReader, tagAtom *Atom, file *types.File) {
 	values, err := parseMetadataValues(sr, tagAtom, file)
 	if err != nil {
 		// Keep the values read before the damage.
-		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-			Stage:   types.StageMetadata,
-			Message: fmt.Sprintf("failed to parse tag %s: %v", tagAtom.Type, err),
-			Err:     err,
-		})
+		types.Warn(file, types.StageMetadata, 0, err, fmt.Sprintf("failed to parse tag %s: %v", tagAtom.Type, err))
 	}
 	if len(values) == 0 {
 		return

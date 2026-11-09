@@ -43,11 +43,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return nil, ctxErr
 			}
-			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-				Stage:   types.StageMetadata,
-				Message: fmt.Sprintf("ID3v2 parsing failed: %v", err),
-				Err:     err,
-			})
+			types.Warn(file, types.StageMetadata, 0, err, fmt.Sprintf("ID3v2 parsing failed: %v", err))
 		}
 	}
 
@@ -70,11 +66,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, ctxErr
 		}
-		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-			Stage:   types.StageTechnical,
-			Message: fmt.Sprintf("failed to parse MP3 technical info: %v", err),
-			Err:     err,
-		})
+		types.Warn(file, types.StageTechnical, 0, err, fmt.Sprintf("failed to parse MP3 technical info: %v", err))
 	}
 
 	closeOverDriveChapters(file)

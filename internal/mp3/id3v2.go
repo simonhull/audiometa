@@ -440,11 +440,7 @@ func parseTextFrame(frame ID3v2Frame, file *types.File) { //nolint:gocyclo // Co
 func applyMediaMarkers(f *types.File, value string) {
 	chapters, err := parseMediaMarkers(value)
 	if err != nil {
-		f.Warnings = types.AppendWarning(f.Warnings, types.Warning{
-			Stage:   types.StageChapters,
-			Message: fmt.Sprintf("ignoring OverDrive MediaMarkers: %v", err),
-			Err:     err,
-		})
+		types.Warn(f, types.StageChapters, 0, err, fmt.Sprintf("ignoring OverDrive MediaMarkers: %v", err))
 		return
 	}
 	if len(chapters) > 0 {

@@ -282,5 +282,5 @@ func setBitrate(file *types.File, factors ...int64) {
 
 // technical records a StageTechnical warning.
 func technical(file *types.File, msg string) {
-	file.Warnings = types.AppendWarning(file.Warnings, types.Warning{Stage: types.StageTechnical, Message: msg})
+	types.Warn(file, types.StageTechnical, 0, nil, msg)
 }

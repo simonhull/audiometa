@@ -63,21 +63,13 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	// and must not stop technical info or chapters from being parsed.
 	ilstAtom, err := findIlst(ctx, sr, moovAtom)
 	if err != nil && !errors.Is(err, errAtomNotFound) {
-		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-			Stage:   types.StageMetadata,
-			Message: err.Error(),
-			Err:     err,
-		})
+		types.Warn(file, types.StageMetadata, 0, err, err.Error())
 	}
 
 	// Extract metadata from ilst
 	if ilstAtom != nil {
 		if err := extractIlstMetadata(ctx, sr, ilstAtom, file); err != nil {
-			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-				Stage:   types.StageMetadata,
-				Message: err.Error(),
-				Err:     err,
-			})
+			types.Warn(file, types.StageMetadata, 0, err, err.Error())
 		}
 	}
 
@@ -102,11 +94,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	// Parse audiobook-specific tags (narrator, series, publisher, etc.)
 	if ilstAtom != nil {
 		if err := parseAudiobookTags(ctx, sr, ilstAtom, file); err != nil {
-			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-				Stage:   types.StageMetadata,
-				Message: err.Error(),
-				Err:     err,
-			})
+			types.Warn(file, types.StageMetadata, 0, err, err.Error())
 		}
 	}
 
@@ -122,11 +110,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 
 // warn records err as a warning of stage on file.
 func warn(file *types.File, stage string, err error) {
-	file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-		Stage:   stage,
-		Message: err.Error(),
-		Err:     err,
-	})
+	types.Warn(file, stage, 0, err, err.Error())
 }
 
 // findIlst navigates moov → udta → meta → ilst and returns the ilst atom.

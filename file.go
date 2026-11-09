@@ -131,11 +131,7 @@ func openWithContext(ctx context.Context, path string, opts ...Option) (*File, e
 	if options.preloadArtwork {
 		if _, err := file.ExtractArtwork(); err != nil {
 			// Don't fail completely, just add warning
-			file.Warnings = types.AppendWarning(file.Warnings, Warning{
-				Stage:   StageArtwork,
-				Message: fmt.Sprintf("preload artwork failed: %v", err),
-				Err:     err,
-			})
+			types.Warn(&file.File, StageArtwork, 0, err, fmt.Sprintf("preload artwork failed: %v", err))
 		}
 	}
 
@@ -412,10 +408,7 @@ func (f *File) filterOversized(artwork []Artwork) []Artwork {
 			continue
 		}
 		if !f.ignoreWarnings {
-			f.Warnings = types.AppendWarning(f.Warnings, Warning{
-				Stage:   StageArtwork,
-				Message: fmt.Sprintf("artwork (%s, %d bytes) exceeds max size %d; skipped", a.MIMEType, len(a.Data), f.maxArtworkSize),
-			})
+			types.Warn(&f.File, StageArtwork, 0, nil, fmt.Sprintf("artwork (%s, %d bytes) exceeds max size %d; skipped", a.MIMEType, len(a.Data), f.maxArtworkSize))
 		}
 	}
 	return kept

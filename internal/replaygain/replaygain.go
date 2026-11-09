@@ -85,11 +85,7 @@ func read(f *types.File, fields []field) *types.ReplayGainInfo {
 		}
 		v, err := fd.parse(raw)
 		if err != nil {
-			f.Warnings = types.AppendWarning(f.Warnings, types.Warning{
-				Stage:   types.StageMetadata,
-				Message: fmt.Sprintf("ignoring %s %q: %v", fd.key, truncate(raw), err),
-				Err:     err,
-			})
+			types.Warn(f, types.StageMetadata, 0, err, fmt.Sprintf("ignoring %s %q: %v", fd.key, truncate(raw), err))
 			continue
 		}
 		*fd.dst(&rg) = v

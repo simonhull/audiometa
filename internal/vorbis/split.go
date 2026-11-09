@@ -112,11 +112,7 @@ func Apply(entries [][]byte, file *types.File) []string {
 		comments = append(comments, comment)
 		if err := ParseComment(comment, file); err != nil {
 			// Non-fatal: add a warning and continue.
-			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-				Stage:   types.StageMetadata,
-				Message: fmt.Sprintf("invalid Vorbis comment: %s", err),
-				Err:     err,
-			})
+			types.Warn(file, types.StageMetadata, 0, err, fmt.Sprintf("invalid Vorbis comment: %s", err))
 		}
 	}
 	return comments

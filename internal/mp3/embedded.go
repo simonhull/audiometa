@@ -24,11 +24,7 @@ func ReadEmbeddedTag(ctx context.Context, r io.ReaderAt, size int64, path string
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return ctxErr
 		}
-		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-			Stage:   types.StageMetadata,
-			Message: "embedded ID3v2 tag parsing failed: " + err.Error(),
-			Err:     err,
-		})
+		types.Warn(file, types.StageMetadata, 0, err, "embedded ID3v2 tag parsing failed: "+err.Error())
 	}
 	return nil
 }

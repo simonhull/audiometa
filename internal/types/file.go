@@ -45,10 +45,7 @@ func TakeValue(f *File) bool {
 		return true
 	case f.tagValues == MaxTagValues:
 		f.tagValues++
-		f.Warnings = AppendWarning(f.Warnings, Warning{
-			Stage:   StageMetadata,
-			Message: fmt.Sprintf("more than %d tag values; the rest are ignored", MaxTagValues),
-		})
+		Warn(f, StageMetadata, 0, nil, fmt.Sprintf("more than %d tag values; the rest are ignored", MaxTagValues))
 	}
 	return false
 }
