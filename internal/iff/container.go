@@ -287,14 +287,9 @@ func (c *container) first(ids ...string) (chunk, bool) {
 	return chunk{}, false
 }
 
-// infoList returns the first LIST chunk of type INFO, or false.
-func (c *container) infoList() (chunk, bool) {
-	for _, ch := range c.chunks {
-		if ch.id == idLIST && ch.listType == "INFO" {
-			return ch, true
-		}
-	}
-	return chunk{}, false
+// infoIndex returns the index of the first LIST chunk of type INFO, or -1.
+func (c *container) infoIndex() int {
+	return slices.IndexFunc(c.chunks, func(ch chunk) bool { return ch.id == idLIST && ch.listType == "INFO" })
 }
 
 // present returns how many of the chunk's payload bytes the file holds.

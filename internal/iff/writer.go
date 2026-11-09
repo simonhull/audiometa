@@ -46,6 +46,7 @@ type rewrite struct {
 	id3At   int     // index of the source's ID3 chunk, or -1
 	text    []entry // the new native text tags
 	textAt  int     // index of the source's INFO chunk or first AIFF text chunk, or -1
+	infoAt  int     // index of the source's LIST/INFO chunk (WAV), or -1
 	keepID3 bool    // the edits leave the ID3 chunk as it is
 }
 
@@ -112,7 +113,7 @@ func (w *writer) plan(ctx context.Context, c *container, src io.ReaderAt, edits 
 
 // newRewrite locates the tag chunks of c.
 func newRewrite(c *container) *rewrite {
-	rw := &rewrite{c: c, id3ID: idID3WAV, id3At: -1, textAt: -1}
+	rw := &rewrite{c: c, id3ID: idID3WAV, id3At: -1, textAt: -1, infoAt: c.infoIndex()}
 	if c.magic == magicFORM {
 		rw.id3ID = idID3AIFF
 	}
@@ -150,12 +151,10 @@ func (rw *rewrite) editID3(ctx context.Context, src io.ReaderAt, edits *types.Ed
 
 // isText reports whether chunk i of the source holds native text tags.
 func (rw *rewrite) isText(i int) bool {
-	ch := rw.c.chunks[i]
 	if rw.c.magic == magicFORM {
-		return isAIFFText(ch.id)
+		return isAIFFText(rw.c.chunks[i].id)
 	}
-	info, ok := rw.c.infoList()
-	return ok && ch.off == info.off
+	return i == rw.infoAt
 }
 
 // isTextKey reports whether a raw key edit goes to the native text tags.
