@@ -141,6 +141,7 @@ func extendedHeaderLen(sr *binutil.SafeReader, header ID3v2Header, body []byte) 
 }
 
 // walk splits body (from offset start) into frames, stopping at padding.
+// It is separate from id3v2Tag.frames: a write must refuse a damaged tag and keep each frame's original header, where reading warns and goes on.
 func (t *wtag) walk(ctx context.Context, sr *binutil.SafeReader, header ID3v2Header, body []byte, start int) error {
 	headerLen, idLen := 10, 4
 	if header.Version == 2 {
