@@ -93,12 +93,9 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	// Parse chapters
 	chapters, err := parseChapters(ctx, sr, moovAtom, file.Audio.Duration)
 	if err != nil {
-		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-			Stage:   types.StageChapters,
-			Message: err.Error(),
-			Err:     err,
-		})
-	} else if len(chapters) > 0 {
+		warn(file, types.StageChapters, err)
+	}
+	if len(chapters) > 0 {
 		file.Chapters = chapters
 	}
 

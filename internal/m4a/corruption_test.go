@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -128,6 +129,60 @@ func TestParse_UnreadableEsdsWarns(t *testing.T) {
 		t.Errorf("codec = %q, want mp4a", file.Audio.Codec)
 	}
 	wantOneWarning(t, file, types.StageTechnical)
+}
+
+func TestParse_TruncatedSttsKeepsChaptersAndWarns(t *testing.T) {
+	sttsThreeClaimedTwoPresent := fullAtom("stts", u32be(3, 1, 1000, 1, 1000))
+	base := uint32(len(m4bFtyp())) // the chapter text sits after the ftyp atom
+	payload := slices.Concat(textSample("One"), textSample("Two"))
+	data, _ := buildQTChapterFile(1000, payload,
+		stszAtom(0, 2, 5, 5),
+		stscAtom([3]uint32{1, 1, 1}),
+		stcoAtom(base+8, base+13),
+		sttsThreeClaimedTwoPresent, // last, so the file ends inside the table
+	)
+
+	file := parseBytes(t, append(m4bFtyp(), data...))
+
+	checkChapters(t, file.Chapters, []string{"One", "Two"}, []time.Duration{0, time.Second})
+	wantOneWarning(t, file, types.StageChapters)
+}
+
+func TestParse_CorruptUdtaWarnsAboutChapters(t *testing.T) {
+	moov := createMockAtom("moov", append(createMvhdAtom(0, 1000, 10000), createMockAtom("udta", corruptAtom)...))
+
+	file := parseBytes(t, append(m4bFtyp(), moov...))
+
+	var chapterWarnings int
+	for _, w := range file.Warnings {
+		if w.Stage == types.StageChapters {
+			chapterWarnings++
+		}
+	}
+	if chapterWarnings != 1 {
+		t.Errorf("got %d chapter warnings, want 1: %+v", chapterWarnings, file.Warnings)
+	}
+}
+
+func TestParse_ChapterTrackWithoutMdhdUsesDefaultTimescale(t *testing.T) {
+	base := uint32(len(m4bFtyp())) // the chapter text sits after the ftyp atom
+	payload := slices.Concat(textSample("One"), textSample("Two"))
+	trak1 := createMockAtom("trak", append(tkhdAtom(1), createMockAtom("tref", createMockAtom("chap", u32be(2)))...))
+	stbl := createMockAtom("stbl", slices.Concat(
+		sttsAtom([2]uint32{2, 1000}),
+		stszAtom(0, 2, 5, 5),
+		stscAtom([3]uint32{1, 1, 1}),
+		stcoAtom(base+8, base+13),
+	))
+	trak2 := createMockAtom("trak", append(tkhdAtom(2), createMockAtom("mdia", createMockAtom("minf", stbl))...))
+	data := append(createMockAtom("mdat", payload), createMockAtom("moov", append(trak1, trak2...))...)
+
+	file := parseBytes(t, append(m4bFtyp(), data...))
+
+	checkChapters(t, file.Chapters, []string{"One", "Two"}, []time.Duration{0, time.Second})
+	if len(file.Warnings) != 0 {
+		t.Errorf("warnings = %+v, want none", file.Warnings)
+	}
 }
 
 func TestParseAudiobookTags_CorruptSiblingAfterFreeformIsReported(t *testing.T) {
