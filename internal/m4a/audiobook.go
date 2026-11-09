@@ -47,13 +47,14 @@ func parseAudiobookTags(ctx context.Context, sr *binary.SafeReader, ilstAtom *At
 }
 
 // recordFreeformRaw stores the values of a ---- atom in the raw tag map under
-// the upper-cased freeform name, matching the Vorbis key convention.
+// the upper-cased freeform name, matching the Vorbis key convention, and keeps
+// the name as stored as the key's name.
 func recordFreeformRaw(file *types.File, name string, values []string) {
 	if name == "" {
 		return
 	}
 	for _, v := range values {
-		file.Tags.AddRaw(strings.ToUpper(name), v)
+		file.Tags.AddRawNamed(name, v)
 	}
 }
 

@@ -204,8 +204,11 @@ Raw keys are format-specific:
 | Format | Raw key |
 |--------|---------|
 | FLAC, Ogg Vorbis, Opus | Vorbis comment name, upper-cased (`TITLE`, `ENCODER`) |
-| MP3 | ID3v2 frame ID (`TIT2`, `TSSE`); TXXX frames under their upper-cased description |
+| MP3 | ID3v2 frame ID (`TIT2`, `TSSE`); TXXX frames under their upper-cased description; UFID frames under `UFID:` and their owner (`UFID:http://musicbrainz.org`) |
 | M4A/M4B | ilst atom name (`"\xa9nam"` for ©nam, `aART`); freeform `----` atoms under their upper-cased name |
+
+TXXX descriptions and freeform names keep the spelling the file has: `Tags.Name` reports it, so
+a file Picard tagged gives `MusicBrainz Album Id` for the key `MUSICBRAINZ ALBUM ID`.
 
 ## Supported Formats
 
@@ -311,6 +314,12 @@ _, err := f.WriteTo(w) // any io.Writer; WriteToContext takes a context
   `tit2`), unless the file already has a `TXXX` of that description. Write lyrics through
   `Tags.Lyrics`: on MP3 that keeps the frame's language and description, and a new frame gets
   the language `XXX` (unknown).
+- **Tag names.** A TXXX frame or freeform item that exists keeps its name as spelled, whatever
+  case the key is given in. A new one is named by its key, or as `Tags.SetNamed` spells it:
+  `SetNamed("MusicBrainz Album Id", id)` writes the name Picard and other taggers use. Frames
+  or items whose names differ only in case are read as one key, and writing it makes them one
+  frame or item, named and placed as the first was. `UFID:<owner>` writes a UFID frame with one
+  identifier of up to 64 bytes.
 - **WAV and AIFF.** Edits go to the ID3v2 chunk, which keeps its version; a file without one
   gets an ID3v2.4 chunk at the end. A raw key that is native text (an INFO ID, or an AIFF text
   chunk) is written there instead. Setting or clearing a typed field also rewrites the native

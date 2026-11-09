@@ -347,14 +347,19 @@ const (
 	frameIDGRP1 = "GRP1"
 	frameIDMVNM = "MVNM"
 	frameIDMVIN = "MVIN"
+	frameIDUFID = "UFID"
 )
+
+// ufidKeyPrefix starts the raw key of a UFID frame, which "UFID:" followed by
+// the frame's owner names: "UFID:http://musicbrainz.org".
+const ufidKeyPrefix = "UFID:"
 
 // v22FrameIDs maps ID3v2.2 three-character frame IDs to their ID3v2.3 equivalents.
 var v22FrameIDs = map[string]string{
 	"TT1": "TIT1", "TT2": frameIDTIT2, "TT3": "TIT3", "TP1": "TPE1", "TP2": "TPE2",
 	"TAL": "TALB", "TYE": "TYER", "TRK": "TRCK", "TPA": "TPOS", "TCO": "TCON",
 	"TCM": "TCOM", "COM": frameIDCOMM, "TXX": frameIDTXXX, "GP1": frameIDGRP1, "MVN": frameIDMVNM,
-	"MVI": frameIDMVIN, "PIC": frameIDAPIC, "ULT": frameIDUSLT,
+	"MVI": frameIDMVIN, "PIC": frameIDAPIC, "ULT": frameIDUSLT, "UFI": frameIDUFID,
 }
 
 // readFrameHeader reads the frame header at offset for the tag's version and
@@ -409,7 +414,7 @@ func isTextFrameID(id string) bool {
 // isMetadataFrame reports whether processFrame consumes this frame's payload.
 // Keep in sync with processFrame.
 func isMetadataFrame(id string) bool {
-	return isTextFrameID(id) || id == frameIDTXXX || id == frameIDCOMM || id == frameIDUSLT || id == "CHAP"
+	return isTextFrameID(id) || id == frameIDTXXX || id == frameIDCOMM || id == frameIDUSLT || id == frameIDUFID || id == "CHAP"
 }
 
 // frameState accumulates results that are resolved after the whole tag is walked.
@@ -431,6 +436,8 @@ func processFrame(frame ID3v2Frame, file *types.File, st *frameState) {
 		parseCommentFrame(frame, file, st)
 	case frame.ID == frameIDUSLT:
 		parseLyricsFrame(frame, file)
+	case frame.ID == frameIDUFID:
+		parseUFIDFrame(frame, file)
 	case frame.ID == "CHAP":
 		st.chapters = append(st.chapters, frame)
 	}
@@ -596,16 +603,39 @@ func parseTXXXFrame(frame ID3v2Frame, file *types.File) {
 		values = []string{""}
 	}
 
-	// Raw key convention: the upper-cased TXXX description (matches Vorbis keys).
+	// Raw key convention: the upper-cased TXXX description (matches Vorbis keys);
+	// the description as stored is kept as the key's name.
 	if description != "" {
 		for _, v := range values {
-			file.Tags.AddRaw(strings.ToUpper(description), v)
+			file.Tags.AddRawNamed(description, v)
 		}
 	}
 
 	if handler, ok := txxxFieldHandlers[strings.ToLower(description)]; ok {
 		handler(file, values[0])
 	}
+}
+
+// parseUFIDFrame handles UFID: [owner\0][identifier], the identifier up to 64
+// bytes. A frame whose identifier is text (valid UTF-8 without NUL, as a
+// MusicBrainz recording ID is) is recorded under the raw key "UFID:" + owner;
+// a binary identifier, or a frame with no owner, is not.
+func parseUFIDFrame(frame ID3v2Frame, file *types.File) {
+	owner, id, ok := parseUFID(frame.Data)
+	if !ok || id == "" || !utf8.ValidString(id) || strings.ContainsRune(id, 0) {
+		return
+	}
+	file.Tags.AddRaw(ufidKeyPrefix+owner, id)
+}
+
+// parseUFID splits a UFID body into its owner, decoded as ISO-8859-1, and its
+// identifier. ok is false when there is no owner or no terminator after it.
+func parseUFID(body []byte) (owner, id string, ok bool) {
+	nul := bytes.IndexByte(body, 0)
+	if nul <= 0 {
+		return "", "", false
+	}
+	return decodeText(body[:nul], encLatin1), string(body[nul+1:]), true
 }
 
 // parseCommentFrame handles COMM: [encoding][language(3)][short description\0][text].

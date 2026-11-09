@@ -310,13 +310,16 @@ func (e *ilstEditor) setGnre(values []string) error {
 }
 
 // setFreeform replaces every ---- item whose name matches key (ignoring
-// case) with one ---- item holding values. The item keeps the first
-// match's name spelling, or uses key.
+// case) with one ---- item holding values, put where the first match was. The
+// item keeps the first match's name as it is spelled, so items whose names
+// differ only in case become one, named as the first of them. With no match
+// it is new, and named as the caller's tags spell key ([types.Tags.Name]):
+// "MusicBrainz Album Id" for a key set with [types.Tags.SetNamed].
 func (e *ilstEditor) setFreeform(key string, values []string) error {
 	if !utf8.ValidString(key) || key == "" || key != strings.ToUpper(key) {
 		return fmt.Errorf("%w: %q is not an M4A item type or an upper-case freeform name", types.ErrUnsupportedWrite, key)
 	}
-	name, found := key, false
+	name, found := e.newName(key), false
 	at := e.remove(func(it *matom) bool {
 		if it.typ != itemFreeform {
 			return false
@@ -342,6 +345,18 @@ func (e *ilstEditor) setFreeform(key string, values []string) error {
 	}
 	e.insert(at, &matom{typ: itemFreeform, payload: payload})
 	return nil
+}
+
+// newName returns the name of a new freeform item for key: the spelling the
+// caller's tags give it when that is key in another case, else key.
+func (e *ilstEditor) newName(key string) string {
+	if e.edits.Final == nil {
+		return key
+	}
+	if name := e.edits.Final.Name(key); strings.EqualFold(name, key) {
+		return name
+	}
+	return key
 }
 
 // applyField writes one typed-field edit to the keys chosen by fieldTargets.

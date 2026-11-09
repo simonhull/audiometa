@@ -80,6 +80,7 @@ func setOf(s string) map[string]bool {
 // apply applies edits to the frame list: key edits, then field edits (each in
 // slice order), then artwork operations.
 func (t *wtag) apply(edits *types.EditSet) error {
+	t.final = edits.Final
 	for _, e := range edits.Keys {
 		if err := t.applyKeyEdit(e.Key, e.Values); err != nil {
 			return err
@@ -149,6 +150,9 @@ func (t *wtag) applyKeyEdit(key string, values []string) error {
 			return fmt.Errorf("%w: value of %s is not valid UTF-8 or contains NUL", types.ErrUnsupportedWrite, key)
 		}
 	}
+	if owner, ok := strings.CutPrefix(key, ufidKeyPrefix); ok {
+		return t.setUFID(owner, values)
+	}
 	if t.isTextKey(key) {
 		return t.setTextFrame(key, values)
 	}
@@ -203,11 +207,14 @@ func (t *wtag) setTextFrame(id string, values []string) error {
 	return nil
 }
 
-// setTXXX replaces every TXXX frame whose upper-cased description is key by
-// one TXXX frame of values. The new frame keeps the first match's
-// description case, or uses key when nothing matched.
+// setTXXX replaces every TXXX frame whose description matches key, ignoring
+// case, by one TXXX frame of values, put where the first match was. The frame
+// keeps the first match's description as it is spelled, so frames whose
+// descriptions differ only in case become one, named as the first of them.
+// With no match it is new, and named as the caller's tags spell key
+// ([types.Tags.Name]).
 func (t *wtag) setTXXX(key string, values []string) error {
-	desc, found := key, false
+	desc, found := t.newName(key), false
 	var bodyErr error
 	at := t.remove(func(f wframe) (bool, error) {
 		if f.id != frameIDTXXX {
@@ -234,6 +241,76 @@ func (t *wtag) setTXXX(key string, values []string) error {
 	}
 	t.insert(at, wframe{id: frameIDTXXX, payload: encodeTXXX(t.outVersion, desc, values), edited: true})
 	return nil
+}
+
+// newName returns the description of a new TXXX frame for key: the spelling
+// the caller's tags give it when that is key in another case, else key.
+func (t *wtag) newName(key string) string {
+	if t.final == nil {
+		return key
+	}
+	if name := t.final.Name(key); strings.EqualFold(name, key) {
+		return name
+	}
+	return key
+}
+
+// maxUFIDIdentifier is the longest identifier a UFID frame may hold, in bytes.
+const maxUFIDIdentifier = 64
+
+// setUFID replaces every UFID frame of owner by one holding values[0] as its
+// identifier, put where the first one was, or removes them when values is
+// empty. The owner is matched exactly, as the spec has it: it is a URL or an
+// email address naming the database the identifier belongs to.
+func (t *wtag) setUFID(owner string, values []string) error {
+	if !validUFIDOwner(owner) {
+		return fmt.Errorf("%w: UFID owner %q is not printable ASCII", types.ErrUnsupportedWrite, owner)
+	}
+	if len(values) > 1 {
+		return fmt.Errorf("%w: a UFID frame holds one identifier, not %d", types.ErrUnsupportedWrite, len(values))
+	}
+	if len(values) == 1 && (values[0] == "" || len(values[0]) > maxUFIDIdentifier) {
+		return fmt.Errorf("%w: a UFID identifier is 1 to %d bytes, not %d", types.ErrUnsupportedWrite, maxUFIDIdentifier, len(values[0]))
+	}
+	var bodyErr error
+	at := t.remove(func(f wframe) (bool, error) {
+		if f.id != frameIDUFID {
+			return false, nil
+		}
+		if t.compressed(f) {
+			bodyErr = fmt.Errorf("%w: a compressed UFID frame cannot be matched against %s", types.ErrUnsupportedWrite, owner)
+			return false, bodyErr
+		}
+		body, skip := frameBody(t.outVersion, 0, f.flags, f.payload)
+		if skip != "" {
+			return false, nil
+		}
+		o, _, ok := parseUFID(body)
+		return ok && o == owner, nil
+	})
+	if bodyErr != nil {
+		return bodyErr
+	}
+	if len(values) == 0 {
+		return nil
+	}
+	payload := slices.Concat([]byte(owner), []byte{0}, []byte(values[0]))
+	t.insert(at, wframe{id: frameIDUFID, payload: payload, edited: true})
+	return nil
+}
+
+// validUFIDOwner reports whether owner can name a new UFID frame: non-empty
+// printable ASCII, which ISO-8859-1 stores as it is.
+func validUFIDOwner(owner string) bool {
+	if owner == "" {
+		return false
+	}
+	for _, c := range []byte(owner) {
+		if c < 0x20 || c > 0x7E {
+			return false
+		}
+	}
+	return true
 }
 
 // txxxDescription decodes a TXXX frame's description the way the reader does.
