@@ -267,3 +267,200 @@ func ExampleTags_All() {
 	// ENCODER [Lavc63.1.102 libvorbis]
 	// TITLE [Test Title]
 }
+
+// DetectFormat reads only the header, so it works on any io.ReaderAt without
+// parsing the file.
+func ExampleDetectFormat() {
+	f, err := os.Open("testdata/sample.opus")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	format, err := audiometa.DetectFormat(f, info.Size(), f.Name())
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(format)
+	// Output:
+	// Opus
+}
+
+// WithIgnoreWarnings discards warnings. The FLAC file here is cut off just
+// after its STREAMINFO block, which normally records one warning.
+func ExampleWithIgnoreWarnings() {
+	path := copyToTemp("testdata/sample.flac")
+	defer os.RemoveAll(filepath.Dir(path))
+	if err := os.Truncate(path, 43); err != nil {
+		log.Fatal(err)
+	}
+
+	for _, opts := range [][]audiometa.Option{nil, {audiometa.WithIgnoreWarnings()}} {
+		file, err := audiometa.Open(path, opts...)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println("warnings:", len(file.Warnings))
+		file.Close()
+	}
+	// Output:
+	// warnings: 1
+	// warnings: 0
+}
+
+// WithArtworkPreload reads the artwork during Open, so the first
+// ExtractArtwork call returns the cached images.
+func ExampleWithArtworkPreload() {
+	file, err := audiometa.Open("testdata/sample.mp3", audiometa.WithArtworkPreload())
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	artwork, err := file.ExtractArtwork()
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(len(artwork), len(file.Warnings))
+	// Output:
+	// 1 0
+}
+
+// ExtractArtworkContext stops early when the context is done.
+func ExampleFile_ExtractArtworkContext() {
+	file, err := audiometa.Open("testdata/sample.mp3")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err = file.ExtractArtworkContext(ctx)
+	fmt.Println(errors.Is(err, context.Canceled))
+
+	artwork, err := file.ExtractArtworkContext(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(len(artwork))
+	// Output:
+	// true
+	// 1
+}
+
+// AudioDigestContext bounds how long hashing the audio can take. It returns
+// the same digest as AudioDigest.
+func ExampleFile_AudioDigestContext() {
+	file, err := audiometa.Open("testdata/sample.flac")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	sum, err := file.AudioDigestContext(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("%x\n", sum[:4])
+	// Output:
+	// f36e19b9
+}
+
+// GetFirst returns the first value of a key, or "" when the key is absent.
+func ExampleTags_GetFirst() {
+	file, err := audiometa.Open("testdata/sample.flac")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	fmt.Printf("%q %q\n", file.Tags.GetFirst("TITLE"), file.Tags.GetFirst("NO SUCH KEY"))
+	// Output:
+	// "Test Title" ""
+}
+
+// GetBest tries several keys and returns the first non-empty value, which
+// helps when one field lives under different keys in different formats.
+func ExampleTags_GetBest() {
+	for _, path := range []string{"testdata/sample.flac", "testdata/sample.mp3"} {
+		file, err := audiometa.Open(path)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println(file.Tags.GetBest("TITLE", "TIT2"))
+		file.Close()
+	}
+	// Output:
+	// Test Title
+	// Test Title
+}
+
+// A CorruptedFileError means the container structure is invalid. Here a WAV
+// file ends right after its RIFF header, so it has no fmt chunk.
+func ExampleCorruptedFileError() {
+	data, err := os.ReadFile("testdata/sample.wav")
+	if err != nil {
+		log.Fatal(err)
+	}
+	dir, err := os.MkdirTemp("", "audiometa-example")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	path := filepath.Join(dir, "headless.wav")
+	if err := os.WriteFile(path, data[:12], 0o600); err != nil {
+		log.Fatal(err)
+	}
+
+	_, err = audiometa.Open(path)
+	if corrupt, ok := errors.AsType[*audiometa.CorruptedFileError](err); ok {
+		fmt.Println(corrupt.Reason, "at offset", corrupt.Offset)
+	}
+	// Output:
+	// WAV file without a fmt chunk at offset 12
+}
+
+// An OutOfBoundsError means a required read runs past the end of the file.
+// Here an Ogg file is cut off in the middle of its first page.
+func ExampleOutOfBoundsError() {
+	data, err := os.ReadFile("testdata/sample.ogg")
+	if err != nil {
+		log.Fatal(err)
+	}
+	dir, err := os.MkdirTemp("", "audiometa-example")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	path := filepath.Join(dir, "cut.ogg")
+	if err := os.WriteFile(path, data[:30], 0o600); err != nil {
+		log.Fatal(err)
+	}
+
+	_, err = audiometa.Open(path)
+	if oob, ok := errors.AsType[*audiometa.OutOfBoundsError](err); ok {
+		fmt.Printf("%s: %d bytes at offset %d, file size %d\n", oob.What, oob.Length, oob.Offset, oob.Size)
+	}
+	// Output:
+	// page data: 30 bytes at offset 28, file size 30
+}
+
+// The version depends on how the binary was built, so GetVersion and
+// GetVersionInfo have no checked output.
+func ExampleGetVersion() {
+	fmt.Println(audiometa.GetVersion())
+}
+
+// GetVersionInfo adds the commit, build time and Go version when the build
+// recorded them.
+func ExampleGetVersionInfo() {
+	info := audiometa.GetVersionInfo()
+	fmt.Println(info.Version, info.GitCommit, info.BuildTime, info.GoVersion)
+}
