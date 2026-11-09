@@ -163,5 +163,16 @@ $FF -f lavfi -t 0.1 -i anullsrc=r=8000:cl=mono -c:a pcm_f32be -metadata title="T
 $FF -f lavfi -t 2 -i "sine=frequency=440:sample_rate=8000" -c:a libmp3lame -b:a 8k \
 	-metadata title="Test Title" "$OUT/sample_mpeg25.mp3"
 
+# ALAC and FLAC in MP4: 96 kHz, 24-bit stereo; rates above 65535 Hz do not fit the
+# sample entry's 16.16 field, so the codec configuration boxes must be read.
+# shellcheck disable=SC2086
+$FF -f lavfi -t 0.05 -i anullsrc=r=96000:cl=stereo -c:a alac -sample_fmt s32p \
+	-metadata title="Test Title" -metadata artist="Test Artist" -metadata album="Test Album" \
+	"$OUT/sample_alac.m4a"
+# shellcheck disable=SC2086
+$FF -f lavfi -t 0.05 -i anullsrc=r=96000:cl=stereo -c:a flac -sample_fmt s32 \
+	-metadata title="Test Title" -metadata artist="Test Artist" -metadata album="Test Album" \
+	-f mp4 "$OUT/sample_flac.mp4"
+
 echo "Generated:"
 ls -l "$OUT"
