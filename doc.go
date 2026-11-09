@@ -47,7 +47,9 @@
 //     with a warning and kept byte for byte on write.
 //   - MP3: ID3v2.2, ID3v2.3 and ID3v2.4 tags with an ID3v1 fallback, APIC
 //     artwork, chapters from CHAP frames or OverDrive MediaMarkers, and
-//     Xing/VBRI-aware duration. Writing keeps the ID3v2 version (ID3v2.2 tags
+//     duration and bitrate from the Xing, Info or VBRI header, trimmed to the
+//     gapless length when a LAME tag records the encoder delay (MPEG-1, MPEG-2
+//     and MPEG-2.5 Layer III). Writing keeps the ID3v2 version (ID3v2.2 tags
 //     and untagged files get ID3v2.4), re-emits untouched frames byte for byte,
 //     and never edits chapters. An ID3v1 trailer is copied unchanged, never
 //     updated from ID3v2 edits, so after deleting TIT2 a reader that falls
