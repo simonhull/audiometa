@@ -311,6 +311,29 @@ func TestIlst_IntegerItemEdit(t *testing.T) {
 	}
 }
 
+func TestIlst_ImplicitIntegerItemEdit(t *testing.T) {
+	tests := []struct {
+		name     string
+		item     []byte
+		key, set string
+		want     []byte
+	}{
+		{"tmpo 2 bytes", ilstInt("tmpo", dataTypeImplicit, []byte{0, 90}), "tmpo", "120", ilstInt("tmpo", dataTypeImplicit, []byte{0, 0x78})},
+		{"cpil 1 byte", ilstInt("cpil", dataTypeImplicit, []byte{1}), "cpil", "0", ilstInt("cpil", dataTypeImplicit, []byte{0})},
+		{"mvi labeled text", ilstInt(itemMvi, dataTypeUTF8, []byte{0, 2}), itemMvi, "3", ilstInt(itemMvi, dataTypeUTF8, []byte{0, 3})},
+		{"tmpo stored as text", ilstInt("tmpo", dataTypeImplicit, []byte("120")), "tmpo", "130", ilstText("tmpo", "130")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			src := buildMP4(false, tt.item)
+			out := writeTags(t, src, func(tg *types.Tags) { tg.Set(tt.key, tt.set) })
+			if got := itemOf(t, out, tt.key); !bytes.Equal(got, tt.want) {
+				t.Errorf("%s = %x, want %x", tt.key, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestIlst_RefusedKeys(t *testing.T) {
 	src := buildMP4(false, ilstText("\xA9nam", "T"), covrItem(covrImage{covrJPEG, []byte{1}}),
 		atom("xyzw", dataAtom(13, []byte{1, 2})))
