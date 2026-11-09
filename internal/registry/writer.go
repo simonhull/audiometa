@@ -37,9 +37,16 @@ type TagWriter interface {
 // InPlaceWriter is optionally implemented by TagWriters that can apply edits by
 // overwriting one region without changing the file size.
 type InPlaceWriter interface {
-	// InPlacePatch returns the bytes to write at off. ok is false when the edits do
-	// not fit (the caller then falls back to WriteFile); that is not an error.
-	InPlacePatch(ctx context.Context, src io.ReaderAt, size int64, edits *types.EditSet) (off int64, patch []byte, ok bool, err error)
+	// InPlacePatch returns the bytes to write over the file and where. A nil Patch
+	// and a nil error mean the edits do not fit; the caller then falls back to
+	// WriteFile.
+	InPlacePatch(ctx context.Context, src io.ReaderAt, size int64, edits *types.EditSet) (*Patch, error)
+}
+
+// Patch is an in-place edit: Data is written over the file at offset Off.
+type Patch struct {
+	Off  int64
+	Data []byte
 }
 
 // writers holds the registered TagWriters; guarded by mu.

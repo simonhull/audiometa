@@ -91,15 +91,15 @@ func TestID3v1Seed_InPlace(t *testing.T) {
 	padded := id3TagFlags(4, 0, 512, id3Frame(4, "TALB", latin1Text("V2 Album")))
 	src := append(append(slices.Clone(padded), audioBytes(4096)...), trailer...)
 	edits := editsFor(t, src, func(tg *types.Tags) { tg.Album = "X" })
-	off, patch, ok, err := (&writer{}).InPlacePatch(context.Background(), bytes.NewReader(src), int64(len(src)), edits)
-	if err != nil || !ok || off != 0 {
-		t.Fatalf("InPlacePatch = %d, ok %v, err %v; want 0, true, nil", off, ok, err)
+	p, err := (&writer{}).InPlacePatch(context.Background(), bytes.NewReader(src), int64(len(src)), edits)
+	if err != nil || p == nil || p.Off != 0 {
+		t.Fatalf("InPlacePatch = %+v, err %v; want a patch at 0", p, err)
 	}
-	if len(patch) != len(padded) {
-		t.Fatalf("patch is %d bytes, want %d", len(patch), len(padded))
+	if len(p.Data) != len(padded) {
+		t.Fatalf("patch is %d bytes, want %d", len(p.Data), len(padded))
 	}
 	patched := slices.Clone(src)
-	copy(patched, patch)
+	copy(patched, p.Data)
 	f := parseBytes(t, patched)
 	wantFrame(t, f, "TIT2", "T1")
 	wantFrame(t, f, "TPE1", "A1")
@@ -108,9 +108,9 @@ func TestID3v1Seed_InPlace(t *testing.T) {
 	// Without padding the seeded frames do not fit.
 	tight := append(append(id3Tag(4, id3Frame(4, "TALB", latin1Text("V2 Album"))), audioBytes(4096)...), trailer...)
 	edits = editsFor(t, tight, func(tg *types.Tags) { tg.Album = "X" })
-	_, _, ok, err = (&writer{}).InPlacePatch(context.Background(), bytes.NewReader(tight), int64(len(tight)), edits)
-	if err != nil || ok {
-		t.Fatalf("unpadded InPlacePatch ok = %v, err = %v; want false, nil", ok, err)
+	p, err = (&writer{}).InPlacePatch(context.Background(), bytes.NewReader(tight), int64(len(tight)), edits)
+	if err != nil || p != nil {
+		t.Fatalf("unpadded InPlacePatch = %+v, err = %v; want nil, nil", p, err)
 	}
 }
 

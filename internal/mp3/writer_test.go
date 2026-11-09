@@ -71,12 +71,12 @@ func TestWriter_InPlaceEqualsFullRewrite(t *testing.T) {
 	edits := editsFor(t, src, func(tg *types.Tags) { tg.Title = "Another title" })
 	full := writeBytes(t, src, edits)
 
-	off, patch, ok, err := (&writer{}).InPlacePatch(context.Background(), bytes.NewReader(src), int64(len(src)), edits)
-	if err != nil || !ok {
-		t.Fatalf("InPlacePatch: ok %v, err %v", ok, err)
+	p, err := (&writer{}).InPlacePatch(context.Background(), bytes.NewReader(src), int64(len(src)), edits)
+	if err != nil || p == nil {
+		t.Fatalf("InPlacePatch = %+v, err %v; want a patch", p, err)
 	}
 	patched := slices0(src)
-	copy(patched[off:], patch)
+	copy(patched[p.Off:], p.Data)
 	if !bytes.Equal(patched, full) {
 		t.Error("in-place result differs from WriteFile")
 	}
@@ -89,9 +89,9 @@ func TestWriter_InPlaceNotOK(t *testing.T) {
 	}
 	for name, src := range tests {
 		edits := editsFor(t, src, func(tg *types.Tags) { tg.Title = "A title that does not fit in the old tag" })
-		_, _, ok, err := (&writer{}).InPlacePatch(context.Background(), bytes.NewReader(src), int64(len(src)), edits)
-		if ok || err != nil {
-			t.Errorf("%s: ok %v, err %v; want false, nil", name, ok, err)
+		p, err := (&writer{}).InPlacePatch(context.Background(), bytes.NewReader(src), int64(len(src)), edits)
+		if p != nil || err != nil {
+			t.Errorf("%s: InPlacePatch = %+v, err %v; want nil, nil", name, p, err)
 		}
 	}
 }

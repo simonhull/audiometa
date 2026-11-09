@@ -279,15 +279,15 @@ func (j *writeJob) writeInPlace(ctx context.Context) (done bool, err error) {
 	if !ok {
 		return false, nil
 	}
-	off, patch, fits, err := patchSafely(ctx, ipw, j.f.reader, j.f.src.size, j.target, j.edits)
+	p, err := patchSafely(ctx, ipw, j.f.reader, j.f.src.size, j.target, j.edits)
 	if err != nil {
 		return true, err
 	}
-	if !fits {
+	if p == nil {
 		return false, nil
 	}
-	if off < 0 || off+int64(len(patch)) > j.f.src.size {
-		return true, fmt.Errorf("in-place patch [%d, %d) outside file of %d bytes", off, off+int64(len(patch)), j.f.src.size)
+	if p.Off < 0 || p.Off+int64(len(p.Data)) > j.f.src.size {
+		return true, fmt.Errorf("in-place patch [%d, %d) outside file of %d bytes", p.Off, p.Off+int64(len(p.Data)), j.f.src.size)
 	}
 	rw, err := os.OpenFile(j.target, os.O_RDWR, 0)
 	if errors.Is(err, fs.ErrPermission) {
@@ -296,7 +296,7 @@ func (j *writeJob) writeInPlace(ctx context.Context) (done bool, err error) {
 	if err != nil {
 		return true, fmt.Errorf("open for in-place write: %w", err)
 	}
-	return true, j.patch(ctx, rw, off, patch)
+	return true, j.patch(ctx, rw, p.Off, p.Data)
 }
 
 // patch overwrites len(patch) bytes of rw at off, verifies the result and
@@ -453,10 +453,10 @@ func digestSafely(ctx context.Context, d registry.AudioDigester, r io.ReaderAt, 
 }
 
 // patchSafely calls w.InPlacePatch, converting a panic into a CorruptedFileError.
-func patchSafely(ctx context.Context, w registry.InPlaceWriter, r io.ReaderAt, size int64, path string, edits *types.EditSet) (off int64, patch []byte, ok bool, err error) {
+func patchSafely(ctx context.Context, w registry.InPlaceWriter, r io.ReaderAt, size int64, path string, edits *types.EditSet) (p *registry.Patch, err error) {
 	defer func() {
 		if rec := recover(); rec != nil {
-			off, patch, ok, err = 0, nil, false, panicError(path, rec)
+			p, err = nil, panicError(path, rec)
 		}
 	}()
 	return w.InPlacePatch(ctx, r, size, edits)

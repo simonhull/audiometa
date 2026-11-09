@@ -150,17 +150,17 @@ func (w *writer) AudioDigest(ctx context.Context, src io.ReaderAt, size int64) (
 
 // InPlacePatch returns the new moov and free atom to write over the old
 // moov and the free space after it, when the edited moov fits there.
-func (w *writer) InPlacePatch(ctx context.Context, src io.ReaderAt, size int64, edits *types.EditSet) (int64, []byte, bool, error) {
+func (w *writer) InPlacePatch(ctx context.Context, src io.ReaderAt, size int64, edits *types.EditSet) (*registry.Patch, error) {
 	if err := ctx.Err(); err != nil {
-		return 0, nil, false, err
+		return nil, err
 	}
 	l, err := planWrite(ctx, binutil.NewSafeReader(src, size, ""), size, edits)
 	if err != nil {
-		return 0, nil, false, err
+		return nil, err
 	}
 	region := l.rEnd - l.moovStart
 	if l.placement != placeFits || region > binutil.MaxAllocBytes {
-		return 0, nil, false, nil
+		return nil, nil
 	}
 	patch := make([]byte, 0, region)
 	patch = append(patch, l.moov...)
@@ -168,7 +168,7 @@ func (w *writer) InPlacePatch(ctx context.Context, src io.ReaderAt, size int64, 
 		patch = appendFreeHeader(patch, l.free)
 		patch = append(patch, make([]byte, region-int64(len(patch)))...)
 	}
-	return l.moovStart, patch, true, nil
+	return &registry.Patch{Off: l.moovStart, Data: patch}, nil
 }
 
 // planWrite reads the file's structure, refuses what cannot be written,

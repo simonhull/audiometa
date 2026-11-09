@@ -386,15 +386,15 @@ func TestWriter_InPlaceEqualsFullRewrite(t *testing.T) {
 	edits := editsFor(t, src, func(tg *types.Tags) { tg.Title = "Another title" }, types.ArtworkOp{Kind: types.ArtworkOpRemoveAll})
 	full := writeBytes(t, src, edits)
 
-	off, patch, ok, err := (&writer{}).InPlacePatch(context.Background(), bytes.NewReader(src), int64(len(src)), edits)
-	if err != nil || !ok {
-		t.Fatalf("InPlacePatch: ok %v, err %v", ok, err)
+	p, err := (&writer{}).InPlacePatch(context.Background(), bytes.NewReader(src), int64(len(src)), edits)
+	if err != nil || p == nil {
+		t.Fatalf("InPlacePatch = %+v, err %v; want a patch", p, err)
 	}
-	if off != 4 {
-		t.Errorf("off = %d, want 4", off)
+	if p.Off != 4 {
+		t.Errorf("off = %d, want 4", p.Off)
 	}
 	patched := slices.Clone(src)
-	copy(patched[off:], patch)
+	copy(patched[p.Off:], p.Data)
 	if !bytes.Equal(patched, full) {
 		t.Error("in-place result differs from WriteFile")
 	}
@@ -403,9 +403,9 @@ func TestWriter_InPlaceEqualsFullRewrite(t *testing.T) {
 func TestWriter_InPlaceNotOK(t *testing.T) {
 	src := simpleFLAC(8, "TITLE=T")
 	edits := editsFor(t, src, func(tg *types.Tags) { tg.Title = "A title that does not fit in the padding" })
-	_, _, ok, err := (&writer{}).InPlacePatch(context.Background(), bytes.NewReader(src), int64(len(src)), edits)
-	if ok || err != nil {
-		t.Errorf("ok %v, err %v; want false, nil", ok, err)
+	p, err := (&writer{}).InPlacePatch(context.Background(), bytes.NewReader(src), int64(len(src)), edits)
+	if p != nil || err != nil {
+		t.Errorf("InPlacePatch = %+v, err %v; want nil, nil", p, err)
 	}
 }
 
@@ -540,14 +540,14 @@ func FuzzWriteFLAC(f *testing.F) {
 		}
 		// A successful write is a well-formed FLAC with the same audio.
 		ctx := context.Background()
-		if off, patch, ok, err := w.InPlacePatch(ctx, bytes.NewReader(data), int64(len(data)), edits); err != nil {
+		if p, err := w.InPlacePatch(ctx, bytes.NewReader(data), int64(len(data)), edits); err != nil {
 			t.Fatalf("InPlacePatch failed after WriteFile succeeded: %v", err)
-		} else if ok {
-			if off < 0 || off+int64(len(patch)) > int64(len(data)) {
-				t.Fatalf("InPlacePatch at %d of %d bytes does not fit in %d bytes", off, len(patch), len(data))
+		} else if p != nil {
+			if p.Off < 0 || p.Off+int64(len(p.Data)) > int64(len(data)) {
+				t.Fatalf("InPlacePatch at %d of %d bytes does not fit in %d bytes", p.Off, len(p.Data), len(data))
 			}
 			patched := slices.Clone(data)
-			copy(patched[off:], patch)
+			copy(patched[p.Off:], p.Data)
 			if !bytes.Equal(patched, out) {
 				t.Fatal("in-place result differs from WriteFile")
 			}

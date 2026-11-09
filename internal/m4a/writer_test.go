@@ -227,7 +227,7 @@ func TestLayout_OffsetIntoRegionRefusedEveryPlacement(t *testing.T) {
 				if _, err := tryTags(t, src, tt.mutate); !errors.Is(err, types.ErrUnsupportedWrite) {
 					t.Errorf("offset %d: WriteFile err = %v, want ErrUnsupportedWrite", o, err)
 				}
-				_, _, _, err := (&writer{}).InPlacePatch(context.Background(), bytes.NewReader(src), int64(len(src)), editsFor(t, src, tt.mutate))
+				_, err := (&writer{}).InPlacePatch(context.Background(), bytes.NewReader(src), int64(len(src)), editsFor(t, src, tt.mutate))
 				if !errors.Is(err, types.ErrUnsupportedWrite) {
 					t.Errorf("offset %d: InPlacePatch err = %v, want ErrUnsupportedWrite", o, err)
 				}
@@ -307,12 +307,12 @@ func TestWriter_InPlaceEqualsFullRewrite(t *testing.T) {
 		src := titled(faststart)
 		edits := editsFor(t, src, growTitle(-10))
 		full := writeBytes(t, src, edits)
-		off, patch, ok, err := (&writer{}).InPlacePatch(context.Background(), bytes.NewReader(src), int64(len(src)), edits)
-		if err != nil || !ok {
-			t.Fatalf("faststart %v: InPlacePatch ok %v, err %v", faststart, ok, err)
+		p, err := (&writer{}).InPlacePatch(context.Background(), bytes.NewReader(src), int64(len(src)), edits)
+		if err != nil || p == nil {
+			t.Fatalf("faststart %v: InPlacePatch = %+v, err %v; want a patch", faststart, p, err)
 		}
 		patched := slices.Clone(src)
-		copy(patched[off:], patch)
+		copy(patched[p.Off:], p.Data)
 		if !bytes.Equal(patched, full) {
 			t.Errorf("faststart %v: in-place result differs from WriteFile", faststart)
 		}
@@ -321,9 +321,9 @@ func TestWriter_InPlaceEqualsFullRewrite(t *testing.T) {
 
 func TestWriter_InPlaceNotOK(t *testing.T) {
 	for _, src := range [][]byte{titled(true), titled(false)} {
-		_, _, ok, err := (&writer{}).InPlacePatch(context.Background(), bytes.NewReader(src), int64(len(src)), editsFor(t, src, growTitle(100)))
-		if err != nil || ok {
-			t.Errorf("grow: ok %v, err %v; want false, nil", ok, err)
+		p, err := (&writer{}).InPlacePatch(context.Background(), bytes.NewReader(src), int64(len(src)), editsFor(t, src, growTitle(100)))
+		if err != nil || p != nil {
+			t.Errorf("grow: InPlacePatch = %+v, err %v; want nil, nil", p, err)
 		}
 	}
 }

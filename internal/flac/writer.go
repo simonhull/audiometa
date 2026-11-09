@@ -124,18 +124,18 @@ func (w *writer) PreservedDigest(ctx context.Context, src io.ReaderAt, size int6
 // InPlacePatch returns the new metadata blocks to write just after the "fLaC"
 // marker (offset 4, or 4 past a leading ID3v2 tag) when they fill exactly the space of the old ones (possibly with a resized PADDING
 // block). The patch is then exactly what WriteFile writes before the audio.
-func (w *writer) InPlacePatch(ctx context.Context, src io.ReaderAt, size int64, edits *types.EditSet) (int64, []byte, bool, error) {
+func (w *writer) InPlacePatch(ctx context.Context, src io.ReaderAt, size int64, edits *types.EditSet) (*registry.Patch, error) {
 	if err := ctx.Err(); err != nil {
-		return 0, nil, false, err
+		return nil, err
 	}
 	m, meta, err := buildMeta(ctx, binutil.NewSafeReader(src, size, ""), size, edits)
 	if err != nil {
-		return 0, nil, false, err
+		return nil, err
 	}
 	if int64(len(meta)) != m.oldMetaLen {
-		return 0, nil, false, nil
+		return nil, nil
 	}
-	return m.prefix + int64(len(flacMagic)), meta, true, nil
+	return &registry.Patch{Off: m.prefix + int64(len(flacMagic)), Data: meta}, nil
 }
 
 // buildMeta reads the source blocks, applies edits and serializes the new

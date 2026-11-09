@@ -97,11 +97,14 @@ type inPlaceFake struct {
 	preserved func(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error)
 }
 
-func (w *inPlaceFake) InPlacePatch(context.Context, io.ReaderAt, int64, *types.EditSet) (int64, []byte, bool, error) {
+func (w *inPlaceFake) InPlacePatch(context.Context, io.ReaderAt, int64, *types.EditSet) (*registry.Patch, error) {
 	if w.onPatch != nil {
 		w.onPatch()
 	}
-	return w.off, w.patch, w.fits, w.err
+	if w.err != nil || !w.fits {
+		return nil, w.err
+	}
+	return &registry.Patch{Off: w.off, Data: w.patch}, nil
 }
 
 func (w *inPlaceFake) PreservedDigest(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error) {
