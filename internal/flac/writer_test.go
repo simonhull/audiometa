@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/simonhull/audiometa/internal/registry"
+	"github.com/simonhull/audiometa/internal/testbudget"
 	"github.com/simonhull/audiometa/internal/types"
 )
 
@@ -502,12 +503,28 @@ func FuzzWriteFLAC(f *testing.F) {
 	}
 	w := &writer{}
 	f.Fuzz(func(t *testing.T, data []byte) {
-		out, err := tryWrite(data, edits)
+		var out []byte
+		var err error
+		testbudget.Check(t, testbudget.For(testbudget.Write, types.FormatFLAC), len(data), "WriteFile", func() {
+			out, err = tryWrite(data, edits)
+		})
 		if err != nil {
 			return
 		}
 		// A successful write is a well-formed FLAC with the same audio.
 		ctx := context.Background()
+		if off, patch, ok, err := w.InPlacePatch(ctx, bytes.NewReader(data), int64(len(data)), edits); err != nil {
+			t.Fatalf("InPlacePatch failed after WriteFile succeeded: %v", err)
+		} else if ok {
+			if off < 0 || off+int64(len(patch)) > int64(len(data)) {
+				t.Fatalf("InPlacePatch at %d of %d bytes does not fit in %d bytes", off, len(patch), len(data))
+			}
+			patched := slices.Clone(data)
+			copy(patched[off:], patch)
+			if !bytes.Equal(patched, out) {
+				t.Fatal("in-place result differs from WriteFile")
+			}
+		}
 		a, errA := w.AudioDigest(ctx, bytes.NewReader(data), int64(len(data)))
 		b, errB := w.AudioDigest(ctx, bytes.NewReader(out), int64(len(out)))
 		if errA != nil || errB != nil || !bytes.Equal(a, b) {
