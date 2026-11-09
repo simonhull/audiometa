@@ -207,7 +207,7 @@ func TestParseTextFrame(t *testing.T) {
 	}
 
 	// TIT2 (Title) frame
-	frame := ID3v2Frame{
+	frame := id3v2Frame{
 		ID:   "TIT2",
 		Data: []byte{0x00, 'T', 'e', 's', 't'}, // ISO-8859-1 encoding + "Test"
 	}
@@ -218,7 +218,7 @@ func TestParseTextFrame(t *testing.T) {
 	}
 
 	// TPE1 (Artist) frame
-	frame = ID3v2Frame{
+	frame = id3v2Frame{
 		ID:   "TPE1",
 		Data: []byte{0x00, 'A', 'r', 't', 'i', 's', 't'},
 	}
@@ -229,7 +229,7 @@ func TestParseTextFrame(t *testing.T) {
 	}
 
 	// TRCK (Track number) frame
-	frame = ID3v2Frame{
+	frame = id3v2Frame{
 		ID:   "TRCK",
 		Data: []byte{0x00, '5', '/', '1', '2'},
 	}
@@ -247,7 +247,7 @@ func TestParseTXXXFrame(t *testing.T) {
 
 	// TXXX frame with Narrator field
 	// Format: [encoding][description\0][value]
-	frame := ID3v2Frame{
+	frame := id3v2Frame{
 		ID: "TXXX",
 		Data: []byte{
 			0x00,                                         // ISO-8859-1 encoding
@@ -262,7 +262,7 @@ func TestParseTXXXFrame(t *testing.T) {
 	}
 
 	// TXXX frame with Series field
-	frame = ID3v2Frame{
+	frame = id3v2Frame{
 		ID: "TXXX",
 		Data: []byte{
 			0x00,
@@ -279,7 +279,7 @@ func TestParseTXXXFrame(t *testing.T) {
 
 func TestParseChapterFrames(t *testing.T) {
 	// Create mock CHAP frames
-	frames := []ID3v2Frame{
+	frames := []id3v2Frame{
 		{
 			ID: "CHAP",
 			// [element_id\0][start(4)][end(4)][start_offset(4)][end_offset(4)]

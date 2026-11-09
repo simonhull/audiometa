@@ -15,7 +15,7 @@ import (
 // size of that copy's body. The frames lie in [start, end) of sr.
 type id3v2Tag struct {
 	sr         *binutil.SafeReader
-	header     ID3v2Header
+	header     id3v2Header
 	start, end int64
 	size       int64           // on-disk size of the tag (header, body, footer), before any de-unsynchronisation
 	coding     frameSizeCoding // how the tag's ID3v2.4 frame sizes are encoded
@@ -119,11 +119,11 @@ func openID3v2Tag(sr *binutil.SafeReader, warn func(types.Warning)) (id3v2Tag, e
 // that is compressed or encrypted, goes to warn and is skipped. The walk ends
 // at padding or at a frame header that cannot be read. When ctx is done it
 // yields ctx.Err() once and stops.
-func (t id3v2Tag) frames(ctx context.Context, wanted func(id string) bool, warn func(types.Warning)) iter.Seq2[ID3v2Frame, error] {
-	return func(yield func(ID3v2Frame, error) bool) {
+func (t id3v2Tag) frames(ctx context.Context, wanted func(id string) bool, warn func(types.Warning)) iter.Seq2[id3v2Frame, error] {
+	return func(yield func(id3v2Frame, error) bool) {
 		for i, off := 0, t.start; off < t.end; i++ {
 			if err := binutil.Canceled(ctx, i); err != nil {
-				yield(ID3v2Frame{}, err)
+				yield(id3v2Frame{}, err)
 				return
 			}
 			id, size, flags, headerLen, ok := readFrameHeader(t.sr, t.header.Version, t.coding, off)
@@ -139,7 +139,7 @@ func (t id3v2Tag) frames(ctx context.Context, wanted func(id string) bool, warn 
 			if !ok {
 				continue
 			}
-			if !yield(ID3v2Frame{ID: id, Size: size, Flags: flags, Data: data}, nil) {
+			if !yield(id3v2Frame{ID: id, Size: size, Flags: flags, Data: data}, nil) {
 				return
 			}
 		}

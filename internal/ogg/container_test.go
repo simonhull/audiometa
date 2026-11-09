@@ -79,7 +79,7 @@ func splitAcrossPages(packet []byte, firstType byte, serial uint32) []pageSpec {
 // readPage is the reference reader that pageStream must agree with: it reads
 // the Ogg page at offset field by field through a SafeReader and returns the
 // page, the next offset and any error.
-func readPage(sr *binutil.SafeReader, offset int64) (*Page, int64, error) {
+func readPage(sr *binutil.SafeReader, offset int64) (*oggPage, int64, error) {
 	// Verify "OggS" magic marker
 	magic := make([]byte, 4)
 	if err := sr.ReadAt(magic, offset, "Ogg magic"); err != nil {
@@ -142,7 +142,7 @@ func readPage(sr *binutil.SafeReader, offset int64) (*Page, int64, error) {
 		return nil, 0, err
 	}
 
-	page := &Page{
+	page := &oggPage{
 		HeaderType:      headerType,
 		GranulePosition: int64(granule), //nolint:gosec // G115: RFC 3533 granule position is a signed field; all-ones (-1) means no packet ends on the page
 		SerialNumber:    serial,
@@ -242,10 +242,10 @@ func TestPageStreamReadError(t *testing.T) {
 }
 
 // pagesOf reads every page of an Ogg file built by buildOgg.
-func pagesOf(t testing.TB, data []byte) []*Page {
+func pagesOf(t testing.TB, data []byte) []*oggPage {
 	t.Helper()
 	sr := binutil.NewSafeReader(bytes.NewReader(data), int64(len(data)), "x")
-	var pages []*Page
+	var pages []*oggPage
 	for off := int64(0); off < int64(len(data)); {
 		page, next, err := readPage(sr, off)
 		if err != nil {
@@ -275,23 +275,23 @@ func TestSplitPackets(t *testing.T) {
 	pk := func(n int, b byte) []byte { return bytes.Repeat([]byte{b}, n) }
 	tests := []struct {
 		name     string
-		pages    []*Page
+		pages    []*oggPage
 		want     [][]byte
 		wantOpen bool
 	}{
 		{
 			name:  "two packets in one page",
-			pages: []*Page{{Lacing: []byte{3, 2}, Data: append(pk(3, 'a'), pk(2, 'b')...)}},
+			pages: []*oggPage{{Lacing: []byte{3, 2}, Data: append(pk(3, 'a'), pk(2, 'b')...)}},
 			want:  [][]byte{pk(3, 'a'), pk(2, 'b')},
 		},
 		{
 			name:  "255 byte packet terminated by zero lacing",
-			pages: []*Page{{Lacing: []byte{255, 0}, Data: pk(255, 'x')}},
+			pages: []*oggPage{{Lacing: []byte{255, 0}, Data: pk(255, 'x')}},
 			want:  [][]byte{pk(255, 'x')},
 		},
 		{
 			name: "packet spanning two pages",
-			pages: []*Page{
+			pages: []*oggPage{
 				{Lacing: []byte{255}, Data: pk(255, 'a')},
 				{HeaderType: 0x01, Lacing: []byte{10}, Data: pk(10, 'b')},
 			},
@@ -299,7 +299,7 @@ func TestSplitPackets(t *testing.T) {
 		},
 		{
 			name: "continuation dropped by the next page",
-			pages: []*Page{
+			pages: []*oggPage{
 				{Lacing: []byte{255}, Data: pk(255, 'a')},
 				{Lacing: []byte{3}, Data: pk(3, 'b')},
 			},
@@ -307,7 +307,7 @@ func TestSplitPackets(t *testing.T) {
 		},
 		{
 			name:     "unterminated trailing packet",
-			pages:    []*Page{{Lacing: []byte{4, 255}, Data: append(pk(4, 'a'), pk(255, 'b')...)}},
+			pages:    []*oggPage{{Lacing: []byte{4, 255}, Data: append(pk(4, 'a'), pk(255, 'b')...)}},
 			want:     [][]byte{pk(4, 'a'), pk(255, 'b')},
 			wantOpen: true,
 		},

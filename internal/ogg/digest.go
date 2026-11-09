@@ -80,7 +80,7 @@ type headerSkip struct {
 // audio returns the part of page's payload after the stream's header packets,
 // counting down each header packet that ends on the page. It returns nil while
 // header packets are still incomplete.
-func (s *headerSkip) audio(page *Page) []byte {
+func (s *headerSkip) audio(page *oggPage) []byte {
 	if s.remaining == 0 {
 		return page.Data
 	}

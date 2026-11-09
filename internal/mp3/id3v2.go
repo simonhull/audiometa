@@ -25,15 +25,15 @@ import (
 	"github.com/simonhull/audiometa/internal/types"
 )
 
-// ID3v2Header represents an ID3v2 tag header.
-type ID3v2Header struct {
+// id3v2Header represents an ID3v2 tag header.
+type id3v2Header struct {
 	Version byte // Major version (2, 3 or 4)
 	Flags   byte
 	Size    uint32 // Tag size (excluding header), synchsafe
 }
 
-// ID3v2Frame represents a single ID3v2 frame.
-type ID3v2Frame struct {
+// id3v2Frame represents a single ID3v2 frame.
+type id3v2Frame struct {
 	ID    string
 	Data  []byte
 	Size  uint32
@@ -42,7 +42,7 @@ type ID3v2Frame struct {
 
 // totalSize returns the on-disk size of the tag: 10-byte header, body and,
 // for ID3v2.4 with the footer flag (0x10), the 10-byte footer.
-func (h ID3v2Header) totalSize() int64 {
+func (h id3v2Header) totalSize() int64 {
 	n := 10 + int64(h.Size)
 	if h.Version == 4 && h.Flags&0x10 != 0 {
 		n += 10
@@ -111,8 +111,8 @@ func deunsync(b []byte) []byte {
 // deunsyncTag returns a reader over the tag with its body de-unsynchronised
 // (the 10-byte header is kept, with Size updated). On failure it returns the
 // original reader and header together with a warning.
-func deunsyncTag(sr *binutil.SafeReader, header ID3v2Header) (*binutil.SafeReader, ID3v2Header, *types.Warning) {
-	fail := func(err error) (*binutil.SafeReader, ID3v2Header, *types.Warning) {
+func deunsyncTag(sr *binutil.SafeReader, header id3v2Header) (*binutil.SafeReader, id3v2Header, *types.Warning) {
+	fail := func(err error) (*binutil.SafeReader, id3v2Header, *types.Warning) {
 		return sr, header, &types.Warning{
 			Stage:   types.StageMetadata,
 			Message: fmt.Sprintf("could not read unsynchronised ID3 tag body (%v); frames parsed as stored", err),
@@ -178,10 +178,10 @@ func frameBody(version, tagFlags byte, flags uint16, data []byte) (body []byte, 
 }
 
 // parseID3v2Header reads and validates the ID3v2 header.
-func parseID3v2Header(sr *binutil.SafeReader) (ID3v2Header, error) {
+func parseID3v2Header(sr *binutil.SafeReader) (id3v2Header, error) {
 	buf := make([]byte, 10)
 	if err := sr.ReadAt(buf, 0, "ID3v2 header"); err != nil {
-		return ID3v2Header{}, &types.UnsupportedFormatError{
+		return id3v2Header{}, &types.UnsupportedFormatError{
 			Path:   sr.Path(),
 			Reason: "failed to read ID3v2 header",
 		}
@@ -189,13 +189,13 @@ func parseID3v2Header(sr *binutil.SafeReader) (ID3v2Header, error) {
 
 	// Verify "ID3" magic bytes
 	if string(buf[0:3]) != "ID3" {
-		return ID3v2Header{}, &types.UnsupportedFormatError{
+		return id3v2Header{}, &types.UnsupportedFormatError{
 			Path:   sr.Path(),
 			Reason: "not an ID3v2 file (missing ID3 header)",
 		}
 	}
 
-	header := ID3v2Header{
+	header := id3v2Header{
 		Version: buf[3],
 		Flags:   buf[5],
 		Size:    decodeSynchsafe(buf[6:10]),
@@ -214,7 +214,7 @@ func parseID3v2Header(sr *binutil.SafeReader) (ID3v2Header, error) {
 }
 
 // skipExtendedHeader skips the extended header if present and returns frame data offset.
-func skipExtendedHeader(sr *binutil.SafeReader, header ID3v2Header) int64 {
+func skipExtendedHeader(sr *binutil.SafeReader, header id3v2Header) int64 {
 	frameDataOffset := int64(10)
 
 	// ID3v2.2 has no extended header (bit 0x40 means compression there).
@@ -322,14 +322,14 @@ func isMetadataFrame(id string) bool {
 
 // frameState accumulates results that are resolved after the whole tag is walked.
 type frameState struct {
-	chapters []ID3v2Frame
+	chapters []id3v2Frame
 	// describedComment is the first COMM text with a non-empty, non-iTunes
 	// short description; used only when no COMM has an empty description.
 	describedComment string
 }
 
 // processFrame processes a single frame based on its ID.
-func processFrame(frame ID3v2Frame, file *types.File, st *frameState) {
+func processFrame(frame id3v2Frame, file *types.File, st *frameState) {
 	switch {
 	case isTextFrameID(frame.ID):
 		parseTextFrame(frame, file)
@@ -358,7 +358,7 @@ func decodeSynchsafe(b []byte) uint32 {
 }
 
 // parseTextFrame parses standard text frames (TIT2, TPE1, TALB, etc.)
-func parseTextFrame(frame ID3v2Frame, file *types.File) { //nolint:gocyclo // Complexity from many simple cases - intentionally kept together
+func parseTextFrame(frame id3v2Frame, file *types.File) { //nolint:gocyclo // Complexity from many simple cases - intentionally kept together
 	if len(frame.Data) < 1 {
 		return
 	}
@@ -483,7 +483,7 @@ func setIfEmpty(field func(*types.Tags) *string) func(*types.File, string) {
 // parseTXXXFrame handles TXXX: [encoding][description\0][value{\0value}]. Every
 // value goes to the raw tags, and the first fills the typed field, if any. A
 // frame with no value keeps its raw key, holding "", so it can still be deleted.
-func parseTXXXFrame(frame ID3v2Frame, file *types.File) {
+func parseTXXXFrame(frame id3v2Frame, file *types.File) {
 	if len(frame.Data) < 2 {
 		return
 	}
@@ -523,7 +523,7 @@ func parseTXXXFrame(frame ID3v2Frame, file *types.File) {
 // bytes. A frame whose identifier is text (valid UTF-8 without NUL, as a
 // MusicBrainz recording ID is) is recorded under the raw key "UFID:" + owner;
 // a binary identifier, or a frame with no owner, is not.
-func parseUFIDFrame(frame ID3v2Frame, file *types.File) {
+func parseUFIDFrame(frame id3v2Frame, file *types.File) {
 	owner, id, ok := parseUFID(frame.Data)
 	if !ok || id == "" || !utf8.ValidString(id) || strings.ContainsRune(id, 0) || !types.TakeValue(file) {
 		return
@@ -546,7 +546,7 @@ func parseUFID(body []byte) (owner, id string, ok bool) {
 // described COMM frames; those are ignored. The first COMM with an empty
 // description is the user comment; otherwise the first described one is kept
 // as a fallback.
-func parseCommentFrame(frame ID3v2Frame, file *types.File, st *frameState) {
+func parseCommentFrame(frame id3v2Frame, file *types.File, st *frameState) {
 	c, ok := parseLangText(frame.Data)
 	if !ok {
 		return
@@ -569,7 +569,7 @@ func parseCommentFrame(frame ID3v2Frame, file *types.File, st *frameState) {
 // parseLyricsFrame handles USLT, which has the layout of COMM. Every non-empty
 // text is recorded under the raw key USLT; the first one, whatever its
 // language or description, fills Lyrics.
-func parseLyricsFrame(frame ID3v2Frame, file *types.File) {
+func parseLyricsFrame(frame id3v2Frame, file *types.File) {
 	c, ok := parseLangText(frame.Data)
 	if !ok || c.text == "" || !types.TakeValue(file) {
 		return
@@ -609,7 +609,7 @@ func parseLangText(body []byte) (langText, bool) {
 // CHAP frame format:
 //
 //	[element_id\0][start_time(4)][end_time(4)][start_offset(4)][end_offset(4)][subframes...]
-func parseChapterFrames(frames []ID3v2Frame, version byte, coding frameSizeCoding) []types.Chapter {
+func parseChapterFrames(frames []id3v2Frame, version byte, coding frameSizeCoding) []types.Chapter {
 	type chapterData struct {
 		ElementID string
 		Title     string

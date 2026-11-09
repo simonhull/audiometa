@@ -172,11 +172,11 @@ func extractIlstMetadata(ctx context.Context, sr *binary.SafeReader, ilstAtom *A
 		switch tagAtom.Type {
 		case "trkn":
 			// Track number requires special binary parsing
-			trackData, err := parseTrackNumber(ctx, sr, tagAtom)
+			trk, err := parseTrackNumber(ctx, sr, tagAtom)
 			if err == nil && !haveTrack {
 				haveTrack = true
-				file.Tags.TrackNumber = trackData.Number
-				file.Tags.TrackTotal = trackData.Total
+				file.Tags.TrackNumber = trk.Number
+				file.Tags.TrackTotal = trk.Total
 			}
 		case "disk":
 			if d, err := parseTrackNumber(ctx, sr, tagAtom); err == nil && !haveDisc {
@@ -326,8 +326,8 @@ func parseGnre(ctx context.Context, sr *binary.SafeReader, atom *Atom) (index in
 	return int(v) - 1, true
 }
 
-// TrackData holds track number information.
-type TrackData struct {
+// trackData holds track number information.
+type trackData struct {
 	Number int
 	Total  int
 }
@@ -338,8 +338,8 @@ var errShortNumberAtom = errors.New("track number atom too short")
 // parseTrackNumber extracts track number and total from a trkn or disk atom,
 // reading only inside its data atom: fewer than 4 payload bytes is an error,
 // 4-5 bytes give the number alone, and 6 or more give number and total.
-func parseTrackNumber(ctx context.Context, sr *binary.SafeReader, atom *Atom) (TrackData, error) {
-	result := TrackData{}
+func parseTrackNumber(ctx context.Context, sr *binary.SafeReader, atom *Atom) (trackData, error) {
+	result := trackData{}
 
 	// Find data atom
 	dataAtom, err := atom.child(ctx, sr, atomData)

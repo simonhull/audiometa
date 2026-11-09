@@ -33,12 +33,12 @@ func hasWarning(f *types.File, sub string) bool {
 
 func TestID3v2Header_TotalSize(t *testing.T) {
 	tests := []struct {
-		h    ID3v2Header
+		h    id3v2Header
 		want int64
 	}{
-		{ID3v2Header{Version: 4, Flags: 0x10, Size: 100}, 120},
-		{ID3v2Header{Version: 3, Flags: 0x10, Size: 100}, 110},
-		{ID3v2Header{Version: 4, Size: 0}, 10},
+		{id3v2Header{Version: 4, Flags: 0x10, Size: 100}, 120},
+		{id3v2Header{Version: 3, Flags: 0x10, Size: 100}, 110},
+		{id3v2Header{Version: 4, Size: 0}, 10},
 	}
 	for _, tt := range tests {
 		if got := tt.h.totalSize(); got != tt.want {

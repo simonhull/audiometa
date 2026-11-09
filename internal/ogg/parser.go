@@ -134,7 +134,7 @@ type headers struct {
 // audioStart is where the audio pages begin.
 func readHeaderPackets(ctx context.Context, r io.ReaderAt, size int64, path string, file *types.File, maxBytes int64) (headers, error) {
 	stream := newPageStream(r, size, path, false)
-	var pages []*Page
+	var pages []*oggPage
 	var serial uint32
 	var read int64
 	var packets packetTracker
