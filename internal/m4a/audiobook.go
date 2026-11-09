@@ -138,7 +138,7 @@ func mapAudiobookField(fieldName, value string, file *types.File) {
 	// An explicit freeform atom overrides values taken from standard atoms,
 	// but among repeated freeform atoms of the same name the first wins.
 	// Callers record the atom in the raw tags only after this returns.
-	seen := len(file.Tags.Get(strings.ToUpper(fieldName))) > 0
+	seen := file.Tags.GetFirst(strings.ToUpper(fieldName)) != ""
 	fieldName = strings.ToLower(fieldName)
 	if field, ok := freeformTextFields[fieldName]; ok {
 		if !seen && value != "" {

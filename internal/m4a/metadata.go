@@ -251,7 +251,7 @@ func mapTagToField(tag string, value string, file *types.File) {
 		return
 	}
 	// The first occurrence of a repeated single-valued atom wins.
-	seen := len(file.Tags.Get(tag)) > 0
+	seen := file.Tags.GetFirst(tag) != ""
 	file.Tags.AddRaw(tag, value)
 	if tag == itemArtist {
 		file.Tags.Artists = append(file.Tags.Artists, value)
