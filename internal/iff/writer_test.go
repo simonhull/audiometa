@@ -231,3 +231,119 @@ func TestWalk_DS64TableTooLong(t *testing.T) {
 		t.Errorf("walk made %v allocations, want a handful", allocs)
 	}
 }
+
+// infoChunk returns the LIST/INFO chunk of a WAV file, header included.
+func infoChunk(t *testing.T, data []byte) []byte {
+	t.Helper()
+	c, err := walk(t.Context(), newReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	i := c.infoIndex()
+	if i < 0 {
+		t.Fatal("no LIST/INFO chunk")
+	}
+	ch := c.chunks[i]
+	return data[ch.off : ch.data()+ch.size]
+}
+
+// subchunk is one raw INFO subchunk, padded.
+func subchunk(id, payload string) string {
+	b := append([]byte(id), binary.LittleEndian.AppendUint32(nil, uint32(len(payload)))...)
+	b = append(b, payload...)
+	if len(payload)%2 == 1 {
+		b = append(b, 0)
+	}
+	return string(b)
+}
+
+// lossyList is INFO text a re-encode would damage: Latin-1, and text after a NUL.
+var lossyList = "INFO" + subchunk("IART", "Bj\xf6rk\x00") + subchunk("ICMT", "a\x00hidden") + subchunk("INAM", "Title\x00")
+
+func TestWriteFile_UneditedNativeTextIsCopied(t *testing.T) {
+	t.Parallel()
+	le := binary.LittleEndian
+	data := riff(le, magicRIFF, "fmt ", pcmFmt(le), "LIST", lossyList, "data", "\x00\x00")
+	cases := map[string]func(*types.Tags){
+		"ID3-only key":              func(tags *types.Tags) { tags.Set("TBPM", "120") },
+		"field without native text": func(tags *types.Tags) { tags.Composers = []string{"X"} },
+	}
+	for name, edit := range cases {
+		out, err := rewriteWith(t, types.FormatWAV, data, edit)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if got, want := infoChunk(t, out), infoChunk(t, data); !bytes.Equal(got, want) {
+			t.Errorf("%s: LIST/INFO = %q, want it copied as %q", name, got, want)
+		}
+	}
+}
+
+func TestWriteFile_EditedNativeTextKeepsOtherEntries(t *testing.T) {
+	t.Parallel()
+	le := binary.LittleEndian
+	data := riff(le, magicRIFF, "fmt ", pcmFmt(le), "LIST", lossyList, "data", "\x00\x00")
+	out, err := rewriteWith(t, types.FormatWAV, data, func(tags *types.Tags) { tags.Title = "New" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "INFO" + subchunk("IART", "Bj\xf6rk\x00") + subchunk("ICMT", "a\x00hidden") + subchunk("INAM", "New\x00")
+	if got := infoChunk(t, out)[chunkHeaderSize:]; string(got) != want {
+		t.Errorf("LIST/INFO payload = %q\nwant %q", got, want)
+	}
+}
+
+func TestWriteFile_UnreadableInfoSubchunk(t *testing.T) {
+	t.Parallel()
+	le := binary.LittleEndian
+	list := "INFO" + subchunk("INAM", "Title\x00") + "\x01\x02\x03\x04\x05\x00\x00\x00" + subchunk("ICOP", "kept\x00")
+	data := riff(le, magicRIFF, "fmt ", pcmFmt(le), "LIST", list, "data", "\x00\x00")
+
+	out, err := rewriteWith(t, types.FormatWAV, data, func(tags *types.Tags) { tags.Set("TBPM", "120") })
+	if err != nil {
+		t.Fatalf("ID3-only edit: %v", err)
+	}
+	if !bytes.Equal(infoChunk(t, out), infoChunk(t, data)) {
+		t.Error("ID3-only edit changed the LIST/INFO chunk")
+	}
+	for name, edit := range map[string]func(*types.Tags){
+		"mirrored field": func(tags *types.Tags) { tags.Title = "New" },
+		"native key":     func(tags *types.Tags) { tags.Set("ISFT", "x") },
+	} {
+		if _, err := rewriteWith(t, types.FormatWAV, data, edit); !errors.As(err, new(*types.CorruptedFileError)) {
+			t.Errorf("%s: err = %v, want a CorruptedFileError", name, err)
+		}
+	}
+}
+
+func TestWriteFile_UneditedAIFFTextStaysInPlace(t *testing.T) {
+	t.Parallel()
+	be := binary.BigEndian
+	comm := make([]byte, commSize)
+	be.PutUint16(comm[0:], 1)                                  // channels
+	be.PutUint16(comm[6:], 16)                                 // bits
+	copy(comm[8:], "\x40\x0B\xFA\x00\x00\x00\x00\x00\x00\x00") // 8000 Hz as an 80-bit float
+	data := riff(be, magicFORM, "NAME", "Caf\xe9", "COMM", string(comm), "ANNO", "a\x00b", "SSND", strings.Repeat("\x00", 10))
+	copy(data[8:], formAIFF) // riff writes WAVE as the form type
+	out, err := rewriteWith(t, types.FormatAIFF, data, func(tags *types.Tags) { tags.Set("TBPM", "120") })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.HasPrefix(out[12:], data[12:]) {
+		t.Errorf("chunks before the new ID3 chunk changed:\n got %q\nwant %q", out[12:], data[12:])
+	}
+}
+
+func TestSetEntries_ReportsChange(t *testing.T) {
+	t.Parallel()
+	entries := []entry{{id: "INAM", value: "a", raw: []byte("a\x00")}, {id: "IART", value: "b"}}
+	if got, changed := setEntries(entries, "INAM", []string{"a"}); changed || got[0].raw == nil {
+		t.Errorf("same values: changed %v, entry %+v; want unchanged with its raw bytes", changed, got[0])
+	}
+	if _, changed := setEntries(entries, "INAM", []string{"c"}); !changed {
+		t.Error("new value: changed = false")
+	}
+	if _, changed := setEntries(entries, "ICOP", nil); changed {
+		t.Error("deleting an absent id: changed = true")
+	}
+}

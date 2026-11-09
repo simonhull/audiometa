@@ -93,6 +93,9 @@ type container struct {
 	// broken is set when a chunk inside the form is cut short or unreadable:
 	// the file can still be read, but a rewrite could misplace data.
 	broken bool
+	// infoDamaged is set when the LIST/INFO chunk holds a subchunk that
+	// cannot be read; the list cannot be rewritten without losing it.
+	infoDamaged bool
 }
 
 // ds64 is the RF64 chunk holding the 64-bit sizes.
