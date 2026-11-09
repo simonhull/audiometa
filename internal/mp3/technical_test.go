@@ -61,3 +61,22 @@ func TestParseTechnical_FrameBeyondWindowNotFound(t *testing.T) {
 		t.Fatalf("err = %v, want errNoMP3Frame", err)
 	}
 }
+
+func TestParseTechnical_MPEG25(t *testing.T) {
+	// MPEG-2.5 Layer III, 8 kbps, 8 kHz, mono: 72 * 8000 / 8000 = 72-byte frames.
+	frame := append([]byte{0xFF, 0xE3, 0x18, 0xC4}, make([]byte, 72-4)...)
+	f := parseBytes(t, bytes.Repeat(frame, 10))
+	if a := f.Audio; a.SampleRate != 8000 || a.Channels != 1 || a.Bitrate != 8000 || len(f.Warnings) != 0 {
+		t.Errorf("audio = %+v, warnings %v; want 8000 Hz mono 8 kbps", a, f.Warnings)
+	}
+}
+
+func TestParseTechnical_SkipsUnconfirmedSync(t *testing.T) {
+	// A 64 kbps header with nothing at its next-frame offset (+208), then real 128 kbps frames.
+	data := append([]byte{0xFF, 0xFB, 0x50, 0x00}, make([]byte, 96)...)
+	data = append(data, audioBytes(16000)...)
+	f := parseBytes(t, data)
+	if f.Audio.Bitrate != 128000 {
+		t.Errorf("bitrate = %d, want 128000 (the false sync at 0 must be skipped)", f.Audio.Bitrate)
+	}
+}

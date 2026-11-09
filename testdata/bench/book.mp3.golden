@@ -402,13 +402,13 @@
     "CodecDescription": "",
     "CodecProfile": "",
     "Container": "",
-    "Duration": 10031020408,
+    "Duration": 10000000000,
     "SampleRate": 44100,
     "BitDepth": 0,
     "Channels": 1,
-    "Bitrate": 56000,
+    "Bitrate": 32000,
     "Lossless": false,
-    "VBR": true
+    "VBR": false
   },
   "Format": 2,
   "Size": 43587
