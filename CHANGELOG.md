@@ -17,6 +17,7 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- FLAC: a file with no audio whose last metadata block ends at the end of the file can be written again after an edit shrank that block to nothing. A zero-length read at the end of a file used to be refused, which also made a header-only Ogg page at the very end of a file unreadable by the digest's page reader.
 - MP3 and M4A: clearing a typed field in the same write that also sets one of its lower-precedence raw keys (for example clearing `Language` while setting the raw key `LANG` on a file that has `LANGUAGE`) now removes that key too, as FLAC already did; the field used to come back from that key on the next read.
 - Ogg: on 32-bit platforms, a `METADATA_BLOCK_PICTURE` with a length field close to 4 GiB made `ExtractArtwork` fail with a `*CorruptedFileError`; such a picture is now skipped like any other malformed one.
 - Ogg Vorbis and Opus: on 32-bit platforms, a comment header whose vendor or comment length is close to 4 GiB made `Open` fail with a `*CorruptedFileError` (a recovered panic). It is now reported as a truncated comment header, as on 64-bit platforms.

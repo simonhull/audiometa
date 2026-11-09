@@ -89,7 +89,15 @@ func (sr *SafeReader) Path() string {
 }
 
 // ReadAt reads bytes at the given offset with context for error messages.
+// A zero-length read anywhere in [0, size] succeeds without reading.
 func (sr *SafeReader) ReadAt(b []byte, off int64, what string) error {
+	if len(b) == 0 {
+		if off < 0 || off > sr.size {
+			return &OutOfBoundsError{Path: sr.path, What: what, Offset: off, Length: 0, Size: sr.size}
+		}
+		return nil
+	}
+
 	// Check bounds
 	if off < 0 || off >= sr.size || off+int64(len(b)) > sr.size {
 		return &OutOfBoundsError{Path: sr.path, What: what, Offset: off, Length: len(b), Size: sr.size}

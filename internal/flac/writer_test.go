@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"maps"
 	"os"
@@ -491,17 +492,42 @@ func TestWriter_DeleteEveryKey(t *testing.T) {
 	}
 }
 
-func FuzzWriteFLAC(f *testing.F) {
-	f.Add(richFLAC())
-	f.Add(pictureFLAC())
-	f.Add(simpleFLAC(8, "TITLE=T"))
-	edits := &types.EditSet{
+// fuzzEdits is the edit FuzzWriteFLAC applies to every input.
+func fuzzEdits() *types.EditSet {
+	return &types.EditSet{
 		Keys:    []types.KeyEdit{{Key: "TITLE", Values: []string{"Fuzz"}}},
 		Fields:  []types.FieldEdit{{Field: types.FieldYear, Values: []string{"1999"}}},
 		Artwork: []types.ArtworkOp{{Kind: types.ArtworkOpRemove, Type: types.ArtworkFrontCover}, {Kind: types.ArtworkOpAdd, Art: types.Artwork{MIMEType: "image/png", Data: []byte("img"), Type: types.ArtworkFrontCover}}},
 		Orig:    &types.Tags{},
 		Final:   &types.Tags{},
 	}
+}
+
+// mustHex decodes s, which must be valid hex.
+func mustHex(s string) []byte {
+	b, err := hex.DecodeString(s)
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
+
+// TestWriteFile_ZeroLengthLastBlockAtEnd writes a file whose edit shrinks the last
+// PADDING block to nothing at the end of the file, then reads and writes the output again.
+func TestWriteFile_ZeroLengthLastBlockAtEnd(t *testing.T) {
+	src := mustHex("664c614300000000040000210e000000303030303030303030303030303001000000070000005449544c453d308100004030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030")
+	out := writeBytes(t, src, fuzzEdits())
+	metaOf(t, out)
+	writeBytes(t, out, fuzzEdits())
+}
+
+func FuzzWriteFLAC(f *testing.F) {
+	f.Add(richFLAC())
+	f.Add(pictureFLAC())
+	f.Add(simpleFLAC(8, "TITLE=T"))
+	// A write that leaves a zero-length last block at the end of an audio-less file.
+	f.Add(mustHex("664c614300000000040000210e000000303030303030303030303030303001000000070000005449544c453d308100004030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030"))
+	edits := fuzzEdits()
 	w := &writer{}
 	f.Fuzz(func(t *testing.T, data []byte) {
 		var out []byte
