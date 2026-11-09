@@ -59,6 +59,21 @@ func (f Format) Extensions() []string {
 	}
 }
 
+// LeadingID3v2Size returns the on-disk size of the ID3v2 tag at the start of
+// sr: its 10-byte header, its body and, for ID3v2.4 with the footer flag, a
+// 10-byte footer. It returns 0 when sr does not start with an ID3v2 header.
+func LeadingID3v2Size(sr *binary.SafeReader) int64 {
+	var h [10]byte
+	if sr.ReadAt(h[:], 0, "ID3v2 header") != nil || string(h[:3]) != "ID3" {
+		return 0
+	}
+	n := 10 + (int64(h[6]&0x7F)<<21 | int64(h[7]&0x7F)<<14 | int64(h[8]&0x7F)<<7 | int64(h[9]&0x7F))
+	if h[3] == 4 && h[5]&0x10 != 0 {
+		n += 10
+	}
+	return n
+}
+
 // DetectFormat determines the audio file format by examining magic bytes.
 //
 // Supported formats: FLAC, MP3, M4A, M4B, Ogg Vorbis, Opus, WAV (RIFF, RIFX and
