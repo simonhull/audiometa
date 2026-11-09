@@ -27,11 +27,9 @@ import (
 
 // ID3v2Header represents an ID3v2 tag header.
 type ID3v2Header struct {
-	Version      byte // Major version (2, 3 or 4)
-	Revision     byte // Minor version
-	Flags        byte
-	Size         uint32 // Tag size (excluding header), synchsafe
-	ExtendedSize uint32 // Extended header size if present
+	Version byte // Major version (2, 3 or 4)
+	Flags   byte
+	Size    uint32 // Tag size (excluding header), synchsafe
 }
 
 // ID3v2Frame represents a single ID3v2 frame.
@@ -404,7 +402,7 @@ func parseTextFrame(frame ID3v2Frame, file *types.File) { //nolint:gocyclo // Co
 		if year := parseYear(text); year > 0 {
 			file.Tags.Year = year
 		}
-	case "TCOM": // Composer (often used for Narrator)
+	case "TCOM": // Composer
 		file.Tags.Composers = append(file.Tags.Composers, values...)
 	case "TRCK": // Track number/total
 		if file.Tags.TrackNumber == 0 && file.Tags.TrackTotal == 0 {
@@ -418,7 +416,7 @@ func parseTextFrame(frame ID3v2Frame, file *types.File) { //nolint:gocyclo // Co
 		if file.Tags.AlbumArtist == "" {
 			file.Tags.AlbumArtist = text
 		}
-	case "GRP1": // Grouping (often contains series info for audiobooks)
+	case "GRP1": // Grouping (iTunes)
 		file.Tags.Grouping = text
 	case "TIT1": // Content group description (alternative grouping)
 		if file.Tags.Grouping == "" {
@@ -686,7 +684,8 @@ func extractChapterTitleFromSubframes(subframeData []byte, version byte, coding 
 		}
 		id := string(subframeData[0:4])
 		size := uint64(decodeFrameSize(version, coding, subframeData[4:8]))
-		if size > uint64(len(subframeData)-10) { //nolint:gosec // G115: the loop condition guarantees len(subframeData) >= 10 // truncated/corrupt: stop, don't guess
+		// A frame running past the data is truncated or corrupt: stop, don't guess.
+		if size > uint64(len(subframeData)-10) { //nolint:gosec // G115: the loop condition guarantees len(subframeData) >= 10
 			break
 		}
 		body := subframeData[10 : 10+size]

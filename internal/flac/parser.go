@@ -95,14 +95,13 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 			}
 
 		case blockTypePicture:
-			// Pictures are handled lazily via ExtractArtwork()
-			// For now, just skip
+			// PICTURE blocks are read by ExtractArtwork.
 
 		case blockTypePadding:
 			// Padding blocks are ignored
 
 		case blockTypeApplication:
-			// Application blocks are ignored for now
+			// APPLICATION blocks carry no metadata audiometa reads.
 
 		case blockTypeSeekTable:
 			// Seek table is not needed for metadata extraction
