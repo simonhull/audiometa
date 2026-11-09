@@ -2,9 +2,7 @@
 
 All notable changes to this project are documented here.
 
-## Unreleased
-
-This release changes the API and is a minor version: v0.14.0.
+## v0.14.0 — 2026-11-08
 
 ### Added
 
