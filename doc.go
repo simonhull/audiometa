@@ -1,11 +1,11 @@
-// Package audiometa reads metadata from audio files through one
+// Package audiometa reads and writes audio file metadata through one
 // format-agnostic API.
 //
 // It parses tags, technical audio properties, chapters and embedded artwork
 // from FLAC, MP3, M4A/M4B, Ogg Vorbis, Opus, WAV and AIFF files. The format is
 // detected from the file's contents, so callers never pick a parser.
-// [File.WriteTo] and [Write] save edited tags and artwork; every format but Ogg
-// Vorbis and Opus is writable.
+// [File.WriteTo], [Write] and [WriteContext] save edited tags and artwork;
+// every format but Ogg Vorbis and Opus is writable.
 //
 // # Quick Start
 //
@@ -88,8 +88,12 @@
 // another field. The replacement goes through a temporary file that must pass
 // verification (bit-identical audio, unchanged chapters) before it is renamed
 // over the original, so an error leaves the original untouched. [File.WriteTo]
-// streams the edited file to an [io.Writer] instead. Ogg Vorbis and Opus files
-// cannot be written yet: both return [ErrUnsupportedWrite].
+// streams the edited file to an [io.Writer] instead; [WriteContext] and
+// [File.WriteToContext] stop early when a [context.Context] is done. By default
+// the file is replaced atomically; [WithInPlace] patches the metadata region in
+// place when the edit fits, and [WithPreserveModTime] keeps the modification
+// time. Ogg Vorbis and Opus files cannot be written yet: both return
+// [ErrUnsupportedWrite].
 //
 // # Artwork
 //
@@ -141,7 +145,10 @@
 // # Concurrency
 //
 // Distinct [File] values are independent, and [OpenMany] parses files in
-// parallel. [File.ExtractArtwork] is safe for concurrent use. The exported
+// parallel. [File.ExtractArtwork], [File.ExtractArtworkContext],
+// [File.AudioDigest], [File.AudioDigestContext] and the artwork edit methods
+// ([File.AddArtwork], [File.ReplaceArtwork], [File.RemoveArtwork],
+// [File.RemoveAllArtwork]) are safe for concurrent use. The exported
 // fields are plain data and are not synchronized: do not modify a File while
 // other goroutines read it.
 //
