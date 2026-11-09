@@ -9,16 +9,11 @@ import (
 
 	"github.com/simonhull/audiometa"
 	"github.com/simonhull/audiometa/internal/binary"
+	"github.com/simonhull/audiometa/internal/m4a"
 )
 
 // maxAtomDepth bounds recursion on hostile input.
 const maxAtomDepth = 32
-
-// atomContainers are the atoms whose payload is a sequence of child atoms.
-var atomContainers = map[string]bool{
-	"moov": true, "trak": true, "mdia": true, "minf": true, "stbl": true,
-	"udta": true, "meta": true, "ilst": true, "edts": true,
-}
 
 // runAtoms implements "audiometa atoms".
 func runAtoms(args []string, stdout, stderr io.Writer) int {
@@ -72,22 +67,26 @@ func walkAtoms(sr *binary.SafeReader, offset, end int64, depth int, out *printer
 		out.printf("%s! max depth\n", indent)
 		return
 	}
+	zero := m4a.SizeZeroInvalid
+	if depth == 0 {
+		zero = m4a.SizeZeroToEnd // only the last top-level atom may run to the end of the file
+	}
 	for offset < end {
-		atomType, size, headerSize, ok := readAtomHeader(sr, offset, end)
-		if !ok {
+		h, err := decodeHeaderAt(sr, offset, end, zero)
+		if sizeErr, ok := errors.AsType[*m4a.AtomSizeError](err); ok {
+			out.printf("%s! invalid atom size %d at offset %d\n", indent, sizeErr.Size, offset)
+			return
+		}
+		if err != nil {
 			out.printf("%s! invalid atom header at offset %d\n", indent, offset)
 			return
 		}
-		if size < uint64(headerSize) || size > uint64(end-offset) {
-			out.printf("%s! invalid atom size %d at offset %d\n", indent, size, offset)
-			return
-		}
-		out.printf("%s%s (size: %d, offset: %d)\n", indent, cleanText(atomType), size, offset)
+		out.printf("%s%s (size: %d, offset: %d)\n", indent, cleanText(h.Type), h.Size, offset)
 
-		atomEnd := offset + int64(size)
-		if atomContainers[atomType] {
-			dataOffset := offset + headerSize
-			if atomType == "meta" {
+		atomEnd := offset + h.Size
+		if m4a.IsContainer(h.Type) {
+			dataOffset := offset + h.HeaderLen
+			if h.Type == "meta" {
 				dataOffset += 4 // version and flags
 			}
 			walkAtoms(sr, dataOffset, atomEnd, depth+1, out)
@@ -96,29 +95,15 @@ func walkAtoms(sr *binary.SafeReader, offset, end int64, depth int, out *printer
 	}
 }
 
-// readAtomHeader reads the type, total size and header length of the atom at
-// offset. A size field of 0 means the atom extends to end.
-func readAtomHeader(sr *binary.SafeReader, offset, end int64) (atomType string, size uint64, headerSize int64, ok bool) {
-	size32, err := sr.Read[uint32](offset, "atom size")
-	if err != nil {
-		return "", 0, 0, false
-	}
-	typ := make([]byte, 4)
-	if err := sr.ReadAt(typ, offset+4, "atom type"); err != nil {
-		return "", 0, 0, false
-	}
-	atomType = string(typ)
-	headerSize = 8
-	size = uint64(size32)
-	switch size32 {
-	case 0:
-		size = uint64(end - offset)
-	case 1:
-		size, err = sr.Read[uint64](offset+8, "extended atom size")
-		if err != nil {
-			return "", 0, 0, false
+// decodeHeaderAt decodes the header of the atom at offset, whose container
+// ends at end, with the library's decoder.
+func decodeHeaderAt(sr *binary.SafeReader, offset, end int64, zero m4a.SizeZero) (m4a.AtomHeader, error) {
+	var buf [16]byte
+	n := int(min(end-offset, int64(len(buf))))
+	if n >= 8 { // anything shorter cannot hold a header, which the decoder reports
+		if err := sr.ReadAt(buf[:n], offset, "atom header"); err != nil {
+			return m4a.AtomHeader{}, err
 		}
-		headerSize = 16
 	}
-	return atomType, size, headerSize, true
+	return m4a.DecodeAtomHeader(buf[:max(n, 0)], end-offset, zero)
 }

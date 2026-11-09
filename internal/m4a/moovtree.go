@@ -34,6 +34,13 @@ var structuralContainers = map[string]bool{atomMoov: true, atomTrak: true, "mdia
 // one is kept as an opaque leaf, so its bytes are preserved verbatim.
 var otherContainers = map[string]bool{atomUdta: true, "edts": true, "dinf": true, "tref": true, atomMeta: true, atomIlst: true}
 
+// IsContainer reports whether atoms of type typ hold child atoms that the
+// package descends into: moov, trak, mdia, minf, stbl, udta, edts, dinf, tref,
+// meta and ilst. A meta atom's children follow 4 bytes of version and flags.
+func IsContainer(typ string) bool {
+	return structuralContainers[typ] || otherContainers[typ]
+}
+
 // matom is one atom of an in-memory moov tree. A container holds its
 // children in box; a leaf holds its payload byte for byte. Serializing
 // recomputes every size, so only edited leaves and their ancestors change.
