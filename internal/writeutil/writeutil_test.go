@@ -5,7 +5,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"io"
+	"sync"
 	"testing"
 )
 
@@ -29,6 +31,39 @@ func TestCopyRange(t *testing.T) {
 		if got != n || !bytes.Equal(buf.Bytes(), data[off:]) {
 			t.Errorf("off %d: copied %d bytes, content equal = %v", off, got, bytes.Equal(buf.Bytes(), data[off:]))
 		}
+	}
+}
+
+func TestCopyRange_Concurrent(t *testing.T) {
+	data := testData(3 << 20)
+	var wg sync.WaitGroup
+	for i := range 8 {
+		wg.Go(func() {
+			off := int64(i * 1000)
+			var buf bytes.Buffer
+			if _, err := CopyRange(context.Background(), &buf, bytes.NewReader(data), off, int64(len(data))-off); err != nil {
+				t.Error(err)
+				return
+			}
+			if !bytes.Equal(buf.Bytes(), data[off:]) {
+				t.Errorf("copy %d differs from its source", i)
+			}
+		})
+	}
+	wg.Wait()
+}
+
+func BenchmarkCopyRange(b *testing.B) {
+	for _, size := range []int{64 << 10, 4 << 20} {
+		b.Run(fmt.Sprintf("%dKiB", size>>10), func(b *testing.B) {
+			src := bytes.NewReader(testData(size))
+			b.ReportAllocs()
+			for b.Loop() {
+				if _, err := CopyRange(context.Background(), io.Discard, src, 0, int64(size)); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }
 
