@@ -2,7 +2,9 @@ package m4a
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
+	"errors"
 	"testing"
 
 	audiobinary "github.com/simonhull/audiometa/internal/binary"
@@ -125,7 +127,7 @@ func TestFindAtom_Found(t *testing.T) {
 
 	sr := audiobinary.NewSafeReader(bytes.NewReader(data), int64(len(data)), "test.m4b")
 
-	atom, err := findAtom(sr, 0, int64(len(data)), "moov")
+	atom, err := findAtom(t.Context(), sr, 0, int64(len(data)), "moov")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -148,7 +150,7 @@ func TestFindAtom_NotFound(t *testing.T) {
 
 	sr := audiobinary.NewSafeReader(bytes.NewReader(data), int64(len(data)), "test.m4b")
 
-	_, err := findAtom(sr, 0, int64(len(data)), "moov")
+	_, err := findAtom(t.Context(), sr, 0, int64(len(data)), "moov")
 	if err == nil {
 		t.Fatal("expected error when atom not found")
 	}
@@ -172,7 +174,7 @@ func TestFindAtom_Nested(t *testing.T) {
 	}
 
 	// Now find meta inside udta
-	foundMeta, err := findAtom(sr, udtaAtom.DataOffset(), udtaAtom.DataOffset()+udtaAtom.DataSize(), "meta")
+	foundMeta, err := findAtom(t.Context(), sr, udtaAtom.DataOffset(), udtaAtom.DataOffset()+udtaAtom.DataSize(), "meta")
 	if err != nil {
 		t.Fatalf("failed to find nested meta: %v", err)
 	}
@@ -225,5 +227,28 @@ func TestReadAtomHeader_ExtendedSizeBeyondInt64(t *testing.T) {
 		if err == nil {
 			t.Fatalf("size %#x: got atom %+v, want error", size, atom)
 		}
+	}
+}
+
+func TestAtomChildAndPath(t *testing.T) {
+	ilst := createMockAtom("ilst", createMockAtom("\xa9nam", nil))
+	meta := fullAtom("meta", ilst) // full atom: 4 bytes of version/flags before its children
+	moov := createMockAtom("moov", createMockAtom("udta", meta))
+	sr := audiobinary.NewSafeReader(bytes.NewReader(moov), int64(len(moov)), "t.m4a")
+	root, err := readAtomHeader(sr, 0, int64(len(moov)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := root.path(t.Context(), sr, "udta", "meta", "ilst")
+	if err != nil || got.Type != "ilst" {
+		t.Fatalf("path = %+v, %v", got, err)
+	}
+	if _, err := root.child(t.Context(), sr, "trak"); !errors.Is(err, errAtomNotFound) {
+		t.Errorf("child(trak) err = %v, want errAtomNotFound", err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := root.child(ctx, sr, "udta"); !errors.Is(err, context.Canceled) {
+		t.Errorf("canceled child err = %v", err)
 	}
 }

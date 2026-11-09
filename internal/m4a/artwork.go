@@ -21,7 +21,7 @@ func extractArtwork(ctx context.Context, sr *binary.SafeReader, size int64) ([]t
 	var artwork []types.Artwork
 
 	// Find moov atom (movie container)
-	moovAtom, err := findAtomContext(ctx, sr, 0, size, "moov")
+	moovAtom, err := findAtom(ctx, sr, 0, size, "moov")
 	if err != nil {
 		// No moov = no metadata = no artwork
 		return nil, nil
@@ -33,7 +33,7 @@ func extractArtwork(ctx context.Context, sr *binary.SafeReader, size int64) ([]t
 	}
 
 	// Find covr atom inside ilst
-	covrAtom, err := findAtom(sr, ilstAtom.DataOffset(), ilstAtom.DataOffset()+ilstAtom.DataSize(), "covr")
+	covrAtom, err := ilstAtom.child(ctx, sr, "covr")
 	if err != nil {
 		// No covr atom = no artwork (not an error)
 		return nil, nil

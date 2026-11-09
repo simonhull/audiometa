@@ -115,14 +115,10 @@ func readAtomHeader(sr *binary.SafeReader, offset, parentEnd int64) (*Atom, erro
 	return atom, nil
 }
 
-// Returns the first matching atom or an error if not found.
-func findAtom(sr *binary.SafeReader, start, end int64, atomType string) (*Atom, error) {
-	return findAtomContext(context.Background(), sr, start, end, atomType)
-}
-
-// findAtomContext is findAtom with periodic cancellation checks, for scans over
-// atom lists that can be arbitrarily long (the top level of a file).
-func findAtomContext(ctx context.Context, sr *binary.SafeReader, start, end int64, atomType string) (*Atom, error) {
+// findAtom returns the first atom of type typ in [start, end). The error wraps
+// errAtomNotFound when there is none, is ctx.Err() when ctx is done, and is a
+// *types.CorruptedFileError when a header in the range is malformed.
+func findAtom(ctx context.Context, sr *binary.SafeReader, start, end int64, typ string) (*Atom, error) {
 	offset := start
 
 	for i := 0; offset < end; i++ {
@@ -135,7 +131,7 @@ func findAtomContext(ctx context.Context, sr *binary.SafeReader, start, end int6
 			return nil, err
 		}
 
-		if atom.Type == atomType {
+		if atom.Type == typ {
 			return atom, nil
 		}
 
@@ -143,5 +139,28 @@ func findAtomContext(ctx context.Context, sr *binary.SafeReader, start, end int6
 		offset += atom.Size
 	}
 
-	return nil, fmt.Errorf("atom '%s': %w", atomType, errAtomNotFound)
+	return nil, fmt.Errorf("atom '%s': %w", typ, errAtomNotFound)
+}
+
+// child returns a's first child atom of type typ; see findAtom for the
+// errors. A meta atom's children follow 4 bytes of version and flags.
+func (a *Atom) child(ctx context.Context, sr *binary.SafeReader, typ string) (*Atom, error) {
+	start := a.DataOffset()
+	if a.Type == atomMeta {
+		start += 4
+	}
+	return findAtom(ctx, sr, start, a.DataOffset()+a.DataSize(), typ)
+}
+
+// path follows names down from a, as child does at each level.
+func (a *Atom) path(ctx context.Context, sr *binary.SafeReader, names ...string) (*Atom, error) {
+	cur := a
+	for _, name := range names {
+		next, err := cur.child(ctx, sr, name)
+		if err != nil {
+			return nil, err
+		}
+		cur = next
+	}
+	return cur, nil
 }

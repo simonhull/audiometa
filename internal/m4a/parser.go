@@ -50,7 +50,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	}
 
 	// Find moov atom (movie container)
-	moovAtom, err := findAtomContext(ctx, sr, 0, size, "moov")
+	moovAtom, err := findAtom(ctx, sr, 0, size, "moov")
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, ctxErr
@@ -126,21 +126,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 // findIlst navigates moov → udta → meta → ilst and returns the ilst atom.
 // The returned error wraps errAtomNotFound when any level is simply absent.
 func findIlst(ctx context.Context, sr *binary.SafeReader, moovAtom *Atom) (*Atom, error) {
-	udtaAtom, err := findAtomContext(ctx, sr, moovAtom.DataOffset(), moovAtom.DataOffset()+moovAtom.DataSize(), "udta")
-	if err != nil {
-		return nil, err
-	}
-
-	metaAtom, err := findAtomContext(ctx, sr, udtaAtom.DataOffset(), udtaAtom.DataOffset()+udtaAtom.DataSize(), "meta")
-	if err != nil {
-		return nil, err
-	}
-
-	// meta is a full atom: 4 bytes of version+flags precede its children.
-	metaDataOffset := metaAtom.DataOffset() + 4
-	metaDataEnd := metaAtom.DataOffset() + metaAtom.DataSize()
-
-	return findAtomContext(ctx, sr, metaDataOffset, metaDataEnd, "ilst")
+	return moovAtom.path(ctx, sr, atomUdta, atomMeta, atomIlst)
 }
 
 // ExtractArtwork extracts embedded artwork from M4A/M4B files.

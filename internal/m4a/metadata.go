@@ -50,7 +50,7 @@ func decodeBEInteger(b []byte, signed bool) string {
 
 // parseMetadataTag extracts the string value of the first data atom of an
 // iTunes metadata tag atom.
-func parseMetadataTag(sr *binary.SafeReader, tagAtom *Atom) (string, error) {
+func parseMetadataTag(ctx context.Context, sr *binary.SafeReader, tagAtom *Atom) (string, error) {
 	// Tag atoms contain a "data" atom with the actual value
 	// Format: tag atom → data atom → version/flags → value
 
@@ -59,7 +59,7 @@ func parseMetadataTag(sr *binary.SafeReader, tagAtom *Atom) (string, error) {
 	}
 
 	// Find data atom inside tag
-	dataAtom, err := findAtom(sr, tagAtom.DataOffset(), tagAtom.DataOffset()+tagAtom.DataSize(), atomData)
+	dataAtom, err := tagAtom.child(ctx, sr, atomData)
 	if err != nil {
 		// No data atom found - return empty
 		return "", nil
@@ -192,14 +192,14 @@ func extractIlstMetadata(ctx context.Context, sr *binary.SafeReader, ilstAtom *A
 		switch tagAtom.Type {
 		case "trkn":
 			// Track number requires special binary parsing
-			trackData, err := parseTrackNumber(sr, tagAtom)
+			trackData, err := parseTrackNumber(ctx, sr, tagAtom)
 			if err == nil && !haveTrack {
 				haveTrack = true
 				file.Tags.TrackNumber = trackData.Number
 				file.Tags.TrackTotal = trackData.Total
 			}
 		case "disk":
-			if d, err := parseTrackNumber(sr, tagAtom); err == nil && !haveDisc {
+			if d, err := parseTrackNumber(ctx, sr, tagAtom); err == nil && !haveDisc {
 				haveDisc = true
 				file.Tags.DiscNumber = d.Number
 				file.Tags.DiscTotal = d.Total
@@ -209,7 +209,7 @@ func extractIlstMetadata(ctx context.Context, sr *binary.SafeReader, ilstAtom *A
 			// ----: freeform atoms, handled by parseAudiobookTags.
 		case keyGnre:
 			// ID3v1 genre index: recorded raw only, never mapped into Genres.
-			if index, ok := parseGnre(sr, tagAtom); ok && types.TakeValue(file) {
+			if index, ok := parseGnre(ctx, sr, tagAtom); ok && types.TakeValue(file) {
 				file.Tags.AddRaw(keyGnre, strconv.Itoa(index))
 			}
 		default:
@@ -337,8 +337,8 @@ const keyGnre = "gnre"
 // parseGnre decodes a gnre item: its first data atom holds a 16-bit
 // big-endian ID3v1 genre index plus one. ok is false when the item is
 // malformed or holds 0 (no genre).
-func parseGnre(sr *binary.SafeReader, atom *Atom) (index int, ok bool) {
-	dataAtom, err := findAtom(sr, atom.DataOffset(), atom.DataOffset()+atom.DataSize(), atomData)
+func parseGnre(ctx context.Context, sr *binary.SafeReader, atom *Atom) (index int, ok bool) {
+	dataAtom, err := atom.child(ctx, sr, atomData)
 	if err != nil || dataAtom.DataSize() != 8+2 {
 		return 0, false
 	}
@@ -361,11 +361,11 @@ var errShortNumberAtom = errors.New("track number atom too short")
 // parseTrackNumber extracts track number and total from a trkn or disk atom,
 // reading only inside its data atom: fewer than 4 payload bytes is an error,
 // 4-5 bytes give the number alone, and 6 or more give number and total.
-func parseTrackNumber(sr *binary.SafeReader, atom *Atom) (TrackData, error) {
+func parseTrackNumber(ctx context.Context, sr *binary.SafeReader, atom *Atom) (TrackData, error) {
 	result := TrackData{}
 
 	// Find data atom
-	dataAtom, err := findAtom(sr, atom.DataOffset(), atom.DataOffset()+atom.DataSize(), atomData)
+	dataAtom, err := atom.child(ctx, sr, atomData)
 	if err != nil {
 		return result, err
 	}

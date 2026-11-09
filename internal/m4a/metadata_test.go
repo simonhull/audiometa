@@ -68,7 +68,7 @@ func TestParseMetadataTag_String(t *testing.T) {
 
 	t.Logf("Atom type: %s, size: %d, data size: %d", atom.Type, atom.Size, atom.DataSize())
 
-	value, err := parseMetadataTag(sr, atom)
+	value, err := parseMetadataTag(t.Context(), sr, atom)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestParseMetadataTag_EmptyData(t *testing.T) {
 	sr := audiobinary.NewSafeReader(bytes.NewReader(data), int64(len(data)), "test.m4b")
 	atom, _ := readAtomHeader(sr, 0, int64(len(data)))
 
-	value, err := parseMetadataTag(sr, atom)
+	value, err := parseMetadataTag(t.Context(), sr, atom)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -228,7 +228,7 @@ func TestParseTrackNumber_Success(t *testing.T) {
 				t.Fatalf("failed to read trkn atom header: %v", err)
 			}
 
-			result, err := parseTrackNumber(sr, trknAtom)
+			result, err := parseTrackNumber(t.Context(), sr, trknAtom)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -255,7 +255,7 @@ func TestParseTrackNumber_NoDataAtom(t *testing.T) {
 	sr := audiobinary.NewSafeReader(bytes.NewReader(trkn), int64(len(trkn)), "test.m4b")
 	trknAtom, _ := readAtomHeader(sr, 0, int64(len(trkn)))
 
-	_, err := parseTrackNumber(sr, trknAtom)
+	_, err := parseTrackNumber(t.Context(), sr, trknAtom)
 	if err == nil {
 		t.Error("expected error for missing data atom, got nil")
 	}
@@ -328,7 +328,7 @@ func TestParseMetadataTag_Integer(t *testing.T) {
 			item := createTypedMetadataItem([]byte{0xA9, 'm', 'v', 'i'}, tt.typ, tt.payload)
 			sr := audiobinary.NewSafeReader(bytes.NewReader(item), int64(len(item)), "test.m4b")
 			atom, _ := readAtomHeader(sr, 0, int64(len(item)))
-			got, err := parseMetadataTag(sr, atom)
+			got, err := parseMetadataTag(t.Context(), sr, atom)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
