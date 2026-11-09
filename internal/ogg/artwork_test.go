@@ -1,12 +1,35 @@
 package ogg
 
 import (
+	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/binary"
 	"testing"
 
 	"github.com/simonhull/audiometa/internal/types"
 )
+
+func TestExtractArtworkSkipsTail(t *testing.T) {
+	data := ioOpus(true)
+	size := int64(len(data))
+	if size < 128<<10 {
+		t.Fatalf("fixture is %d bytes, want over 128 KiB", size)
+	}
+	c := &countingReaderAt{r: bytes.NewReader(data)}
+	got, err := (&parser{}).ExtractArtwork(context.Background(), c, size, "x.opus")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || !bytes.Equal(got[0].Data, ioCover()) || got[0].MIMEType != "image/jpeg" || got[0].Type != types.ArtworkFrontCover {
+		t.Fatalf("artwork = %+v, want the embedded front cover", got)
+	}
+	for _, off := range c.offs {
+		if off >= size-65536 {
+			t.Errorf("read at offset %d: the file's tail was read (size %d)", off, size)
+		}
+	}
+}
 
 func TestParseMetadataBlockPicture(t *testing.T) {
 	// Create a valid METADATA_BLOCK_PICTURE
