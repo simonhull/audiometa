@@ -5,58 +5,57 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_call:
 
 permissions:
   contents: read
 
-# Single place to change the Go toolchain used by every job.
-env:
-  GO_VERSION: '1.27'
-  STRINGER_VERSION: v0.52.0
-  GOVULNCHECK_VERSION: v1.9.0
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Tool versions come from mise.toml only.
 jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
     - name: Checkout code
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-    - name: Set up Go
-      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-      with:
-        go-version: ${{ env.GO_VERSION }}
-        cache: true
-
-    - name: Download dependencies
-      run: go mod download
+    - name: Install tools
+      uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5.2.7
 
     - name: Verify dependencies
-      run: go mod verify
+      run: mise run verify-mod
+
+    - name: Check go.mod is tidy
+      run: mise run tidy-check
 
     - name: Run tests
-      run: go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
+      run: mise run test
 
     - name: Run tests (32-bit)
-      run: GOARCH=386 go test ./...
+      run: mise run test386
 
     - name: Coverage summary
-      run: go tool cover -func=coverage.txt | tail -1 >> "$GITHUB_STEP_SUMMARY"
+      run: mise exec -- go tool cover -func=coverage.out | tail -1 >> "$GITHUB_STEP_SUMMARY"
 
     - name: Upload coverage
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: coverage
-        path: coverage.txt
+        path: coverage.out
 
     - name: Vulnerability scan
-      run: go run golang.org/x/vuln/cmd/govulncheck@${{ env.GOVULNCHECK_VERSION }} ./...
+      run: mise run vuln
 
   test-windows:
     name: Test (Windows)
     runs-on: windows-latest
+    timeout-minutes: 30
 
     steps:
     - name: Keep line endings as committed
@@ -65,92 +64,70 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-    - name: Set up Go
-      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+    # Only Go is needed here; the other pinned tools are Linux-side gates.
+    - name: Install Go
+      uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5.2.7
       with:
-        go-version: ${{ env.GO_VERSION }}
-        cache: true
+        install_args: go
 
     - name: Run tests
-      run: go test -count=1 ./...
+      run: mise exec -- go test -count=1 ./...
 
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
     - name: Checkout code
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-    - name: Set up Go
-      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-      with:
-        go-version: ${{ env.GO_VERSION }}
-        cache: true
+    - name: Install tools
+      uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5.2.7
 
-    - name: golangci-lint
-      uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
-      with:
-        version: v2.15.0
+    - name: Lint
+      run: mise run lint
 
   build:
     name: Build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
     - name: Checkout code
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-    - name: Set up Go
-      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-      with:
-        go-version: ${{ env.GO_VERSION }}
-        cache: true
+    - name: Install tools
+      uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5.2.7
 
-    - name: Build library
-      run: go build -v ./...
-
-    - name: Build with race detector
-      run: go build -race -v ./...
+    - name: Build
+      run: mise run build
 
     - name: Vet other platforms
       run: |
-        GOOS=windows go vet ./...
-        GOOS=darwin go vet ./...
+        GOOS=windows mise exec -- go vet ./...
+        GOOS=darwin mise exec -- go vet ./...
 
     - name: Verify generated code is fresh
-      run: |
-        go install golang.org/x/tools/cmd/stringer@${{ env.STRINGER_VERSION }}
-        go generate ./...
-        git diff --exit-code
+      run: mise run generate-check
 
   write-gate:
     name: Write gate
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
     - name: Checkout code
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-    - name: Set up Go
-      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-      with:
-        go-version: ${{ env.GO_VERSION }}
-        cache: true
+    - name: Install tools
+      uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5.2.7
 
     - name: Install oracles
       run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg flac
 
-    - name: Corpus round-trip
-      run: go test -race -count=1 -run 'WriteRoundTrip|AudioDigest|Example' -v .
-
-    - name: External oracle
-      env:
-        AUDIOMETA_REQUIRE_ORACLES: '1'
-      run: go test -race -count=1 -run 'WriteOracle' -v .
-
-    - name: Write fuzzing
-      run: go test -run '^$' -fuzz '^FuzzWriteRoundTrip$' -fuzztime 120s .
+    - name: Write gate
+      run: mise run write-gate
 
     - name: Upload fuzz crashers
       if: failure()
@@ -162,19 +139,17 @@ jobs:
   fuzz:
     name: Fuzz
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
     - name: Checkout code
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-    - name: Set up Go
-      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-      with:
-        go-version: ${{ env.GO_VERSION }}
-        cache: true
+    - name: Install tools
+      uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5.2.7
 
     - name: Fuzz every target
-      run: scripts/fuzz.sh 20s
+      run: mise exec -- scripts/fuzz.sh 20s
 
     - name: Upload fuzz crashers
       if: failure()
