@@ -127,6 +127,30 @@ func benchIO(b *testing.B, step func(b *testing.B, f *File)) {
 	}
 }
 
+func TestOpenReader_ReadsHeadOnce(t *testing.T) {
+	for _, name := range []string{"sample.flac", "sample.m4a", "sample.mp3", "sample.opus", "sample.wav"} {
+		t.Run(name, func(t *testing.T) {
+			data, err := os.ReadFile(filepath.Join("testdata", name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			c := &countingReaderAt{r: bytes.NewReader(data)}
+			if _, err := openReader(context.Background(), c, int64(len(data)), name); err != nil {
+				t.Fatal(err)
+			}
+			zero := 0
+			for _, off := range c.offs {
+				if off == 0 {
+					zero++
+				}
+			}
+			if zero > 1 {
+				t.Errorf("%d reads at offset 0 (offsets %v), want at most 1", zero, c.offs)
+			}
+		})
+	}
+}
+
 // BenchmarkIOOpen reports the reads and bytes requested by one open.
 func BenchmarkIOOpen(b *testing.B) { benchIO(b, nil) }
 

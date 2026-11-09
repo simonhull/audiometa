@@ -11,6 +11,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/simonhull/audiometa/internal/binary"
 	"github.com/simonhull/audiometa/internal/imagemeta"
 	"github.com/simonhull/audiometa/internal/registry"
 	"github.com/simonhull/audiometa/internal/types"
@@ -274,6 +275,15 @@ func (p *parsedFile) source() source {
 
 // openReader opens from an io.ReaderAt (internal, for testing).
 func openReader(ctx context.Context, r io.ReaderAt, size int64, path string) (*parsedFile, error) {
+	// Detection and the parser both start by reading the head of the file;
+	// fetch it once and serve both from memory. The prefetched reader lives
+	// only for this call: callers keep r for later reads.
+	if head := make([]byte, min(size, binary.HeadSize)); len(head) > 0 {
+		if n, err := r.ReadAt(head, 0); n == len(head) && (err == nil || errors.Is(err, io.EOF)) {
+			r = &binary.Prefetched{R: r, Buf: head}
+		}
+	}
+
 	// Detect format
 	format, err := types.DetectFormat(r, size, path)
 	if err != nil {

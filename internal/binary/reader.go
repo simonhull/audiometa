@@ -37,6 +37,29 @@ func (e *OutOfBoundsError) Error() string {
 // underlying reader and leave the window untouched.
 const windowSize = 16 << 10
 
+// HeadSize is how much of a file's start [Prefetched] is meant to hold. It
+// matches the SafeReader window so a parser's first window, filled at offset 0,
+// is served from it.
+const HeadSize = windowSize
+
+// Prefetched is an [io.ReaderAt] that serves reads inside one prefetched region
+// from memory and passes every other read to R.
+type Prefetched struct {
+	R   io.ReaderAt
+	Off int64  // file offset of Buf[0]
+	Buf []byte // the prefetched bytes
+}
+
+// ReadAt implements [io.ReaderAt]. A read entirely inside the prefetched region
+// is copied from it and returns len(b), nil; any other read, including one
+// that straddles the region's end, is delegated to R unchanged.
+func (p *Prefetched) ReadAt(b []byte, off int64) (int, error) {
+	if off >= p.Off && off-p.Off+int64(len(b)) <= int64(len(p.Buf)) {
+		return copy(b, p.Buf[off-p.Off:]), nil
+	}
+	return p.R.ReadAt(b, off)
+}
+
 // SafeReader wraps io.ReaderAt with bounds checking and helpful error messages.
 //
 // A SafeReader caches one window of the file to turn many small reads into one

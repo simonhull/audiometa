@@ -111,6 +111,50 @@ func TestDetectFormat_TooSmall(t *testing.T) {
 	}
 }
 
+// readCounter counts ReadAt calls and records each request's length.
+type readCounter struct {
+	r    *bytes.Reader
+	lens []int
+}
+
+func (c *readCounter) ReadAt(p []byte, off int64) (int, error) {
+	c.lens = append(c.lens, len(p))
+	return c.r.ReadAt(p, off)
+}
+
+func TestDetectFormat_OneSmallRead(t *testing.T) {
+	ftyp := func(brand string) []byte {
+		return append([]byte{0, 0, 0, 20}, []byte("ftyp"+brand+"\x00\x00\x00\x00"+brand)...)
+	}
+	cases := map[string]struct {
+		data []byte
+		want Format
+	}{
+		"flac":      {append([]byte("fLaC"), make([]byte, 4000)...), FormatFLAC},
+		"mp3":       {append([]byte{0xFF, 0xFB, 0x90, 0x00}, make([]byte, 4000)...), FormatMP3},
+		"mp3 id3":   {append([]byte("ID3\x04\x00\x00\x00\x00\x00\x10"), make([]byte, 4000)...), FormatMP3},
+		"ogg":       {append(createMinimalOggPage("\x01vorbis"), make([]byte, 4000)...), FormatOgg},
+		"opus":      {append(createMinimalOggPage("OpusHead"), make([]byte, 4000)...), FormatOpus},
+		"wav":       {append([]byte("RIFF\x00\x00\x00\x00WAVE"), make([]byte, 4000)...), FormatWAV},
+		"aiff":      {append([]byte("FORM\x00\x00\x00\x00AIFF"), make([]byte, 4000)...), FormatAIFF},
+		"m4a":       {append(ftyp("M4A "), make([]byte, 4000)...), FormatM4A},
+		"m4b":       {append(ftyp("M4B "), make([]byte, 4000)...), FormatM4B},
+		"tiny opus": {createMinimalOggPage("OpusHead"), FormatOpus},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			c := &readCounter{r: bytes.NewReader(tc.data)}
+			got, err := DetectFormat(c, int64(len(tc.data)), "x")
+			if err != nil || got != tc.want {
+				t.Fatalf("DetectFormat = %v, %v; want %v", got, err, tc.want)
+			}
+			if len(c.lens) != 1 || c.lens[0] > maxFtypSize {
+				t.Errorf("reads = %v, want one read of at most %d bytes", c.lens, maxFtypSize)
+			}
+		})
+	}
+}
+
 func TestFormat_Extensions(t *testing.T) {
 	tests := []struct {
 		format Format
