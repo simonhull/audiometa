@@ -24,6 +24,24 @@ type block struct {
 // payload returns the offset of the block's payload.
 func (b block) payload() int64 { return b.off + 4 }
 
+// readPayload reads b's payload, or as much of it as the file holds when the
+// block runs past the end of the file (blocks reports that as a broken chain
+// on the next step).
+func readPayload(sr *binutil.SafeReader, b block, size int64) ([]byte, error) {
+	n := min(b.n, size-b.payload())
+	if n <= 0 {
+		return nil, nil
+	}
+	if err := sr.CheckLen(b.payload(), int(n), 1, "metadata block"); err != nil {
+		return nil, err
+	}
+	buf := make([]byte, n)
+	if err := sr.ReadAt(buf, b.payload(), "metadata block"); err != nil {
+		return nil, err
+	}
+	return buf, nil
+}
+
 // end returns the offset just past the block: the next block's header, or
 // the first audio frame after the last block.
 func (b block) end() int64 { return b.off + 4 + b.n }

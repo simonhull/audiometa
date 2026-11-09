@@ -217,3 +217,17 @@ func TestVC_NoCrossFieldWrites(t *testing.T) {
 		}
 	}
 }
+
+func TestVC_PartialOnError(t *testing.T) {
+	good := vorbisCommentPayload("TITLE=A", "ARTIST=B")
+	v, err := parseVC(good[:len(good)-1]) // the second comment is cut
+	if err == nil {
+		t.Fatal("no error")
+	}
+	if v == nil || string(v.vendor) != "audiometa-test" || len(v.comments) != 1 || string(v.comments[0]) != "TITLE=A" {
+		t.Errorf("partial result = %+v, want the vendor and the first comment", v)
+	}
+	if v, err := parseVC(nil); err == nil || v == nil {
+		t.Errorf("empty payload: v %v, err %v; want a non-nil empty result and an error", v, err)
+	}
+}
