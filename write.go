@@ -96,6 +96,9 @@ func (f *File) WriteToContext(ctx context.Context, w io.Writer) (int64, error) {
 // file in the same directory, synced, verified by reading them back (the file
 // must parse, its audio data must be bit-identical and its chapters
 // unchanged), and renamed over the original; the directory is then synced.
+// The temporary file is named "." + the original's name (cut to its first
+// 100 bytes) + ".audiometa-<digits>.tmp"; if the process dies before the
+// rename it is left behind and can be deleted.
 // The original file is never opened for writing, so a crash or error at any
 // point leaves either the old or the new file, never a mix. The new file
 // keeps the original's permission bits and, where the process may set them,

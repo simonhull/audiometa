@@ -297,7 +297,8 @@ _, err := f.WriteTo(w) // any io.Writer; WriteToContext takes a context
   leaves the composer alone, and setting `Series` does not rewrite the grouping.
 - **Safety.** The new file is written to a temporary file in the same directory, synced,
   verified (it must parse, with bit-identical audio and unchanged chapters) and renamed over
-  the original. On any error the original is untouched.
+  the original. On any error the original is untouched. A crash can leave a temporary file named
+  `.<name>.audiometa-<digits>.tmp` (the name cut to 100 bytes) next to the original; delete it.
 - **Preservation.** Unknown frames, atoms and blocks, and every tag you did not edit, are kept
   byte for byte.
 - **Chapters** are preserved but not editable: they stay as they are, and an edit that

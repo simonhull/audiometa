@@ -6,8 +6,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 var original = []byte("original contents")
@@ -173,5 +175,45 @@ func TestReplace_Missing(t *testing.T) {
 	if err := Replace(filepath.Join(dir, "missing"), writeBytes(nil), Options{}); err == nil {
 		t.Error("want error for a missing file")
 	}
+	assertNoTemp(t, dir)
+}
+
+func TestTempPattern(t *testing.T) {
+	for name, base := range map[string]string{
+		"short":           "song.mp3",
+		"exactly the cap": strings.Repeat("a", maxTempBase),
+		"long ASCII":      strings.Repeat("a", 250),
+		"long multibyte":  strings.Repeat("日", 84),                           // 252 bytes, 3 per rune
+		"long mixed":      strings.Repeat("é", 49) + strings.Repeat("日", 30), // 188 bytes; byte 100 is mid-rune
+	} {
+		t.Run(name, func(t *testing.T) {
+			p := tempPattern(filepath.Join("dir", base))
+			if !strings.HasPrefix(p, ".") || !strings.HasSuffix(p, ".audiometa-*.tmp") {
+				t.Fatalf("pattern %q lacks the . prefix or .audiometa-*.tmp suffix", p)
+			}
+			kept := strings.TrimSuffix(strings.TrimPrefix(p, "."), ".audiometa-*.tmp")
+			if !strings.HasPrefix(base, kept) || len(kept) > maxTempBase || !utf8.ValidString(kept) {
+				t.Errorf("kept %q (%d bytes): want a valid UTF-8 prefix of the name, at most %d bytes", kept, len(kept), maxTempBase)
+			}
+			if len(base) <= maxTempBase && kept != base {
+				t.Errorf("kept %q, want the whole name %q", kept, base)
+			}
+			if len(base) > maxTempBase && len(kept) < maxTempBase-3 {
+				t.Errorf("kept %d bytes, want the longest prefix up to %d", len(kept), maxTempBase)
+			}
+		})
+	}
+}
+
+func TestReplace_LongName(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, strings.Repeat("a", 246)+".mp3") // 250 bytes
+	if err := os.WriteFile(path, original, 0o600); err != nil {
+		t.Skipf("file system rejects a 250-byte name: %v", err)
+	}
+	if err := Replace(path, writeBytes([]byte("new")), Options{}); err != nil {
+		t.Fatalf("Replace: %v", err)
+	}
+	assertContent(t, path, []byte("new"))
 	assertNoTemp(t, dir)
 }

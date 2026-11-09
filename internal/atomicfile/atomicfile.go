@@ -2,6 +2,10 @@
 // the same directory, fsync it, verify it, rename it over the original, fsync the
 // directory. The original is never opened for writing.
 //
+// The temp file is named "." + the first 100 bytes (at most) of the target's
+// name + ".audiometa-<random digits>.tmp". A crash before the rename can leave
+// one behind; it is safe to delete when no write is running.
+//
 // Windows notes: os.Rename maps to MoveFileEx(MOVEFILE_REPLACE_EXISTING), which fails
 // with a sharing violation while another process holds the target open without
 // FILE_SHARE_DELETE (and Go's os.Open does not request it); callers must close their
@@ -17,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+	"unicode/utf8"
 )
 
 // bufSize is the write buffer in front of the temp file.
@@ -49,7 +54,7 @@ func Replace(path string, write func(io.Writer) error, opts Options) (err error)
 	}
 
 	dir := filepath.Dir(target)
-	tmp, err := os.CreateTemp(dir, "."+filepath.Base(target)+".audiometa-*.tmp")
+	tmp, err := os.CreateTemp(dir, tempPattern(target))
 	if err != nil {
 		return fmt.Errorf("create temp file: %w", err)
 	}
@@ -136,4 +141,25 @@ func fill(tmp *os.File, st os.FileInfo, write func(io.Writer) error, verify func
 		}
 	}
 	return nil
+}
+
+// maxTempBase is how many bytes of the target's name the temp file's name
+// keeps. With the 26 bytes tempPattern and os.CreateTemp add, the temp name
+// stays within the 255-byte NAME_MAX of common file systems, and the
+// 143 bytes of eCryptfs, whatever the target's length.
+const maxTempBase = 100
+
+// tempPattern returns the os.CreateTemp pattern for the temp file beside
+// target: "." + at most maxTempBase bytes of target's base name, cut on a
+// UTF-8 boundary, + ".audiometa-*.tmp".
+func tempPattern(target string) string {
+	base := filepath.Base(target)
+	if len(base) > maxTempBase {
+		cut := maxTempBase
+		for cut > 0 && !utf8.RuneStart(base[cut]) {
+			cut--
+		}
+		base = base[:cut]
+	}
+	return "." + base + ".audiometa-*.tmp"
 }
