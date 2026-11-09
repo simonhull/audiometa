@@ -135,6 +135,9 @@ func (t *wtag) applyKeyEdit(key string, values []string) error {
 	if key == "" {
 		return fmt.Errorf("%w: empty tag key", types.ErrUnsupportedWrite)
 	}
+	if !utf8.ValidString(key) || strings.ContainsRune(key, 0) {
+		return fmt.Errorf("%w: key %q is not valid UTF-8 or contains NUL", types.ErrUnsupportedWrite, key)
+	}
 	if strings.EqualFold(key, mediaMarkersDescription) {
 		return fmt.Errorf("%w: %s holds chapters, which are not editable", types.ErrUnsupportedWrite, key)
 	}

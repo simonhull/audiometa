@@ -648,6 +648,17 @@ func TestApply_OtherV24FramesStayRefusedInV23(t *testing.T) {
 	}
 }
 
+func TestApply_InvalidKeyRefused(t *testing.T) {
+	src := file(id3Tag(4, id3Frame(4, "TIT2", latin1Text("x"))))
+	for _, key := range []string{"FOO\x00BAR", "OverDrive MediaMarkers\x00x", "BAD\xffKEY"} {
+		edits := editsFor(t, src, nil)
+		edits.Keys = []types.KeyEdit{{Key: key, Values: []string{"v"}}}
+		if _, err := tryWrite(src, edits); !errors.Is(err, types.ErrUnsupportedWrite) {
+			t.Errorf("%q: err = %v, want ErrUnsupportedWrite", key, err)
+		}
+	}
+}
+
 func TestApply_YearMixedVersions(t *testing.T) {
 	tests := []struct {
 		name     string

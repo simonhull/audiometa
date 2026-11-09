@@ -14,6 +14,7 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- MP3, WAV, AIFF: a raw key that contains a NUL or is not valid UTF-8 is refused with `ErrUnsupportedWrite`, as FLAC and M4A already did. It used to be written as a `TXXX` description that read back as a different key with extra values, and could slip past the refusal of `OVERDRIVE MEDIAMARKERS`.
 - MP3, WAV, AIFF: setting `Year` on an ID3v2.3 tag that stores the year in `TDRC`, or on an ID3v2.4 tag that stores it in `TYER`, writes the tag version's own frame (`TYER` or `TDRC`) and removes the other one. It used to fail with `ErrUnsupportedWrite`, and a v2.4 tag holding both kept a stale `TYER`.
 - MP3: a CBR file with an `Info` header (what LAME and ffmpeg write) is no longer reported as `VBR`, and its `Bitrate` is the audio's, not that of the header frame (often half). A VBR file's `Bitrate` is its average, from the Xing or VBRI byte count, instead of the first frame's.
 - MP3: MPEG-2.5 files (8, 11.025 and 12 kHz) are read. They used to report no audio properties, or wrong ones taken from a false frame sync inside the audio; a frame header is now accepted only when the next frame confirms it.
