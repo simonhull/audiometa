@@ -42,7 +42,8 @@ func parseVorbisIdentification(data []byte, file *types.File) error {
 	channels := data[11]
 	sampleRate := binary.LittleEndian.Uint32(data[12:16])
 	// bitrateMaximum is at data[16:20] but is optional and often 0, so we skip it
-	bitrateNominal := binary.LittleEndian.Uint32(data[20:24])
+	// The nominal bitrate is signed (Vorbis I §4.2.2): a value <= 0 means unset.
+	bitrateNominal := int32(binary.LittleEndian.Uint32(data[20:24])) //nolint:gosec // G115: the Vorbis nominal bitrate is a signed 32-bit field
 	// bitrateMinimum is at data[24:28] but is optional and often 0, so we skip it
 
 	// Populate file.Audio
@@ -50,7 +51,9 @@ func parseVorbisIdentification(data []byte, file *types.File) error {
 	file.Audio.Container = containerOgg
 	file.Audio.SampleRate = int(sampleRate)
 	file.Audio.Channels = int(channels)
-	file.Audio.Bitrate = int(bitrateNominal)
+	if bitrateNominal > 0 {
+		file.Audio.Bitrate = int(bitrateNominal)
+	}
 	file.Audio.Lossless = false
 	file.Audio.VBR = true // Vorbis is typically VBR
 

@@ -53,10 +53,11 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		Audio:  types.AudioInfo{},
 	}
 
-	packets, err := readHeaderPackets(ctx, sr, size, file, maxHeaderBytes)
+	h, err := readHeaderPackets(ctx, sr, size, file, maxHeaderBytes)
 	if err != nil {
 		return nil, err
 	}
+	packets := h.packets
 
 	if len(packets) < 2 {
 		return nil, fmt.Errorf("not enough packets found (need at least 2, got %d)", len(packets))
@@ -87,6 +88,11 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 			} else {
 				file.Audio.Duration = duration
 			}
+		}
+
+		// An unset nominal bitrate leaves the estimate from the audio pages.
+		if file.Audio.Bitrate == 0 {
+			file.Audio.Bitrate = types.AverageBitrate(audioBytes(h, size), file.Audio.Duration)
 		}
 
 		// Parse Vorbis comment header (packet 1)
@@ -130,10 +136,8 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 			})
 		}
 
-		// Estimate bitrate for Opus (no nominal bitrate in header)
-		if file.Audio.Duration > 0 {
-			file.Audio.Bitrate = estimateOpusBitrate(size, file.Audio.Duration)
-		}
+		// Opus has no nominal bitrate in its header: estimate from the audio pages.
+		file.Audio.Bitrate = types.AverageBitrate(audioBytes(h, size), file.Audio.Duration)
 
 	default:
 		return nil, fmt.Errorf("unknown or unsupported Ogg codec: %q", codec)
@@ -156,28 +160,40 @@ const maxHeaderBytes = 16 << 20
 // A comment header with a 16 MiB cover spans a few thousand pages at most.
 const maxHeaderPages = 1 << 16
 
+// headers is what readHeaderPackets found at the start of the first logical stream.
+type headers struct {
+	packets    [][]byte
+	audioStart int64 // offset of the page after the one ending the last header packet; 0 if not reached
+}
+
 // readHeaderPackets reads pages from the start of the first logical stream until
-// its first two packets (identification and comment headers) are complete, the
-// file ends, or maxBytes of pages or maxHeaderPages pages have been scanned. A read error on the first
-// page is fatal; later errors and hitting the cap are recorded as warnings and
-// parsing continues with the packets gathered so far.
-func readHeaderPackets(ctx context.Context, sr *binary.SafeReader, size int64, file *types.File, maxBytes int64) ([][]byte, error) {
+// its header packets (three for Vorbis, two for Opus; two for an unrecognized
+// codec) are complete, the file ends, or maxBytes of pages or maxHeaderPages
+// pages have been scanned. A read error on the first page is fatal; later
+// errors and hitting the cap are recorded as warnings and parsing continues
+// with the packets gathered so far.
+//
+// The first audio packet starts a new page (Vorbis I §A.2, RFC 7845 §3), so
+// audioStart is where the audio pages begin.
+func readHeaderPackets(ctx context.Context, sr *binary.SafeReader, size int64, file *types.File, maxBytes int64) (headers, error) {
 	var pages []*Page
 	var serial uint32
 	var read int64
 	var packets packetTracker
 	complete := 0 // packets ended so far
+	want := 2     // header packets expected; the first page names the codec
+	var audioStart int64
 	offset := int64(0)
 
-	for i := 0; offset < size && complete < 2; i++ {
+	for i := 0; offset < size && complete < want; i++ {
 		if err := binary.Canceled(ctx, i); err != nil {
-			return nil, err
+			return headers{}, err
 		}
 
 		page, nextOffset, err := readPage(sr, offset)
 		if err != nil {
 			if i == 0 {
-				return nil, fmt.Errorf("failed to read first Ogg page: %w", err)
+				return headers{}, fmt.Errorf("failed to read first Ogg page: %w", err)
 			}
 			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 				Stage:   types.StageMetadata,
@@ -205,6 +221,9 @@ func readHeaderPackets(ctx context.Context, sr *binary.SafeReader, size int64, f
 		}
 		if i == 0 {
 			serial = page.SerialNumber
+			if n, ok := headerPacketCount(detectOggCodec(page.Data)); ok {
+				want = n
+			}
 		} else if page.SerialNumber != serial {
 			continue // another multiplexed stream
 		}
@@ -213,14 +232,26 @@ func readHeaderPackets(ctx context.Context, sr *binary.SafeReader, size int64, f
 		for seg := range packets.segments(page) {
 			if seg.ends {
 				complete++
+				if complete == want {
+					audioStart = offset // offset is already the end of this page
+				}
 			}
 		}
 	}
 
 	if len(pages) == 0 {
-		return nil, errors.New("no Ogg pages found")
+		return headers{}, errors.New("no Ogg pages found")
 	}
-	return extractPackets(pages), nil
+	return headers{packets: extractPackets(pages), audioStart: audioStart}, nil
+}
+
+// audioBytes estimates the bytes of audio pages: everything after the
+// header pages, page headers included. It is 0 when the headers never ended.
+func audioBytes(h headers, size int64) int64 {
+	if h.audioStart <= 0 || h.audioStart > size {
+		return 0
+	}
+	return size - h.audioStart
 }
 
 // detectOggCodec determines whether this is Vorbis or Opus
@@ -242,33 +273,6 @@ func detectOggCodec(firstPacket []byte) string {
 	}
 
 	return "unknown"
-}
-
-// estimateOpusBitrate estimates the bitrate for an Opus file.
-//
-// Opus files don't have a nominal bitrate field in the header, so we
-// estimate it from the file size and duration.
-//
-// We subtract approximately 5KB for headers and metadata overhead.
-func estimateOpusBitrate(fileSize int64, duration time.Duration) int {
-	if duration == 0 {
-		return 0
-	}
-
-	// Estimate audio data size (subtract ~5KB for headers/tags)
-	audioSize := fileSize - 5000
-	if audioSize < 0 {
-		audioSize = fileSize
-	}
-
-	// Calculate bitrate: (size in bits) / (duration in seconds)
-	seconds := duration.Seconds()
-	if seconds == 0 {
-		return 0
-	}
-
-	bitrate := int((float64(audioSize) * 8) / seconds)
-	return bitrate
 }
 
 // Duration = granule_position / sample_rate.

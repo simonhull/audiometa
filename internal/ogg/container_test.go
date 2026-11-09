@@ -247,10 +247,11 @@ func TestReadHeaderPacketsCap(t *testing.T) {
 	data := multiPageFile(vorbisIDPacket(), comment, 7, pageSpec{headerType: 0x04, serial: 7, lacing: []byte{1}, data: []byte{0}})
 	sr := binutil.NewSafeReader(bytes.NewReader(data), int64(len(data)), "x.ogg")
 	file := &types.File{}
-	packets, err := readHeaderPackets(context.Background(), sr, int64(len(data)), file, 70_000)
+	h, err := readHeaderPackets(context.Background(), sr, int64(len(data)), file, 70_000)
 	if err != nil {
 		t.Fatal(err)
 	}
+	packets := h.packets
 	if len(packets) < 1 {
 		t.Fatal("no packets")
 	}
@@ -272,10 +273,11 @@ func TestReadHeaderPacketsSkipsOtherStreams(t *testing.T) {
 		pageSpec{serial: 1, lacing: lacingFor(len(comment)), data: comment},
 	)
 	sr := binutil.NewSafeReader(bytes.NewReader(data), int64(len(data)), "x.ogg")
-	packets, err := readHeaderPackets(context.Background(), sr, int64(len(data)), &types.File{}, maxHeaderBytes)
+	h, err := readHeaderPackets(context.Background(), sr, int64(len(data)), &types.File{}, maxHeaderBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
+	packets := h.packets
 	if len(packets) != 2 || !bytes.Equal(packets[1], comment) {
 		t.Errorf("packets = %d", len(packets))
 	}
@@ -313,11 +315,61 @@ func TestReadHeaderPacketsDroppedContinuation(t *testing.T) {
 		pageSpec{serial: 1, lacing: []byte{1}, data: []byte{0}},
 	)
 	sr := binutil.NewSafeReader(bytes.NewReader(data), int64(len(data)), "x.ogg")
-	packets, err := readHeaderPackets(context.Background(), sr, int64(len(data)), &types.File{}, maxHeaderBytes)
+	h, err := readHeaderPackets(context.Background(), sr, int64(len(data)), &types.File{}, maxHeaderBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
+	packets := h.packets
 	if len(packets) != 3 || !bytes.Equal(packets[1], comment) {
 		t.Errorf("packets = %d, want identification, comment and setup", len(packets))
+	}
+}
+
+// audioTail is the stream's last page: 100 bytes of audio, granule g. With
+// its 28-byte header it is 128 bytes, so one second of it is 1024 bit/s.
+func audioTail(serial uint32, g uint64) pageSpec {
+	return pageSpec{headerType: 0x04, granule: g, serial: serial, lacing: lacingFor(100), data: make([]byte, 100)}
+}
+
+func parseOggBytes(t *testing.T, data []byte) *types.File {
+	t.Helper()
+	f, err := (&parser{}).Parse(context.Background(), bytes.NewReader(data), int64(len(data)), "x.ogg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return f
+}
+
+func TestParse_OpusBitrateExcludesHeaders(t *testing.T) {
+	for name, comments := range map[string][]string{
+		"no picture":    nil,
+		"30 KB picture": {pictureComment(bytes.Repeat([]byte{0xAB}, 30000))},
+	} {
+		t.Run(name, func(t *testing.T) {
+			data := multiPageFile(opusHeadPacket(), commentPacket("OpusTags", false, comments...), 7, audioTail(7, 48000))
+			if got := parseOggBytes(t, data).Audio.Bitrate; got != 1024 {
+				t.Errorf("Bitrate = %d, want 1024", got)
+			}
+		})
+	}
+}
+
+func TestParse_VorbisUnsetNominalBitrateIsEstimated(t *testing.T) {
+	for name, nominal := range map[string]uint32{"-1": 0xFFFFFFFF, "0": 0} {
+		t.Run(name, func(t *testing.T) {
+			id := vorbisIDPacket()
+			binary.LittleEndian.PutUint32(id[20:24], nominal)
+			comment := commentPacket("\x03vorbis", true, "TITLE=x")
+			setup := []byte("\x05vorbis\x00\x01")
+			data := buildOgg(
+				pageSpec{headerType: 0x02, serial: 9, lacing: lacingFor(len(id)), data: id},
+				pageSpec{serial: 9, lacing: lacingFor(len(comment)), data: comment},
+				pageSpec{serial: 9, lacing: lacingFor(len(setup)), data: setup},
+				audioTail(9, 44100),
+			)
+			if got := parseOggBytes(t, data).Audio.Bitrate; got != 1024 {
+				t.Errorf("Bitrate = %d, want 1024 (estimated)", got)
+			}
+		})
 	}
 }

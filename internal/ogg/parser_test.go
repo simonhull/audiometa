@@ -542,26 +542,10 @@ func TestParseOpus_BitrateEstimation(t *testing.T) {
 		t.Fatalf("Parse failed: %v", err)
 	}
 
-	// Bitrate should be estimated (not zero)
-	if file.Audio.Bitrate <= 0 {
-		t.Errorf("expected bitrate > 0, got %d", file.Audio.Bitrate)
-	}
-
-	// For our synthetic file:
-	// File size ~= len(data) bytes
-	// Duration = 1 second
-	// Expected bitrate ~= (fileSize - 5KB overhead) * 8 bits/byte / 1 second
-	fileSize := int64(len(data))
-	audioSize := fileSize - 5000
-	if audioSize < 0 {
-		audioSize = fileSize
-	}
-	expectedBitrate := int((float64(audioSize) * 8) / 1.0)
-
-	// Allow 20% margin
-	if file.Audio.Bitrate < expectedBitrate*8/10 ||
-		file.Audio.Bitrate > expectedBitrate*12/10 {
-		t.Errorf("expected bitrate ~%d, got %d", expectedBitrate, file.Audio.Bitrate)
+	// createMinimalOpus ends with one EOS page of 100 audio bytes plus its
+	// 28-byte header, at granule 48000: 128 bytes in one second.
+	if file.Audio.Bitrate != 1024 {
+		t.Errorf("Bitrate = %d, want 1024", file.Audio.Bitrate)
 	}
 }
 
