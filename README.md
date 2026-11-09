@@ -357,7 +357,8 @@ The parsers are written to read untrusted files:
 - a file records at most 100 warnings;
 - a panic inside a parser is recovered and returned as a `*CorruptedFileError`;
 - parse loops check the `context`, so `OpenContext` and `OpenMany` stop promptly;
-- each parser has a fuzz target (`FuzzParseMP3`, `FuzzParseFLAC`, `FuzzParseM4A`, `FuzzParseOgg`).
+- every parser, the writers, format detection and the CLI atom walker have fuzz targets
+  that check results and allocation budgets, and CI fuzzes each on every push.
 
 ## Examples
 
@@ -506,6 +507,7 @@ go tool pprof cpu.prof
 
 # Fuzz a parser
 go test -fuzz=FuzzParseMP3 ./internal/mp3
+scripts/fuzz.sh 30s   # every target
 
 # Generate code (stringer for enums)
 go generate ./...

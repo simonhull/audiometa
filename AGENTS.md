@@ -6,6 +6,9 @@
   golangci-lint can report false typecheck errors.
 - Full local gate: `mise run check` (build, race tests, lint, vet, gofmt; mirrors CI).
 - `go generate ./...` (`mise run generate`) needs `stringer`, which mise pins.
+- `mise run fuzz` fuzzes every target for 30 s (`scripts/fuzz.sh [time]`); fuzz failures land in
+  `testdata/fuzz/`. Turn them into seeds or tests, never commit them. Allocation budgets live in
+  `internal/testbudget`.
 
 ## Conventions
 - Recoverable data problems become `types.Warning{Stage: types.StageX, ...}`, not errors.
