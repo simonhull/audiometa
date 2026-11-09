@@ -98,6 +98,15 @@ func (w *writer) AudioDigest(ctx context.Context, src io.ReaderAt, size int64) (
 // including any APEv2, Lyrics3 and ID3v1 tags: the bytes WriteFile copies
 // verbatim.
 func (w *writer) PreservedDigest(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error) {
+	ranges, err := w.PreservedRanges(ctx, src, size)
+	if err != nil {
+		return nil, err
+	}
+	return writeutil.DigestRanges(ctx, src, ranges)
+}
+
+// PreservedRanges returns everything after the ID3v2 tag.
+func (w *writer) PreservedRanges(ctx context.Context, src io.ReaderAt, size int64) ([]registry.Range, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -105,7 +114,7 @@ func (w *writer) PreservedDigest(ctx context.Context, src io.ReaderAt, size int6
 	if err != nil {
 		return nil, err
 	}
-	return writeutil.DigestRange(ctx, src, start, size-start)
+	return []registry.Range{{Off: start, End: size}}, nil
 }
 
 // InPlacePatch returns the new tag to write at offset 0 when the file has an

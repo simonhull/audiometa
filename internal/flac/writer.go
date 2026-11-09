@@ -2,7 +2,6 @@ package flac
 
 import (
 	"context"
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -104,6 +103,16 @@ func (w *writer) AudioDigest(ctx context.Context, src io.ReaderAt, size int64) (
 // everything after the last metadata block, including any trailing tags: the
 // bytes WriteFile copies verbatim.
 func (w *writer) PreservedDigest(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error) {
+	ranges, err := w.PreservedRanges(ctx, src, size)
+	if err != nil {
+		return nil, err
+	}
+	return writeutil.DigestRanges(ctx, src, ranges)
+}
+
+// PreservedRanges returns the leading ID3v2 tag (empty when there is none)
+// and everything after the last metadata block.
+func (w *writer) PreservedRanges(ctx context.Context, src io.ReaderAt, size int64) ([]registry.Range, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -111,14 +120,7 @@ func (w *writer) PreservedDigest(ctx context.Context, src io.ReaderAt, size int6
 	if err != nil {
 		return nil, err
 	}
-	h := sha256.New()
-	if _, err := writeutil.CopyRange(ctx, h, src, 0, prefix); err != nil {
-		return nil, err
-	}
-	if _, err := writeutil.CopyRange(ctx, h, src, start, size-start); err != nil {
-		return nil, err
-	}
-	return h.Sum(nil), nil
+	return []registry.Range{{Off: 0, End: prefix}, {Off: start, End: size}}, nil
 }
 
 // InPlacePatch returns the new metadata blocks to write just after the "fLaC"

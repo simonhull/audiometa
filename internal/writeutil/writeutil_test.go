@@ -7,8 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"sync"
 	"testing"
+
+	"github.com/simonhull/audiometa/internal/registry"
 )
 
 func testData(n int) []byte {
@@ -112,5 +115,20 @@ func TestCountingWriter(t *testing.T) {
 	_, _ = cw.Write([]byte("de"))
 	if cw.N != 5 || buf.String() != "abcde" {
 		t.Errorf("N = %d, buf = %q", cw.N, buf.String())
+	}
+}
+
+func TestDigestRanges(t *testing.T) {
+	data := testData(1000)
+	got, err := DigestRanges(context.Background(), bytes.NewReader(data), []registry.Range{{Off: 0, End: 10}, {Off: 500, End: 500}, {Off: 900, End: 1000}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := sha256.Sum256(append(slices.Clone(data[:10]), data[900:]...))
+	if !bytes.Equal(got, want[:]) {
+		t.Errorf("DigestRanges = %x, want %x (the ranges as one stream, empty ones skipped)", got, want)
+	}
+	if _, err := DigestRanges(context.Background(), bytes.NewReader(data), []registry.Range{{Off: 990, End: 1010}}); !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Errorf("range past the end: err = %v, want io.ErrUnexpectedEOF", err)
 	}
 }

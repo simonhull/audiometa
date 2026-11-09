@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"sync"
+
+	"github.com/simonhull/audiometa/internal/registry"
 )
 
 // chunkSize is the copy buffer size for CopyRange.
@@ -78,6 +80,18 @@ func DigestRange(ctx context.Context, src io.ReaderAt, off, n int64) ([]byte, er
 	h := sha256.New()
 	if _, err := CopyRange(ctx, h, src, off, n); err != nil {
 		return nil, err
+	}
+	return h.Sum(nil), nil
+}
+
+// DigestRanges returns the SHA-256 of the bytes of src in ranges, hashed in
+// the order given as one stream.
+func DigestRanges(ctx context.Context, src io.ReaderAt, ranges []registry.Range) ([]byte, error) {
+	h := sha256.New()
+	for _, r := range ranges {
+		if _, err := CopyRange(ctx, h, src, r.Off, r.End-r.Off); err != nil {
+			return nil, err
+		}
 	}
 	return h.Sum(nil), nil
 }

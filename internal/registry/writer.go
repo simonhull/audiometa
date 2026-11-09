@@ -49,6 +49,23 @@ type Patch struct {
 	Data []byte
 }
 
+// Range is a half-open byte range [Off, End) of a file.
+type Range struct{ Off, End int64 }
+
+// Overlaps reports whether r and o share at least one byte. An empty range
+// overlaps nothing.
+func (r Range) Overlaps(o Range) bool {
+	return r.Off < r.End && o.Off < o.End && r.Off < o.End && o.Off < r.End
+}
+
+// PreservedRanger is optionally implemented by InPlaceWriters. PreservedRanges
+// returns, in file order, the byte ranges PreservedDigest hashes, computed
+// from src's structure alone. PreservedDigest must be the hash of exactly
+// these ranges, so the two cannot drift apart.
+type PreservedRanger interface {
+	PreservedRanges(ctx context.Context, src io.ReaderAt, size int64) ([]Range, error)
+}
+
 // writers holds the registered TagWriters; guarded by mu.
 var writers = make(map[types.Format]TagWriter)
 
