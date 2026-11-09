@@ -8,6 +8,7 @@ import (
 	binutil "github.com/simonhull/audiometa/internal/binary"
 	"github.com/simonhull/audiometa/internal/registry"
 	"github.com/simonhull/audiometa/internal/replaygain"
+	"github.com/simonhull/audiometa/internal/trailer"
 	"github.com/simonhull/audiometa/internal/types"
 )
 
@@ -29,31 +30,39 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		Format: types.FormatMP3,
 		Size:   size,
 		Tags:   types.Tags{},
-		Audio:  types.AudioInfo{},
+		Audio:  types.AudioInfo{Container: "MP3"},
 	}
 
-	// Parse ID3v2 tag (if present)
-	tagSize, err := parseID3v2(ctx, sr, file)
-	if err != nil {
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, ctxErr
+	// ID3v2 tag. A file without one (untagged, or with only an ID3v1
+	// trailer) is valid and gets no warning; a tag that is there but cannot
+	// be read does, and the frame scan below still runs.
+	var tagSize int64
+	if hasID3Magic(sr, size) {
+		var err error
+		if tagSize, err = parseID3v2(ctx, sr, file); err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, ctxErr
+			}
+			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
+				Stage:   types.StageMetadata,
+				Message: fmt.Sprintf("ID3v2 parsing failed: %v", err),
+				Err:     err,
+			})
 		}
-		// Not an ID3v2 file or parse error - try to find MP3 frames anyway
-		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-			Stage:   types.StageMetadata,
-			Message: fmt.Sprintf("ID3v2 parsing failed: %v", err),
-			Err:     err,
-		})
 	}
 
-	// ID3v1 trailer: a fallback for tags, and never part of the audio.
-	v1, hasV1 := readID3v1(sr, size)
-	if hasV1 && id3v1Fallback(&file.Tags) {
-		applyID3v1(file, v1)
+	// Trailing tags (APEv2, Lyrics3v2, ID3v1, ...) are never part of the audio.
+	// The ID3v1 trailer is also a fallback for tags, when it is the last block.
+	audioEnd, err := trailer.Start(ctx, sr, tagSize, size)
+	if err != nil {
+		return nil, err
 	}
-	audioEnd := size
-	if hasV1 {
-		audioEnd -= id3v1Size
+	if last, err := trailer.EndsWithID3v1(sr, tagSize, size); err != nil {
+		return nil, err
+	} else if last && id3v1Fallback(&file.Tags) {
+		if v1, ok := readID3v1(sr, size); ok {
+			applyID3v1(file, v1)
+		}
 	}
 
 	// Parse MP3 frame headers for technical info (bitrate, duration, etc.)

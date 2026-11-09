@@ -391,3 +391,28 @@ func TestAudioInfo_Duration(t *testing.T) {
 		t.Errorf("Duration = %v, want %v", audio.Duration, 225*time.Second)
 	}
 }
+
+func TestAverageBitrate(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		bytes int64
+		d     time.Duration
+		want  int
+	}{
+		{"128 kbps", 16000, time.Second, 128000},
+		{"half second", 500, 500 * time.Millisecond, 8000},
+		{"zero bytes", 0, time.Second, 0},
+		{"negative bytes", -1, time.Second, 0},
+		{"zero duration", 1000, 0, 0},
+		{"absurd", 1 << 40, time.Millisecond, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := AverageBitrate(tt.bytes, tt.d); got != tt.want {
+				t.Errorf("AverageBitrate(%d, %v) = %d, want %d", tt.bytes, tt.d, got, tt.want)
+			}
+		})
+	}
+}

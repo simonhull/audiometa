@@ -5,6 +5,20 @@ import (
 	"testing"
 )
 
+// ID3 formats keep only years 1900-2100; internal/mp3's validID3Year (which
+// the MP3 writer uses to refuse others) has the same bounds and is tested
+// there.
+func TestDecodeYear_ID3Bounds(t *testing.T) {
+	for _, format := range []Format{FormatMP3, FormatWAV, FormatAIFF} {
+		for year, want := range map[string]bool{"1899": false, "1900": true, "2100": true, "2101": false} {
+			var tags Tags
+			if got := decodeYear(&tags, format, year); got != want {
+				t.Errorf("%s: decodeYear(%s) = %v, want %v", format, year, got, want)
+			}
+		}
+	}
+}
+
 var bindingFormats = []Format{FormatMP3, FormatFLAC, FormatOgg, FormatOpus, FormatM4A, FormatM4B, FormatWAV, FormatAIFF}
 
 func TestFieldBindings_KeysAreNonEmpty(t *testing.T) {
@@ -107,7 +121,11 @@ func TestDecodeField(t *testing.T) {
 		{"vorbis year", FormatFLAC, FieldYear, "DATE", []string{"0042"}, true, []string{"42"}},
 		{"trck number", FormatMP3, FieldTrackNumber, "TRCK", []string{"3/12"}, true, []string{"3"}},
 		{"trck total", FormatMP3, FieldTrackTotal, "TRCK", []string{"3/12"}, true, []string{"12"}},
-		{"trck no total", FormatMP3, FieldTrackTotal, "TRCK", []string{"3"}, true, nil},
+		{"trck no total", FormatMP3, FieldTrackTotal, "TRCK", []string{"3"}, false, nil},
+		{"vorbis number with total", FormatFLAC, FieldTrackNumber, "TRACKNUMBER", []string{"3/12"}, true, []string{"3"}},
+		{"vorbis total from number", FormatFLAC, FieldTrackTotal, "TRACKNUMBER", []string{"3/12"}, true, []string{"12"}},
+		{"vorbis number without total", FormatFLAC, FieldTrackTotal, "TRACKNUMBER", []string{"3"}, false, nil},
+		{"vorbis disc total from number", FormatOpus, FieldDiscTotal, "DISCNUMBER", []string{"1/2"}, true, []string{"2"}},
 		{"vorbis total", FormatFLAC, FieldTrackTotal, "TRACKTOTAL", []string{"9"}, true, []string{"9"}},
 		{"m4a mvi zero", FormatM4A, FieldSeriesPart, "\xA9mvi", []string{"0"}, false, nil},
 		{"mp3 mvin cut", FormatMP3, FieldSeriesPart, "MVIN", []string{"2/7"}, true, []string{"2"}},

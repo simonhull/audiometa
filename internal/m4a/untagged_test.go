@@ -85,3 +85,19 @@ func TestParse_CorruptUdtaWarnsButKeepsDuration(t *testing.T) {
 		t.Errorf("expected exactly 1 StageMetadata warning, got %d (%v)", n, file.Warnings)
 	}
 }
+
+func TestParse_NamesTheMP4Container(t *testing.T) {
+	moov := createMockAtom("moov", createMvhdAtom(0, 1000, 1000))
+	tests := map[string][]byte{
+		"minimal m4b": createMinimalM4B("T", "A", "B"),
+		"no moov":     m4bFtyp(),
+		"bare moov":   append(m4bFtyp(), moov...),
+	}
+	for name, data := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := parseBytes(t, data).Audio.Container; got != "MP4" {
+				t.Errorf("Container = %q, want MP4", got)
+			}
+		})
+	}
+}

@@ -15,14 +15,29 @@ type AudioInfo struct {
 	Codec            string
 	CodecDescription string
 	CodecProfile     string
-	Container        string
-	Duration         time.Duration
-	SampleRate       int
-	BitDepth         int
-	Channels         int
-	Bitrate          int
-	Lossless         bool
-	VBR              bool
+	// Container is the file format holding the stream: "MP4", "Ogg", "FLAC", "MP3", "WAV", "RF64", "AIFF" or "AIFF-C".
+	Container  string
+	Duration   time.Duration
+	SampleRate int
+	BitDepth   int
+	Channels   int
+	Bitrate    int
+	Lossless   bool
+	VBR        bool
+}
+
+// AverageBitrate returns the average bitrate, in bits per second, of n bytes
+// of audio lasting d. It returns 0 when n or d is not positive, or when the
+// result exceeds math.MaxInt32, which no audio stream reaches.
+func AverageBitrate(n int64, d time.Duration) int {
+	if n <= 0 || d <= 0 {
+		return 0
+	}
+	bps := float64(n) * 8 / d.Seconds()
+	if bps > math.MaxInt32 {
+		return 0
+	}
+	return int(bps)
 }
 
 // ReplayGainInfo represents loudness normalization data.

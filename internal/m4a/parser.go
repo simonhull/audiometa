@@ -11,6 +11,9 @@ import (
 	"github.com/simonhull/audiometa/internal/types"
 )
 
+// containerMP4 names the ISO base media file format that M4A and M4B files use.
+const containerMP4 = "MP4"
+
 // parser implements the audiometa.FormatParser interface.
 type parser struct{}
 
@@ -42,7 +45,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		Format: format,
 		Size:   size,
 		Tags:   types.Tags{},
-		Audio:  types.AudioInfo{},
+		Audio:  types.AudioInfo{Container: containerMP4},
 	}
 
 	// Find moov atom (movie container)
@@ -78,7 +81,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	}
 
 	// Parse technical info (duration, bitrate, codec, sample rate, channels)
-	if err := parseTechnicalInfo(sr, moovAtom, file); err != nil {
+	if err := parseTechnicalInfo(ctx, sr, moovAtom, file); err != nil {
 		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 			Stage:   types.StageTechnical,
 			Message: err.Error(),

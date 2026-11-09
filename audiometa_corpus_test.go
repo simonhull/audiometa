@@ -167,3 +167,22 @@ func TestExtractArtwork_NoArtwork(t *testing.T) {
 		})
 	}
 }
+
+func TestOpen_Corpus_LosslessMP4(t *testing.T) {
+	for _, path := range []string{"testdata/sample_alac.m4a", "testdata/sample_flac.mp4"} {
+		t.Run(path, func(t *testing.T) {
+			f, err := audiometa.Open(path, audiometa.WithStrictParsing())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer f.Close()
+			a := f.Audio
+			if a.SampleRate != 96000 || a.BitDepth != 24 || a.Channels != 2 || !a.Lossless || a.Container != "MP4" || !a.IsHighRes() {
+				t.Errorf("audio = %+v, want 96 kHz, 24-bit, stereo, lossless, MP4", a)
+			}
+			if f.Tags.Title != "Test Title" {
+				t.Errorf("Title = %q", f.Tags.Title)
+			}
+		})
+	}
+}

@@ -2,10 +2,12 @@ package m4a
 
 import (
 	"context"
+	stdbinary "encoding/binary"
 	"errors"
 	"math"
 	"slices"
 	"time"
+	"unicode/utf16"
 
 	"github.com/simonhull/audiometa/internal/binary"
 	"github.com/simonhull/audiometa/internal/types"
@@ -623,7 +625,7 @@ func buildChaptersFromText(ctx context.Context, sr *binary.SafeReader, chapterTi
 		}
 
 		chapters = append(chapters, types.Chapter{
-			Index:     i + 1,
+			Index:     len(chapters) + 1,
 			Title:     title,
 			StartTime: chapterTimes[i],
 			Source:    types.ChapterSourceQuickTime,
@@ -650,5 +652,27 @@ func extractChapterTitle(sr *binary.SafeReader, chunkOffset int64, sampleSize ui
 		return ""
 	}
 
-	return string(textBuf[2 : 2+textLen])
+	return decodeChapterText(textBuf[2 : 2+textLen])
+}
+
+// decodeChapterText returns a QuickTime text sample's text: UTF-16 in the byte
+// order its BOM gives when it starts with one, otherwise the bytes as stored.
+func decodeChapterText(text []byte) string {
+	if len(text) >= 2 && len(text)%2 == 0 {
+		var order stdbinary.ByteOrder
+		switch {
+		case text[0] == 0xFE && text[1] == 0xFF:
+			order = stdbinary.BigEndian
+		case text[0] == 0xFF && text[1] == 0xFE:
+			order = stdbinary.LittleEndian
+		}
+		if order != nil {
+			units := make([]uint16, 0, len(text)/2-1)
+			for i := 2; i < len(text); i += 2 {
+				units = append(units, order.Uint16(text[i:]))
+			}
+			return string(utf16.Decode(units))
+		}
+	}
+	return string(text)
 }

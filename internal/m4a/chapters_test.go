@@ -466,3 +466,33 @@ func TestParseChapterTimings_HugeAccumulationDoesNotWrap(t *testing.T) {
 		}
 	}
 }
+
+func TestQTChapters_UTF16Titles(t *testing.T) {
+	be := textSample(string([]byte{0xFE, 0xFF, 0x00, 'C', 0x00, 'h', 0x00, 0xE9}))
+	le := textSample(string([]byte{0xFF, 0xFE, 'C', 0x00, 'h', 0x00}))
+	data, moovOff := buildQTChapterFile(1000, slices.Concat(be, le),
+		sttsAtom([2]uint32{2, 1000}),
+		stszAtom(0, 2, uint32(len(be)), uint32(len(le))),
+		stscAtom([3]uint32{1, 1, 1}),
+		stcoAtom(8, 8+uint32(len(be))),
+	)
+	got := parseQTChapters(t, data, moovOff, 10*time.Second)
+	checkChapters(t, got, []string{"Ch\u00e9", "Ch"}, []time.Duration{0, time.Second})
+}
+
+func TestQTChapters_IndexesStayConsecutive(t *testing.T) {
+	payload := slices.Concat(textSample("Intro"), textSample("End"))
+	data, moovOff := buildQTChapterFile(1000, payload,
+		sttsAtom([2]uint32{3, 1000}),
+		stszAtom(0, 3, 7, 0, 5),
+		stscAtom([3]uint32{1, 1, 1}),
+		stcoAtom(8, 15, 15),
+	)
+	got := parseQTChapters(t, data, moovOff, 10*time.Second)
+	checkChapters(t, got, []string{"Intro", "End"}, []time.Duration{0, 2 * time.Second})
+	for i, ch := range got {
+		if ch.Index != i+1 {
+			t.Errorf("chapter %d Index = %d, want %d", i, ch.Index, i+1)
+		}
+	}
+}

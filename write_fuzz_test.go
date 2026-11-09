@@ -345,11 +345,6 @@ func typedValues(t *Tags, f types.Field) []string {
 // legitimately not read back, or returns "". Each case is a debt with an owner.
 func landedExempt(format Format, data []byte, field types.Field, values []string) string {
 	switch {
-	case field == types.FieldYear && len(values) == 1 && outsideID3Years(format, values[0]):
-		// Known finding 2 (plan 058): the ID3 writer accepts a year the ID3 reader
-		// rejects (it takes only 1900-2100), so it is written and reads back as 0.
-		// Plan 065 or a follow-up should decide whether to refuse it.
-		return "year outside 1900-2100 in an ID3 tag"
 	case len(values) == 0 && format == FormatMP3 && hasID3v1(data):
 		// Known finding 3 (plan 058): clearing a field on an MP3 with an ID3v1
 		// trailer reads back the ID3v1 value, which Write does not update
@@ -357,16 +352,6 @@ func landedExempt(format Format, data []byte, field types.Field, values []string
 		return "cleared field shadowed by the ID3v1 trailer"
 	}
 	return ""
-}
-
-// outsideID3Years reports whether v is a year the ID3 reader rejects, on a
-// format that keeps Year in an ID3 tag.
-func outsideID3Years(format Format, v string) bool {
-	if format != FormatMP3 && format != FormatWAV && format != FormatAIFF {
-		return false
-	}
-	y, err := strconv.Atoi(v)
-	return err == nil && (y < 1900 || y > 2100)
 }
 
 // hasID3v1 reports whether data ends in an ID3v1 tag.

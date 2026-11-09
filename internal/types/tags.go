@@ -336,7 +336,9 @@ func (t *Tags) syncKey(key string) {
 
 // AddRaw appends a value to the raw tag map under key, creating the entry if
 // absent. Unlike Set it never replaces existing values, so format parsers use
-// it to record every occurrence of a repeated tag.
+// it to record every occurrence of a repeated tag. AddRaw is for format
+// parsers building Tags: it never syncs typed fields, even on Tags returned by
+// Open. To change a tag, use [Tags.Set] or [Tags.Delete].
 func (t *Tags) AddRaw(key, value string) {
 	if t.raw == nil {
 		t.raw = make(map[string][]string)
@@ -356,132 +358,94 @@ func (t *Tags) AddRawNamed(name, value string) {
 	t.AddRaw(key, value)
 }
 
-// Merge merges tags from another Tags object.
+// Merge fills the gaps in t from other; nothing t already holds is replaced.
 //
-// For standard fields, non-empty values in other override empty values in t.
-// For raw tags, all tags from other are copied to t.
+// A typed field that is empty or zero in t takes other's value, and the slice
+// fields Artists, Genres, Composers and Performers gain the values of other
+// that t lacks, compared case-insensitively. A raw key of other is copied when
+// t has no entry for it and t holds none of the typed fields that key fills;
+// on Tags returned by Open those fields are then decoded from it, as
+// [Tags.Set] does. Raw keys are format-native, so between Tags of two
+// different formats only the typed fields are merged.
+//
+// On a File's Tags the merged values are ordinary edits: File.WriteTo and
+// Write store them like any other change. other is not modified.
 //
 // Example:
 //
 //	// Apply fallback tags
 //	fileTags.Merge(defaultTags)
-func (t *Tags) Merge(other *Tags) { //nolint:gocyclo // Merging requires checking all tag fields individually
+func (t *Tags) Merge(other *Tags) {
 	if other == nil {
 		return
 	}
+	owned := t.mergeRaw(other)
+	for f := range AllFields() {
+		if !owned[f] {
+			mergeField(t, other, f)
+		}
+	}
+}
 
-	// Merge standard fields (non-empty wins)
-	if t.Title == "" {
-		t.Title = other.Title
+// mergeRaw copies the raw keys of other that t may take (see [Tags.Merge]) and
+// returns the fields those keys now fill, which the typed merge must leave as
+// the sync made them. Eligibility is judged on t as it was before the merge,
+// so the result does not depend on map order.
+func (t *Tags) mergeRaw(other *Tags) (owned [fieldCount]bool) {
+	if t.format != FormatUnknown && other.format != FormatUnknown && t.format != other.format {
+		return owned
 	}
-	if t.Subtitle == "" {
-		t.Subtitle = other.Subtitle
+	var take []string
+	for _, key := range slices.Sorted(maps.Keys(other.raw)) {
+		if _, has := t.raw[key]; !has && !t.holdsFieldBoundTo(key) {
+			take = append(take, key)
+		}
 	}
-	if t.Artist == "" {
-		t.Artist = other.Artist
+	if len(take) > 0 && t.raw == nil {
+		t.raw = make(map[string][]string, len(take))
 	}
-	if t.Album == "" {
-		t.Album = other.Album
-	}
-	if t.AlbumArtist == "" {
-		t.AlbumArtist = other.AlbumArtist
-	}
-	if t.Year == 0 {
-		t.Year = other.Year
-	}
-	if t.Date == "" {
-		t.Date = other.Date
-	}
-	if t.OriginalDate == "" {
-		t.OriginalDate = other.OriginalDate
-	}
-	if t.Comment == "" {
-		t.Comment = other.Comment
-	}
-	if t.Description == "" {
-		t.Description = other.Description
-	}
-	if t.Lyrics == "" {
-		t.Lyrics = other.Lyrics
-	}
-	if t.Narrator == "" {
-		t.Narrator = other.Narrator
-	}
-	if t.Publisher == "" {
-		t.Publisher = other.Publisher
-	}
-	if t.Series == "" {
-		t.Series = other.Series
-	}
-	if t.Grouping == "" {
-		t.Grouping = other.Grouping
-	}
-	if t.SeriesPart == "" {
-		t.SeriesPart = other.SeriesPart
-	}
-	if t.ISBN == "" {
-		t.ISBN = other.ISBN
-	}
-	if t.ASIN == "" {
-		t.ASIN = other.ASIN
-	}
-	if t.Language == "" {
-		t.Language = other.Language
-	}
-	if t.TrackNumber == 0 {
-		t.TrackNumber = other.TrackNumber
-	}
-	if t.TrackTotal == 0 {
-		t.TrackTotal = other.TrackTotal
-	}
-	if t.DiscNumber == 0 {
-		t.DiscNumber = other.DiscNumber
-	}
-	if t.DiscTotal == 0 {
-		t.DiscTotal = other.DiscTotal
-	}
-
-	// Merge multi-value fields (append unique)
-	t.Artists = mergeUnique(t.Artists, other.Artists)
-	t.Genres = mergeUnique(t.Genres, other.Genres)
-	t.Composers = mergeUnique(t.Composers, other.Composers)
-	t.Performers = mergeUnique(t.Performers, other.Performers)
-
-	// Merge cataloging fields
-	if t.MusicBrainzTrackID == "" {
-		t.MusicBrainzTrackID = other.MusicBrainzTrackID
-	}
-	if t.MusicBrainzAlbumID == "" {
-		t.MusicBrainzAlbumID = other.MusicBrainzAlbumID
-	}
-	if t.MusicBrainzArtistID == "" {
-		t.MusicBrainzArtistID = other.MusicBrainzArtistID
-	}
-	if t.ISRC == "" {
-		t.ISRC = other.ISRC
-	}
-	if t.Barcode == "" {
-		t.Barcode = other.Barcode
-	}
-	if t.CatalogNumber == "" {
-		t.CatalogNumber = other.CatalogNumber
-	}
-	if t.Label == "" {
-		t.Label = other.Label
-	}
-	if t.Copyright == "" {
-		t.Copyright = other.Copyright
-	}
-
-	// Merge raw tags
-	if t.raw == nil {
-		t.raw = make(map[string][]string)
-	}
-	for key, values := range other.raw {
-		t.raw[key] = slices.Clone(values)
-		delete(t.names, key)
+	for _, key := range take {
+		t.raw[key] = slices.Clone(other.raw[key])
 		if name, ok := other.names[key]; ok {
 			t.setName(key, name)
+		}
+	}
+	for _, key := range take {
+		t.syncKey(key)
+		for _, b := range bindingsFor(t.format) {
+			if slices.Contains(b.Keys, key) {
+				owned[b.Field] = true
+			}
+		}
+	}
+	return owned
+}
+
+// holdsFieldBoundTo reports whether t already holds a typed field that key
+// fills in t's format.
+func (t *Tags) holdsFieldBoundTo(key string) bool {
+	for _, b := range bindingsFor(t.format) {
+		if slices.Contains(b.Keys, key) && fieldValues(t, b.Field) != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// mergeField fills field f of t from other: an empty string or zero int takes
+// other's value, and a slice gains the values of other that it lacks.
+func mergeField(t, other *Tags, f Field) {
+	switch {
+	case stringField(t, f) != nil:
+		if p := stringField(t, f); *p == "" {
+			*p = *stringField(other, f)
+		}
+	case sliceField(t, f) != nil:
+		p := sliceField(t, f)
+		*p = mergeUnique(*p, *sliceField(other, f))
+	default:
+		if p := intField(t, f); *p == 0 {
+			*p = *intField(other, f)
 		}
 	}
 }
@@ -495,125 +459,55 @@ func (t *Tags) Clone() *Tags {
 	if t == nil {
 		return nil
 	}
-
-	clone := &Tags{
-		format: t.format,
-
-		// Copy all standard fields
-		Title:               t.Title,
-		Subtitle:            t.Subtitle,
-		Artist:              t.Artist,
-		Album:               t.Album,
-		AlbumArtist:         t.AlbumArtist,
-		Year:                t.Year,
-		Date:                t.Date,
-		OriginalDate:        t.OriginalDate,
-		TrackNumber:         t.TrackNumber,
-		TrackTotal:          t.TrackTotal,
-		DiscNumber:          t.DiscNumber,
-		DiscTotal:           t.DiscTotal,
-		Comment:             t.Comment,
-		Description:         t.Description,
-		Lyrics:              t.Lyrics,
-		Narrator:            t.Narrator,
-		Publisher:           t.Publisher,
-		Series:              t.Series,
-		Grouping:            t.Grouping,
-		SeriesPart:          t.SeriesPart,
-		ISBN:                t.ISBN,
-		ASIN:                t.ASIN,
-		Language:            t.Language,
-		MusicBrainzTrackID:  t.MusicBrainzTrackID,
-		MusicBrainzAlbumID:  t.MusicBrainzAlbumID,
-		MusicBrainzArtistID: t.MusicBrainzArtistID,
-		ISRC:                t.ISRC,
-		Barcode:             t.Barcode,
-		CatalogNumber:       t.CatalogNumber,
-		Label:               t.Label,
-		Copyright:           t.Copyright,
-
-		// Clone slices
-		Artists:    slices.Clone(t.Artists),
-		Genres:     slices.Clone(t.Genres),
-		Composers:  slices.Clone(t.Composers),
-		Performers: slices.Clone(t.Performers),
-	}
-
-	// Clone raw tags
-	if t.raw != nil {
-		clone.raw = make(map[string][]string, len(t.raw))
-		for key, values := range t.raw {
-			clone.raw[key] = slices.Clone(values)
+	c := *t
+	for f := range AllFields() {
+		if p := sliceField(&c, f); p != nil {
+			*p = slices.Clone(*p)
 		}
 	}
-	clone.names = maps.Clone(t.names)
-
-	return clone
+	if t.raw != nil {
+		c.raw = make(map[string][]string, len(t.raw))
+		for key, values := range t.raw {
+			c.raw[key] = slices.Clone(values)
+		}
+	}
+	c.names = maps.Clone(t.names)
+	return &c
 }
 
 // Equal checks if two Tags are equal.
 //
 // Compares all standard fields, raw tags and the spelling of their names
-// ([Tags.Name]) for equality.
+// ([Tags.Name]) for equality. The format a Tags is bound to is not compared.
 //
 // Example:
 //
 //	if !tags1.Equal(tags2) {
 //		fmt.Println("Tags differ")
 //	}
-func (t *Tags) Equal(other *Tags) bool { //nolint:gocyclo // Equality check requires comparing all tag fields individually
-	if t == nil && other == nil {
-		return true
-	}
+func (t *Tags) Equal(other *Tags) bool {
 	if t == nil || other == nil {
-		return false
+		return t == other
 	}
-
-	// Compare standard fields
-	if t.Title != other.Title ||
-		t.Subtitle != other.Subtitle ||
-		t.Artist != other.Artist ||
-		t.Album != other.Album ||
-		t.AlbumArtist != other.AlbumArtist ||
-		t.Year != other.Year ||
-		t.Date != other.Date ||
-		t.OriginalDate != other.OriginalDate ||
-		t.TrackNumber != other.TrackNumber ||
-		t.TrackTotal != other.TrackTotal ||
-		t.DiscNumber != other.DiscNumber ||
-		t.DiscTotal != other.DiscTotal ||
-		t.Comment != other.Comment ||
-		t.Description != other.Description ||
-		t.Lyrics != other.Lyrics ||
-		t.Narrator != other.Narrator ||
-		t.Publisher != other.Publisher ||
-		t.Series != other.Series ||
-		t.Grouping != other.Grouping ||
-		t.SeriesPart != other.SeriesPart ||
-		t.ISBN != other.ISBN ||
-		t.ASIN != other.ASIN ||
-		t.Language != other.Language ||
-		t.MusicBrainzTrackID != other.MusicBrainzTrackID ||
-		t.MusicBrainzAlbumID != other.MusicBrainzAlbumID ||
-		t.MusicBrainzArtistID != other.MusicBrainzArtistID ||
-		t.ISRC != other.ISRC ||
-		t.Barcode != other.Barcode ||
-		t.CatalogNumber != other.CatalogNumber ||
-		t.Label != other.Label ||
-		t.Copyright != other.Copyright {
-		return false
+	for f := range AllFields() {
+		if !fieldEqual(t, other, f) {
+			return false
+		}
 	}
-
-	// Compare slices
-	if !slices.Equal(t.Artists, other.Artists) ||
-		!slices.Equal(t.Genres, other.Genres) ||
-		!slices.Equal(t.Composers, other.Composers) ||
-		!slices.Equal(t.Performers, other.Performers) {
-		return false
-	}
-
-	// Compare raw tags and the spelling of their names.
 	return maps.EqualFunc(t.raw, other.raw, slices.Equal) && maps.Equal(t.names, other.names)
+}
+
+// fieldEqual reports whether field f holds the same value in a and b. It
+// dereferences the storage pointers without nil checks because every valid
+// Field has exactly one storage table entry (see TestFieldValuesRoundTrip).
+func fieldEqual(a, b *Tags, f Field) bool {
+	if p := stringField(a, f); p != nil {
+		return *p == *stringField(b, f)
+	}
+	if p := sliceField(a, f); p != nil {
+		return slices.Equal(*p, *sliceField(b, f))
+	}
+	return *intField(a, f) == *intField(b, f)
 }
 
 // Filter returns an iterator over tags matching a predicate.

@@ -46,7 +46,7 @@ var (
 
 // canonicalKeys is the raw key a field is written to when the source has
 // none of the field's keys, as a whitespace-separated "Field key" table
-// (keys with spaces use "_"). Year is handled apart (TDRC or TYER by version).
+// (keys with spaces use "_"). Year is handled apart by applyYear (TDRC or TYER by version).
 var canonicalKeys = func() map[types.Field]string {
 	byName := pairsOf(`
 		Title TIT2  Subtitle TIT3  Artist TPE1  Artists TPE1  Album TALB  AlbumArtist TPE2
@@ -135,6 +135,9 @@ func (t *wtag) applyKeyEdit(key string, values []string) error {
 	if key == "" {
 		return fmt.Errorf("%w: empty tag key", types.ErrUnsupportedWrite)
 	}
+	if !utf8.ValidString(key) || strings.ContainsRune(key, 0) {
+		return fmt.Errorf("%w: key %q is not valid UTF-8 or contains NUL", types.ErrUnsupportedWrite, key)
+	}
 	if strings.EqualFold(key, mediaMarkersDescription) {
 		return fmt.Errorf("%w: %s holds chapters, which are not editable", types.ErrUnsupportedWrite, key)
 	}
@@ -191,15 +194,27 @@ func (t *wtag) isTextKey(key string) bool {
 		slices.ContainsFunc(t.frames, func(f wframe) bool { return f.id == key })
 }
 
-// setTextFrame replaces every frame with ID id by one text frame of values,
-// inserted where the first one was.
+// isShadowTXXX reports whether f is a TXXX frame whose description is id in
+// any case: the reader files its values under the same raw key as the id
+// frame. A compressed TXXX is never read, so it never matches.
+func (t *wtag) isShadowTXXX(f wframe, id string) bool {
+	if f.id != frameIDTXXX {
+		return false
+	}
+	d, ok := t.txxxDescription(f)
+	return ok && strings.EqualFold(d, id)
+}
+
+// setTextFrame replaces every frame with ID id, and every TXXX frame the
+// reader files under the same key, by one text frame of values, inserted
+// where the first one was.
 func (t *wtag) setTextFrame(id string, values []string) error {
 	if len(values) > 0 {
 		if (t.outVersion == 3 && v24OnlyIDs[id]) || (t.outVersion == 4 && v23OnlyIDs[id]) {
 			return fmt.Errorf("%w: %s cannot be written to an ID3v2.%d tag", types.ErrUnsupportedWrite, id, t.outVersion)
 		}
 	}
-	at := t.remove(func(f wframe) (bool, error) { return f.id == id, nil })
+	at := t.remove(func(f wframe) (bool, error) { return f.id == id || t.isShadowTXXX(f, id), nil })
 	if len(values) == 0 {
 		return nil
 	}
@@ -380,6 +395,9 @@ func (t *wtag) applyFieldEdit(e types.FieldEdit, edits *types.EditSet) error {
 	if e.Field == types.FieldLyrics {
 		return t.applyLyrics(e.Values)
 	}
+	if e.Field == types.FieldYear {
+		return t.applyYear(e, edits)
+	}
 	targets, err := t.fieldTargetKeys(e, edits)
 	if err != nil {
 		return err
@@ -392,17 +410,31 @@ func (t *wtag) applyFieldEdit(e types.FieldEdit, edits *types.EditSet) error {
 	return nil
 }
 
+// applyYear writes Year to the tag version's own frame (TDRC in ID3v2.4, TYER
+// in ID3v2.3) and removes the other version's frame, which that version
+// cannot hold. Clearing Year removes both. A year the reader would drop
+// (outside 1900-2100) is refused, as it would read back as 0.
+func (t *wtag) applyYear(e types.FieldEdit, edits *types.EditSet) error {
+	if len(e.Values) > 0 {
+		if year, err := strconv.Atoi(e.Values[0]); err == nil && year != 0 && !validID3Year(year) {
+			return fmt.Errorf("%w: Year %d is outside 1900-2100, the years an ID3 tag can hold", types.ErrUnsupportedWrite, year)
+		}
+	}
+	own, other := keyTDRC, keyTYER
+	if t.outVersion == 3 {
+		own, other = keyTYER, keyTDRC
+	}
+	if err := t.applyKeyEdit(other, nil); err != nil {
+		return err
+	}
+	return t.applyKeyEdit(own, fieldKeyValues(e, own, edits))
+}
+
 // fieldTargetKeys returns the raw keys a field edit writes: when setting, the
 // highest-precedence key present in the source, or the canonical key when
 // none is; when clearing, every present key.
 func (t *wtag) fieldTargetKeys(e types.FieldEdit, edits *types.EditSet) ([]string, error) {
 	canonical, ok := canonicalKeys[e.Field]
-	if e.Field == types.FieldYear {
-		canonical, ok = keyTDRC, true
-		if t.outVersion == 3 {
-			canonical = keyTYER
-		}
-	}
 	if !ok {
 		return nil, fmt.Errorf("%w: %s cannot be written to MP3", types.ErrUnsupportedWrite, e.Field)
 	}

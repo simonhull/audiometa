@@ -20,10 +20,12 @@ type FieldBinding struct {
 
 // Raw keys that decodeField treats specially.
 const (
-	keyTRCK        = "TRCK"    // ID3 track "N/Total"
-	keyTPOS        = "TPOS"    // ID3 disc "N/Total"
-	keyMVIN        = "MVIN"    // ID3 movement number "N/count"
-	keyM4AMovement = "\xA9mvi" // M4A movement index; "0" means unset
+	keyTRCK        = "TRCK"        // ID3 track "N/Total"
+	keyTPOS        = "TPOS"        // ID3 disc "N/Total"
+	keyTRACKNUMBER = "TRACKNUMBER" // Vorbis track, optionally "N/Total"
+	keyDISCNUMBER  = "DISCNUMBER"  // Vorbis disc, optionally "N/Total"
+	keyMVIN        = "MVIN"        // ID3 movement number "N/count"
+	keyM4AMovement = "\xA9mvi"     // M4A movement index; "0" means unset
 )
 
 // The binding tables mirror the parsers. Keys are listed literally so each
@@ -62,7 +64,9 @@ var (
 	}
 
 	// Vorbis comment raw keys (FLAC, Ogg Vorbis, Opus): the upper-cased field
-	// name. Mirrors internal/vorbis ParseComment.
+	// name. Mirrors internal/vorbis ParseComment. TRACKNUMBER and DISCNUMBER
+	// carry an optional "N/Total", so they are also the lowest-precedence keys
+	// of the total fields; an explicit total key wins.
 	vorbisBindings = []FieldBinding{
 		{FieldTitle, []string{"TITLE"}},
 		{FieldSubtitle, []string{"SUBTITLE"}},
@@ -73,10 +77,10 @@ var (
 		{FieldDate, []string{"DATE"}},
 		{FieldYear, []string{"DATE"}},
 		{FieldOriginalDate, []string{"ORIGINALDATE"}},
-		{FieldTrackNumber, []string{"TRACKNUMBER"}},
-		{FieldTrackTotal, []string{"TRACKTOTAL", "TOTALTRACKS"}},
-		{FieldDiscNumber, []string{"DISCNUMBER"}},
-		{FieldDiscTotal, []string{"DISCTOTAL", "TOTALDISCS"}},
+		{FieldTrackNumber, []string{keyTRACKNUMBER}},
+		{FieldTrackTotal, []string{"TRACKTOTAL", "TOTALTRACKS", keyTRACKNUMBER}},
+		{FieldDiscNumber, []string{keyDISCNUMBER}},
+		{FieldDiscTotal, []string{"DISCTOTAL", "TOTALDISCS", keyDISCNUMBER}},
 		{FieldGenres, []string{"GENRE"}},
 		{FieldComposers, []string{"COMPOSER"}},
 		{FieldPerformers, []string{"PERFORMER"}},
@@ -247,11 +251,15 @@ func decodeField(t *Tags, format Format, f Field, key string, values []string) b
 		return decodeSeriesPart(t, format, key, first)
 	}
 	if p := intField(t, f); p != nil { // track and disc number/total
-		number, total := splitNumberTotal(key, first)
-		*p = number
+		number, total, hasTotal := splitNumberTotal(key, first)
 		if f == FieldTrackTotal || f == FieldDiscTotal {
+			if !hasTotal {
+				return false
+			}
 			*p = total
+			return true
 		}
+		*p = number
 		return true
 	}
 	setFieldValues(t, f, values)
@@ -260,6 +268,8 @@ func decodeField(t *Tags, format Format, f Field, key string, values []string) b
 
 // decodeYear sets Year from the leading four characters of value. MP3 accepts
 // only 1900-2100, as its parser does; other formats accept any positive year.
+// The range must match validID3Year in internal/mp3, which this package cannot
+// import and which the MP3 writer uses to refuse other years.
 func decodeYear(t *Tags, format Format, value string) bool {
 	year := leadingYear(value)
 	if year <= 0 || (usesID3(format) && (year < 1900 || year > 2100)) {
@@ -295,16 +305,24 @@ func leadingYear(s string) int {
 	return year
 }
 
-// splitNumberTotal decodes a track or disc value. ID3 TRCK and TPOS hold
-// "N/Total"; every other key (TRACKNUMBER, TRACKTOTAL, ...) holds a single
-// number, returned as both results so the caller picks the one its field needs.
-func splitNumberTotal(key, value string) (number, total int) {
-	if key != keyTRCK && key != keyTPOS {
+// isNumberKey reports whether key holds "N" or "N/Total": ID3 TRCK and TPOS,
+// and Vorbis TRACKNUMBER and DISCNUMBER as ffmpeg and other tools write them.
+func isNumberKey(key string) bool {
+	return key == keyTRCK || key == keyTPOS || key == keyTRACKNUMBER || key == keyDISCNUMBER
+}
+
+// splitNumberTotal decodes a track or disc value. A number key yields its "N"
+// and, when present, its "/Total" (hasTotal reports which); any other key
+// (TRACKTOTAL, TOTALTRACKS, ...) holds one number, returned as both results.
+func splitNumberTotal(key, value string) (number, total int, hasTotal bool) {
+	if !isNumberKey(key) {
 		_, _ = fmt.Sscanf(value, "%d", &number)
-		return number, number
+		return number, number, true
 	}
-	num, tot, _ := strings.Cut(value, "/")
+	num, tot, ok := strings.Cut(value, "/")
 	_, _ = fmt.Sscanf(num, "%d", &number)
-	_, _ = fmt.Sscanf(tot, "%d", &total)
-	return number, total
+	if ok {
+		_, _ = fmt.Sscanf(tot, "%d", &total)
+	}
+	return number, total, ok
 }

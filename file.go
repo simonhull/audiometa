@@ -11,6 +11,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/simonhull/audiometa/internal/imagemeta"
 	"github.com/simonhull/audiometa/internal/registry"
 	"github.com/simonhull/audiometa/internal/types"
 
@@ -321,7 +322,9 @@ func (f *File) Close() error {
 // caches the result; later calls return the cached slice, which callers must
 // not modify. A file without artwork yields an empty, non-nil slice. Each
 // [Artwork] carries its MIME type, picture type and, when known, its pixel
-// dimensions.
+// dimensions. The MIME type and dimensions are taken from the image bytes when
+// the format is recognizable, and ID3 pictures stored as links (MIME type
+// "-->") are not returned.
 //
 // Images larger than the [WithMaxArtworkSize] limit are left out, and each
 // one adds a StageArtwork [Warning] to File.Warnings unless
@@ -359,11 +362,38 @@ func (f *File) ExtractArtworkContext(ctx context.Context) ([]Artwork, error) {
 			artwork = extracted
 		}
 	}
-	artwork = f.filterOversized(artwork)
+	artwork = f.filterOversized(reconcileExtracted(artwork))
 
 	f.artwork = artwork
 	f.artworkLoaded = true
 	return artwork, nil
+}
+
+// linkMIMEType is the MIME type ID3v2 gives a picture stored as a URL: its data
+// is link text, not an image.
+const linkMIMEType = "-->"
+
+// reconcileExtracted settles what the stored picture headers claim against the
+// image bytes, whatever the format. A MIME type sniffed from the bytes wins over
+// the stored one, sniffed dimensions win over stored ones (the stored values are
+// kept when sniffing finds nothing), and a picture stored as a link (MIME type
+// "-->") is dropped. It reuses the slice and does not copy image data.
+func reconcileExtracted(artwork []Artwork) []Artwork {
+	kept := artwork[:0]
+	for _, a := range artwork {
+		if a.MIMEType == linkMIMEType {
+			continue
+		}
+		if sniffed := imagemeta.MIMEType(a.Data); sniffed != "" {
+			a.MIMEType = sniffed
+		}
+		if w, h := imagemeta.Dimensions(a.Data, a.MIMEType); w > 0 && h > 0 {
+			a.Width, a.Height = w, h
+		}
+		kept = append(kept, a)
+	}
+	clear(artwork[len(kept):]) // release the dropped entries' data
+	return kept
 }
 
 // filterOversized drops images larger than the WithMaxArtworkSize limit and

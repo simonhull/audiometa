@@ -47,21 +47,23 @@ func mp4aSampleEntry(esds []byte) []byte {
 
 func TestParseESDescriptors(t *testing.T) {
 	tests := []struct {
-		name string
-		data []byte
-		want uint8
+		name     string
+		data     []byte
+		wantType uint8
+		wantAvg  uint32
 	}{
-		{"AAC-LC", esdsPayload(0, []byte{0x12, 0x10}), 2},
-		{"HE-AAC explicit", esdsPayload(0, []byte{0x2B, 0x92, 0x08, 0x00}), 5},
-		{"escaped AOT 42", esdsPayload(0, []byte{0xF9, 0x40}), 42},
-		{"streamDependenceFlag", esdsPayload(0x80, []byte{0x12, 0x10}), 2},
-		{"truncated", esdsPayload(0, []byte{0x12, 0x10})[:10], 0},
-		{"empty", nil, 0},
+		{"AAC-LC", esdsPayload(0, []byte{0x12, 0x10}), 2, 128000},
+		{"HE-AAC explicit", esdsPayload(0, []byte{0x2B, 0x92, 0x08, 0x00}), 5, 128000},
+		{"escaped AOT 42", esdsPayload(0, []byte{0xF9, 0x40}), 42, 128000},
+		{"streamDependenceFlag", esdsPayload(0x80, []byte{0x12, 0x10}), 2, 128000},
+		{"truncated", esdsPayload(0, []byte{0x12, 0x10})[:10], 0, 0},
+		{"empty", nil, 0, 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := parseESDescriptors(tt.data); got != tt.want {
-				t.Errorf("parseESDescriptors() = %d, want %d", got, tt.want)
+			got := parseESDescriptors(tt.data)
+			if got.objectType != tt.wantType || got.avgBitrate != tt.wantAvg {
+				t.Errorf("parseESDescriptors() = %+v, want type %d avgBitrate %d", got, tt.wantType, tt.wantAvg)
 			}
 		})
 	}
@@ -91,6 +93,9 @@ func TestParseCodecDetails_AACProfile(t *testing.T) {
 			}
 			if file.Audio.CodecDescription != tt.wantDesc {
 				t.Errorf("CodecDescription = %q, want %q", file.Audio.CodecDescription, tt.wantDesc)
+			}
+			if file.Audio.Bitrate != 128000 {
+				t.Errorf("Bitrate = %d, want the esds avgBitrate 128000", file.Audio.Bitrate)
 			}
 		})
 	}

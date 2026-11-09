@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/png"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/simonhull/audiometa/internal/types"
@@ -645,5 +646,106 @@ func TestApply_OtherV24FramesStayRefusedInV23(t *testing.T) {
 		if _, err := tryWrite(src, editsFor(t, src, func(tg *types.Tags) { tg.Set(id, "x") })); !errors.Is(err, types.ErrUnsupportedWrite) {
 			t.Errorf("%s: err = %v, want ErrUnsupportedWrite", id, err)
 		}
+	}
+}
+
+// The reader keeps only ID3 years from 1900 to 2100, so the writer refuses
+// the others instead of writing a year that reads back as 0.
+func TestApply_YearOutsideReadableRangeRefused(t *testing.T) {
+	for _, v := range []byte{3, 4} {
+		src := file(id3Tag(v, id3Frame(v, "TIT2", latin1Text("x"))))
+		for _, year := range []int{1899, 2101, -5, 10000} {
+			_, err := tryWrite(src, editsFor(t, src, func(tg *types.Tags) { tg.Year = year }))
+			if !errors.Is(err, types.ErrUnsupportedWrite) || !strings.Contains(err.Error(), "1900-2100") {
+				t.Errorf("v2.%d: Year %d: err = %v, want ErrUnsupportedWrite naming 1900-2100", v, year, err)
+			}
+		}
+		for _, year := range []int{1900, 2100} {
+			out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.Year = year }))
+			if got := parseBytes(t, out).Tags.Year; got != year {
+				t.Errorf("v2.%d: Year = %d, want %d", v, got, year)
+			}
+		}
+	}
+}
+
+func TestValidID3Year(t *testing.T) {
+	for year, want := range map[int]bool{1899: false, 1900: true, 2000: true, 2100: true, 2101: false, 0: false} {
+		if got := validID3Year(year); got != want {
+			t.Errorf("validID3Year(%d) = %v, want %v", year, got, want)
+		}
+	}
+}
+
+// A TXXX frame described "tit2" is read under the raw key TIT2, so editing or
+// deleting TIT2 must replace it too.
+func TestApply_TextKeyReplacesShadowTXXX(t *testing.T) {
+	for _, v := range []byte{3, 4} {
+		src := file(id3Tag(v,
+			id3Frame(v, "TIT2", latin1Text("Title")),
+			id3Frame(v, "TXXX", txxxPayload(0, "tit2", "shadow")),
+			id3Frame(v, "TXXX", txxxPayload(0, "Narrator", "N")),
+		))
+		if got := parseBytes(t, src).Tags.Get("TIT2"); !slices.Equal(got, []string{"Title", "shadow"}) {
+			t.Fatalf("v2.%d: source TIT2 = %q, want the reader to merge the TXXX", v, got)
+		}
+		out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.Set("TIT2", "New") }))
+		tags := parseBytes(t, out).Tags
+		if got := tags.Get("TIT2"); !slices.Equal(got, []string{"New"}) {
+			t.Errorf("v2.%d: TIT2 = %q, want [New]", v, got)
+		}
+		if got := tags.GetFirst("NARRATOR"); got != "N" {
+			t.Errorf("v2.%d: NARRATOR = %q, want it kept", v, got)
+		}
+		out = writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.Delete("TIT2") }))
+		if got := parseBytes(t, out).Tags.Get("TIT2"); got != nil {
+			t.Errorf("v2.%d: TIT2 after delete = %q, want none", v, got)
+		}
+	}
+}
+
+func TestApply_InvalidKeyRefused(t *testing.T) {
+	src := file(id3Tag(4, id3Frame(4, "TIT2", latin1Text("x"))))
+	for _, key := range []string{"FOO\x00BAR", "OverDrive MediaMarkers\x00x", "BAD\xffKEY"} {
+		edits := editsFor(t, src, nil)
+		edits.Keys = []types.KeyEdit{{Key: key, Values: []string{"v"}}}
+		if _, err := tryWrite(src, edits); !errors.Is(err, types.ErrUnsupportedWrite) {
+			t.Errorf("%q: err = %v, want ErrUnsupportedWrite", key, err)
+		}
+	}
+}
+
+func TestApply_YearMixedVersions(t *testing.T) {
+	tests := []struct {
+		name     string
+		version  byte
+		frames   [][]byte
+		year     int
+		wantKey  string // frame that holds the year afterwards
+		want     string
+		wantGone string // frame that must be gone
+	}{
+		{"v2.3 with TDRC", 3, [][]byte{id3Frame(3, "TDRC", latin1Text("2001-05-03"))}, 2005, "TYER", "2005", "TDRC"},
+		{"v2.4 with TYER", 4, [][]byte{id3Frame(4, "TYER", latin1Text("2001"))}, 2005, "TDRC", "2005", "TYER"},
+		{"v2.4 with both", 4, [][]byte{id3Frame(4, "TDRC", latin1Text("2001-05-03")), id3Frame(4, "TYER", latin1Text("2001"))}, 2005, "TDRC", "2005-05-03", "TYER"},
+		{"v2.3 with both", 3, [][]byte{id3Frame(3, "TYER", latin1Text("2001")), id3Frame(3, "TDRC", latin1Text("2001"))}, 2005, "TYER", "2005", "TDRC"},
+		{"clear v2.4 with both", 4, [][]byte{id3Frame(4, "TDRC", latin1Text("2001")), id3Frame(4, "TYER", latin1Text("2001"))}, 0, "TDRC", "", "TYER"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			frames := append([][]byte{id3Frame(tt.version, "TSSE", latin1Text("enc"))}, tt.frames...)
+			src := file(id3Tag(tt.version, frames...))
+			out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.Year = tt.year }))
+			tags := parseBytes(t, out).Tags
+			if got := tags.GetFirst(tt.wantKey); got != tt.want {
+				t.Errorf("%s = %q, want %q", tt.wantKey, got, tt.want)
+			}
+			if got := tags.Get(tt.wantGone); got != nil {
+				t.Errorf("%s = %q, want it removed", tt.wantGone, got)
+			}
+			if tags.Year != tt.year {
+				t.Errorf("Year = %d, want %d", tags.Year, tt.year)
+			}
+		})
 	}
 }

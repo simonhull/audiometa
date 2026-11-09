@@ -100,6 +100,14 @@ func TestVC_FieldEdits(t *testing.T) {
 			func(tg *types.Tags) { tg.TrackTotal = 9 }, []string{"TRACKTOTAL=9", "TOTALTRACKS=5"},
 		},
 		{"track total cleared removes both", []string{"TRACKTOTAL=5", "TITLE=T", "TOTALTRACKS=5"}, func(tg *types.Tags) { tg.TrackTotal = 0 }, []string{"TITLE=T"}},
+		{"track number keeps its suffix total", []string{"TRACKNUMBER=3/12"}, func(tg *types.Tags) { tg.TrackNumber = 4 }, []string{"TRACKNUMBER=4/12"}},
+		{"track total in the suffix", []string{"TRACKNUMBER=3/12"}, func(tg *types.Tags) { tg.TrackTotal = 13 }, []string{"TRACKNUMBER=3/13"}},
+		{"track total cleared from the suffix", []string{"TRACKNUMBER=3/12"}, func(tg *types.Tags) { tg.TrackTotal = 0 }, []string{"TRACKNUMBER=3"}},
+		{"track number cleared keeps the suffix total", []string{"TRACKNUMBER=3/12"}, func(tg *types.Tags) { tg.TrackNumber = 0 }, []string{"TRACKNUMBER=0/12"}},
+		{"both cleared", []string{"TRACKNUMBER=3/12", "TITLE=T"}, func(tg *types.Tags) { tg.TrackNumber, tg.TrackTotal = 0, 0 }, []string{"TITLE=T"}},
+		{"explicit total wins over suffix", []string{"TRACKNUMBER=3/12", "TRACKTOTAL=10"}, func(tg *types.Tags) { tg.TrackTotal = 11 }, []string{"TRACKNUMBER=3/12", "TRACKTOTAL=11"}},
+		{"explicit total cleared strips the suffix", []string{"TRACKNUMBER=3/12", "TRACKTOTAL=10"}, func(tg *types.Tags) { tg.TrackTotal = 0 }, []string{"TRACKNUMBER=3"}},
+		{"disc total in the suffix", []string{"DISCNUMBER=1/2"}, func(tg *types.Tags) { tg.DiscTotal = 3 }, []string{"DISCNUMBER=1/3"}},
 		{"series added", []string{"TITLE=T"}, func(tg *types.Tags) { tg.Series = "S" }, []string{"TITLE=T", "SERIES=S"}},
 		{"series via MVNM", []string{"MVNM=Old"}, func(tg *types.Tags) { tg.Series = "S" }, []string{"MVNM=S"}},
 		{"lyrics", nil, func(tg *types.Tags) { tg.Lyrics = "la la" }, []string{"LYRICS=la la"}},
@@ -120,6 +128,16 @@ func TestVC_FieldEdits(t *testing.T) {
 		if got := writeComments(t, tt.mutate, tt.comments...); !slices.Equal(got, tt.want) {
 			t.Errorf("%s: comments %q, want %q", tt.name, got, tt.want)
 		}
+	}
+}
+
+func TestVC_SuffixTotalsReadBack(t *testing.T) {
+	src := simpleFLAC(64, "TRACKNUMBER=3/12", "DISCNUMBER=1/2")
+	out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.TrackNumber, tg.DiscTotal = 4, 3 }))
+	g := parseBytes(t, out).Tags
+	types.BindFormat(&g, types.FormatFLAC)
+	if g.TrackNumber != 4 || g.TrackTotal != 12 || g.DiscNumber != 1 || g.DiscTotal != 3 {
+		t.Errorf("read back track %d/%d disc %d/%d, want 4/12 1/3", g.TrackNumber, g.TrackTotal, g.DiscNumber, g.DiscTotal)
 	}
 }
 

@@ -1,11 +1,13 @@
 package m4a
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/simonhull/audiometa/internal/types"
@@ -230,9 +232,23 @@ func (e *ilstEditor) replaceItems(typ string, payload []byte) {
 	}
 }
 
+// isBinaryInt reports whether value, stored under a text or implicit label,
+// is really a big-endian integer: 1, 2, 3, 4 or 8 bytes holding a control
+// character, the test the reader applies (parseItemValue).
+func isBinaryInt(value []byte) bool {
+	switch len(value) {
+	case 1, 2, 3, 4, 8:
+		return bytes.ContainsFunc(value, unicode.IsControl)
+	default:
+		return false
+	}
+}
+
 // setItem writes values to the item of type typ: one data atom per value,
-// encoded like the existing item's first data atom (text, or an integer of
-// the same type and width), or as the item type's default for a new item.
+// encoded like the existing item's first data atom (text; an integer of the
+// same type and width; or, for a known integer item labeled implicit or text
+// that holds binary, an integer of that width and label), or as the item
+// type's default for a new item.
 func (e *ilstEditor) setItem(typ string, values []string) error {
 	if len(values) == 0 {
 		e.replaceItems(typ, nil)
@@ -243,7 +259,13 @@ func (e *ilstEditor) setItem(typ string, values []string) error {
 		if dt, value, ok := firstData(e.ilst.children()[i].payload); ok {
 			switch dt {
 			case dataTypeImplicit, dataTypeUTF8:
-				isInt = false
+				// An integer item some taggers label implicit or text: keep its
+				// integer encoding, width and label. A printable payload is text.
+				if isInt && isBinaryInt(value) {
+					spec = intSpec{dt, len(value)}
+				} else {
+					isInt = false
+				}
 			case dataTypeBESigned, dataTypeBEUnsigned:
 				spec, isInt = intSpec{dt, len(value)}, true
 			default:

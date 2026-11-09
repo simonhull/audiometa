@@ -1066,6 +1066,21 @@ func TestReadPrecedence_MatchesBindings(t *testing.T) {
 	}
 }
 
+// TestWrite_ID3YearOutsideReadableRange: the ID3 reader keeps only 1900-2100,
+// so Write refuses other years on MP3 and on the ID3 chunk of a WAV.
+func TestWrite_ID3YearOutsideReadableRange(t *testing.T) {
+	for _, path := range []string{"testdata/sample.mp3", "testdata/sample_id3.wav"} {
+		file := writeTempCopy(t, path)
+		err := audiometa.Write(file, func(f *audiometa.File) error {
+			f.Tags.Year = 2155
+			return nil
+		})
+		if !errors.Is(err, audiometa.ErrUnsupportedWrite) {
+			t.Errorf("%s: err = %v, want ErrUnsupportedWrite", path, err)
+		}
+	}
+}
+
 // TestWrite_FLACTotalTracksFirst round-trips a FLAC whose lower-precedence
 // TOTALTRACKS precedes TRACKTOTAL: setting TrackTotal must read back.
 func TestWrite_FLACTotalTracksFirst(t *testing.T) {

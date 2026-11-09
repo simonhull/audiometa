@@ -15,6 +15,8 @@ func TestMapCodecName(t *testing.T) {
 		{"ac-4", "AC-4"},
 		{"mp4a", "AAC"},
 		{"alac", "Apple Lossless"},
+		{"fLaC", "FLAC"},
+		{"Opus", "Opus"},
 		{"UNKN", "UNKN"},
 	}
 

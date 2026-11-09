@@ -96,13 +96,12 @@ func TestTags_NamesCloneMergeEqual(t *testing.T) {
 	}
 
 	upper.Merge(&a)
-	if got := upper.Name("MUSICBRAINZ ALBUM ID"); got != "MusicBrainz Album Id" {
-		t.Errorf("Merge: Name = %q, want the merged tag's spelling", got)
-	}
-	var other Tags
-	other.Set("MUSICBRAINZ ALBUM ID", "id")
-	upper.Merge(&other)
 	if got := upper.Name("MUSICBRAINZ ALBUM ID"); got != "MUSICBRAINZ ALBUM ID" {
-		t.Errorf("Merge of an upper-case tag: Name = %q", got)
+		t.Errorf("Merge into a tag that has the key: Name = %q, want its own spelling kept", got)
+	}
+	var empty Tags
+	empty.Merge(&a)
+	if got := empty.Name("MUSICBRAINZ ALBUM ID"); got != "MusicBrainz Album Id" {
+		t.Errorf("Merge into a tag without the key: Name = %q, want the merged tag's spelling", got)
 	}
 }

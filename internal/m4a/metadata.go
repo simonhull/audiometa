@@ -2,6 +2,7 @@ package m4a
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -99,21 +100,22 @@ func parseMetadataValues(sr *binary.SafeReader, tagAtom *Atom, file *types.File)
 }
 
 // parseItemValue returns the text or integer value of the data atom data of
-// the item tagAtom, decoding a ©mvi labeled as text as the integer it holds.
+// the item tagAtom, decoding a known integer item (©mvi, tmpo, rtng, ...)
+// labeled as text or implicit as the integer it holds.
 func parseItemValue(sr *binary.SafeReader, tagAtom, data *Atom) (string, error) {
 	value, err := parseDataValue(sr, data)
-	if err == nil && tagAtom.Type == itemMvi && strings.ContainsFunc(value, unicode.IsControl) {
-		return parseBinaryMovementIndex(sr, data)
+	if _, isInt := knownIntItems[tagAtom.Type]; err == nil && isInt && strings.ContainsFunc(value, unicode.IsControl) {
+		return parseBinaryInteger(sr, data)
 	}
 	return value, err
 }
 
-// parseBinaryMovementIndex decodes a ©mvi whose integer payload is labeled as
-// text or implicit, as some taggers write it. Read as text, 10 stored in two
-// bytes comes out as "\x00". A payload no integer fits yields "".
-func parseBinaryMovementIndex(sr *binary.SafeReader, dataAtom *Atom) (string, error) {
+// parseBinaryInteger decodes an integer item whose payload is labeled as text
+// or implicit, as some taggers write it. Read as text, 10 stored in two bytes
+// comes out as "\x00". A payload no integer fits yields "".
+func parseBinaryInteger(sr *binary.SafeReader, dataAtom *Atom) (string, error) {
 	buf := make([]byte, dataAtom.DataSize()-8)
-	if err := sr.ReadAt(buf, dataAtom.DataOffset()+8, "movement index"); err != nil {
+	if err := sr.ReadAt(buf, dataAtom.DataOffset()+8, "binary integer item"); err != nil {
 		return "", err
 	}
 	return decodeBEInteger(buf, false), nil
@@ -353,7 +355,12 @@ type TrackData struct {
 	Total  int
 }
 
-// parseTrackNumber extracts track number and total from trkn atom.
+// errShortNumberAtom reports a trkn or disk data atom too short to hold a number.
+var errShortNumberAtom = errors.New("track number atom too short")
+
+// parseTrackNumber extracts track number and total from a trkn or disk atom,
+// reading only inside its data atom: fewer than 4 payload bytes is an error,
+// 4-5 bytes give the number alone, and 6 or more give number and total.
 func parseTrackNumber(sr *binary.SafeReader, atom *Atom) (TrackData, error) {
 	result := TrackData{}
 
@@ -363,7 +370,11 @@ func parseTrackNumber(sr *binary.SafeReader, atom *Atom) (TrackData, error) {
 		return result, err
 	}
 
-	// Skip version (1) + flags (3) + reserved (4) = 8 bytes
+	// Version (1) + flags (3) + reserved (4) = 8 bytes precede the payload.
+	payload := dataAtom.DataSize() - 8
+	if payload < 4 {
+		return result, errShortNumberAtom
+	}
 	offset := dataAtom.DataOffset() + 8
 
 	// Track number structure:
@@ -380,6 +391,10 @@ func parseTrackNumber(sr *binary.SafeReader, atom *Atom) (TrackData, error) {
 	}
 	result.Number = int(trackNum)
 	offset += 2
+
+	if payload < 6 {
+		return result, nil
+	}
 
 	trackTotal, err := sr.Read[uint16](offset, "track total")
 	if err != nil {

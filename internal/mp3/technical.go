@@ -11,15 +11,16 @@ import (
 	"github.com/simonhull/audiometa/internal/types"
 )
 
-// MPEG audio version bits, (header >> 19) & 3. MPEG-2.5 (0) and reserved (1)
-// are rejected by validFrameHeader; supporting 2.5 would need 11025/12000/8000 Hz
-// sample rates and 576 samples per frame.
+// MPEG audio version bits, (header >> 19) & 3. 1 is reserved.
 const (
-	versionMPEG2 = 2
-	versionMPEG1 = 3
+	versionMPEG25   = 0
+	versionReserved = 1
+	versionMPEG2    = 2
+	versionMPEG1    = 3
 )
 
 // Layer III bitrate tables in kbps, indexed by the header's bitrate index.
+// MPEG-2.5 uses the MPEG-2 table.
 var (
 	bitrateTableV1 = []int{0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0}
 	bitrateTableV2 = []int{0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0}
@@ -27,11 +28,16 @@ var (
 
 // Sample rate tables in Hz, indexed by the header's sample rate index.
 var (
-	sampleRateTableV1 = []int{44100, 48000, 32000, 0}
-	sampleRateTableV2 = []int{22050, 24000, 16000, 0}
+	sampleRateTableV1  = []int{44100, 48000, 32000, 0}
+	sampleRateTableV2  = []int{22050, 24000, 16000, 0}
+	sampleRateTableV25 = []int{11025, 12000, 8000, 0}
 )
 
-// mpegVersion extracts the version bits: 3 = MPEG-1, 2 = MPEG-2.
+// sameStreamMask selects the header bits every frame of one stream shares:
+// sync, version, layer and sample rate index.
+const sameStreamMask = 0xFFFE0C00
+
+// mpegVersion extracts the version bits: 3 = MPEG-1, 2 = MPEG-2, 0 = MPEG-2.5.
 func mpegVersion(header uint32) uint32 { return (header >> 19) & 0x3 }
 
 // samplesPerFrame returns the Layer III samples per frame for the header's version.
@@ -53,7 +59,8 @@ var errNoMP3Frame = errors.New("no valid MP3 frame found")
 // parseTechnicalInfo extracts bitrate, sample rate, codec, and duration from MP3 frames.
 //
 // It reads one bounded window starting at the end of the ID3 tag and scans it
-// in memory for the first valid frame header.
+// in memory for the first frame header that the next frame header confirms.
+// fileSize is where the audio ends (before any ID3v1 trailer).
 func parseTechnicalInfo(ctx context.Context, sr *binutil.SafeReader, tagSize int64, fileSize int64, file *types.File) error {
 	start := max(tagSize, 0)
 	if start >= fileSize {
@@ -65,7 +72,6 @@ func parseTechnicalInfo(ctx context.Context, sr *binutil.SafeReader, tagSize int
 		return fmt.Errorf("read frame search window: %w", err)
 	}
 
-	// Search for MP3 frame sync (11 bits set)
 	for i := 0; i+4 <= len(window); i++ {
 		if err := binutil.Canceled(ctx, i); err != nil {
 			return err
@@ -75,58 +81,111 @@ func parseTechnicalInfo(ctx context.Context, sr *binutil.SafeReader, tagSize int
 		if !validFrameHeader(header) {
 			continue
 		}
-
 		bitrate, sampleRate, channels := parseMP3FrameHeader(header)
 		if bitrate <= 0 || sampleRate <= 0 {
 			continue
 		}
 
 		frameOffset := start + int64(i)
-		file.Audio.Bitrate = bitrate
+		next, hasNext, err := headerAt(sr, window, start, frameOffset+frameLength(header, bitrate, sampleRate), fileSize)
+		if err != nil {
+			return err
+		}
+		if hasNext && !sameStream(header, next) {
+			continue // a false sync: the frame it describes is not followed by another
+		}
+
 		file.Audio.SampleRate = sampleRate
 		file.Audio.Channels = channels
 		file.Audio.Codec = "MP3"
-
-		// Check for VBR header
-		duration, vbr := parseVBRHeader(sr, frameOffset, header, sampleRate)
-		if vbr {
-			file.Audio.Duration = duration
-			file.Audio.VBR = true
-		} else {
-			// CBR - estimate from bitrate and file size
+		vbr := parseVBRHeader(sr, frameOffset, header, fileSize)
+		file.Audio.VBR = vbr.kind == vbrXing || vbr.kind == vbrVBRI
+		if vbr.frames == 0 {
+			// No frame count: constant bitrate, duration from the audio size.
+			file.Audio.Bitrate = bitrate
 			file.Audio.Duration = estimateCBRDuration(bitrate, fileSize, tagSize)
-			file.Audio.VBR = false
+			return nil
 		}
-
+		samples := int64(vbr.frames) * int64(samplesPerFrame(header))
+		played := samples
+		if vbr.gapless > 0 && vbr.gapless < samples {
+			played -= vbr.gapless
+		}
+		file.Audio.Duration = samplesDuration(played, sampleRate)
+		file.Audio.Bitrate = streamBitrate(vbr, samples, sampleRate, fileSize-frameOffset, bitrate, next, hasNext)
 		return nil
 	}
 
 	return errNoMP3Frame
 }
 
+// headerAt returns the 4 bytes at off as a frame header, from window (which
+// starts at windowStart) when they are inside it. ok is false when they would
+// run past end.
+func headerAt(sr *binutil.SafeReader, window []byte, windowStart, off, end int64) (header uint32, ok bool, err error) {
+	if off+4 > end {
+		return 0, false, nil
+	}
+	if rel := off - windowStart; rel+4 <= int64(len(window)) {
+		return binary.BigEndian.Uint32(window[rel : rel+4]), true, nil
+	}
+	header, err = sr.Read[uint32](off, "next MP3 frame header")
+	if err != nil {
+		return 0, false, fmt.Errorf("read next frame header: %w", err)
+	}
+	return header, true, nil
+}
+
+// sameStream reports whether next is a valid frame header of the stream that
+// header starts.
+func sameStream(header, next uint32) bool {
+	if !validFrameHeader(next) || next&sameStreamMask != header&sameStreamMask {
+		return false
+	}
+	bitrate, _, _ := parseMP3FrameHeader(next)
+	return bitrate > 0
+}
+
+// streamBitrate returns the bitrate of a stream whose first frame carries a
+// frame count: the bitrate of the frame after an Info header (the Info frame
+// itself may use another), else the stream's bytes over its duration. The
+// Xing/VBRI byte count is used when present, else audioBytes.
+func streamBitrate(vbr vbrHeader, samples int64, sampleRate int, audioBytes int64, firstBitrate int, next uint32, hasNext bool) int {
+	if vbr.kind == vbrInfo {
+		if hasNext {
+			if b, _, _ := parseMP3FrameHeader(next); b > 0 {
+				return b
+			}
+		}
+		return firstBitrate
+	}
+	n := audioBytes
+	if vbr.bytes > 0 {
+		n = int64(vbr.bytes)
+	}
+	return int(n * 8 * int64(sampleRate) / samples)
+}
+
 // validFrameHeader reports whether header has the 11-bit frame sync and
-// names an MPEG-1/2 Layer III frame.
+// names an MPEG-1, MPEG-2 or MPEG-2.5 Layer III frame.
 func validFrameHeader(header uint32) bool {
-	// Check frame sync (11 bits set: 0xFFE00000)
 	if header&0xFFE00000 != 0xFFE00000 {
 		return false
 	}
-
-	// MPEG1 (version 11) or MPEG2 (version 10)
-	version := mpegVersion(header)
-	if version != versionMPEG1 && version != versionMPEG2 {
+	if mpegVersion(header) == versionReserved {
 		return false
 	}
-
-	// Layer III (01)
-	return (header>>17)&0x3 == 1
+	return (header>>17)&0x3 == 1 // Layer III
 }
 
 // parseMP3FrameHeader extracts bitrate, sample rate, and channels from frame header.
 func parseMP3FrameHeader(header uint32) (bitrate, sampleRate, channels int) {
 	bitrates, sampleRates := bitrateTableV1, sampleRateTableV1
-	if mpegVersion(header) != versionMPEG1 {
+	switch mpegVersion(header) {
+	case versionMPEG2:
 		bitrates, sampleRates = bitrateTableV2, sampleRateTableV2
+	case versionMPEG25:
+		bitrates, sampleRates = bitrateTableV2, sampleRateTableV25
 	}
 
 	// Bitrate index (4 bits)
@@ -152,8 +211,19 @@ func parseMP3FrameHeader(header uint32) (bitrate, sampleRate, channels int) {
 	return
 }
 
+// frameLength returns the length in bytes of the Layer III frame that header
+// starts, padding included: 144 (MPEG-1) or 72 (MPEG-2 and 2.5) times
+// bitrate over sample rate, plus the padding byte.
+func frameLength(header uint32, bitrate, sampleRate int) int64 {
+	coef := 144
+	if mpegVersion(header) != versionMPEG1 {
+		coef = 72
+	}
+	return int64(coef*bitrate/sampleRate) + int64(header>>9&1)
+}
+
 // sideInfoSize returns the Layer III side-information size in bytes for the
-// given frame header: MPEG-1: 32 (stereo modes) / 17 (mono); MPEG-2: 17 / 9.
+// given frame header: MPEG-1: 32 (stereo modes) / 17 (mono); MPEG-2 and 2.5: 17 / 9.
 func sideInfoSize(header uint32) int64 {
 	mono := (header>>6)&0x3 == 3
 	if mpegVersion(header) == versionMPEG1 {
@@ -168,52 +238,105 @@ func sideInfoSize(header uint32) int64 {
 	return 17
 }
 
-// parseVBRHeader checks for Xing/VBRI VBR headers and calculates accurate duration.
-func parseVBRHeader(sr *binutil.SafeReader, frameOffset int64, header uint32, sampleRate int) (time.Duration, bool) {
+// vbrKind is the kind of header found in a stream's first frame.
+type vbrKind uint8
+
+const (
+	vbrNone vbrKind = iota
+	vbrXing         // "Xing": a VBR stream
+	vbrInfo         // "Info": a CBR stream with the Xing layout (LAME, ffmpeg)
+	vbrVBRI         // "VBRI": Fraunhofer's VBR header
+)
+
+// vbrHeader is what a Xing, Info or VBRI header says about the stream.
+type vbrHeader struct {
+	kind    vbrKind
+	frames  uint32 // audio frames; 0 when not given
+	bytes   uint32 // audio bytes; 0 when not given
+	gapless int64  // encoder delay plus padding, in samples, from a LAME tag; 0 when absent
+}
+
+// Xing header flags.
+const (
+	xingFrames  = 0x1
+	xingBytes   = 0x2
+	xingTOC     = 0x4
+	xingQuality = 0x8
+)
+
+// xingReadLen covers the Xing header with every optional field (120 bytes)
+// and the LAME tag up to its delay and padding (24 bytes).
+const xingReadLen = 120 + 24
+
+// parseVBRHeader reads the Xing/Info header (and a LAME tag after it) or the
+// VBRI header of the first frame. end bounds the read.
+func parseVBRHeader(sr *binutil.SafeReader, frameOffset int64, header uint32, end int64) vbrHeader {
 	// Xing/Info follows the frame header and the side information, whose size
 	// depends on MPEG version and channel mode.
 	xingOffset := frameOffset + 4 + sideInfoSize(header)
-	buf := make([]byte, 120) // Read enough for Xing header
-	if err := sr.ReadAt(buf, xingOffset, "VBR header"); err != nil {
-		return 0, false
-	}
-
-	// Check for Xing or Info marker
-	isXing := string(buf[0:4]) == "Xing" || string(buf[0:4]) == "Info"
-	if !isXing {
-		// VBRI is always 32 bytes after the 4-byte header, regardless of channel mode.
-		vbriOffset := frameOffset + 36
-		vbriBuf := make([]byte, 32)
-		if err := sr.ReadAt(vbriBuf, vbriOffset, "VBRI header"); err == nil {
-			if string(vbriBuf[0:4]) == "VBRI" {
-				// VBRI header found
-				// Frames are at offset 14 (4 bytes)
-				if len(vbriBuf) >= 18 {
-					numFrames := binary.BigEndian.Uint32(vbriBuf[14:18])
-					return calculateDurationFromFrames(numFrames, sampleRate, samplesPerFrame(header)), true
-				}
+	if n := min(xingReadLen, end-xingOffset); n >= 8 {
+		buf := make([]byte, n)
+		if err := sr.ReadAt(buf, xingOffset, "VBR header"); err == nil {
+			switch string(buf[:4]) {
+			case "Xing":
+				return parseXing(vbrXing, buf)
+			case "Info":
+				return parseXing(vbrInfo, buf)
 			}
 		}
-		return 0, false
 	}
-
-	// Parse Xing header
-	flags := binary.BigEndian.Uint32(buf[4:8])
-
-	// Frames field is present if bit 0 is set
-	if flags&0x0001 != 0 {
-		numFrames := binary.BigEndian.Uint32(buf[8:12])
-		return calculateDurationFromFrames(numFrames, sampleRate, samplesPerFrame(header)), true
+	// VBRI is always 32 bytes after the 4-byte header, regardless of channel mode.
+	var vbri [18]byte
+	if err := sr.ReadAt(vbri[:], frameOffset+36, "VBRI header"); err == nil && string(vbri[:4]) == "VBRI" {
+		return vbrHeader{
+			kind:   vbrVBRI,
+			bytes:  binary.BigEndian.Uint32(vbri[10:14]),
+			frames: binary.BigEndian.Uint32(vbri[14:18]),
+		}
 	}
-
-	return 0, false
+	return vbrHeader{}
 }
 
-// calculateDurationFromFrames calculates duration from number of frames.
-func calculateDurationFromFrames(numFrames uint32, sampleRate, samplesPerFrame int) time.Duration {
-	totalSamples := float64(numFrames) * float64(samplesPerFrame)
-	durationSeconds := totalSamples / float64(sampleRate)
-	return time.Duration(durationSeconds * float64(time.Second))
+// parseXing decodes a Xing/Info header (buf starts at its marker) and the
+// encoder delay and padding of a LAME tag after it.
+func parseXing(kind vbrKind, buf []byte) vbrHeader {
+	h := vbrHeader{kind: kind}
+	flags := binary.BigEndian.Uint32(buf[4:8])
+	p := 8
+	field := func(flag uint32) uint32 {
+		if flags&flag == 0 || p+4 > len(buf) {
+			return 0
+		}
+		v := binary.BigEndian.Uint32(buf[p : p+4])
+		p += 4
+		return v
+	}
+	h.frames = field(xingFrames)
+	h.bytes = field(xingBytes)
+	if flags&xingTOC != 0 {
+		p += 100
+	}
+	if flags&xingQuality != 0 {
+		p += 4
+	}
+	// LAME tag: a 9-byte encoder version, then delay (12 bits) and padding
+	// (12 bits) at bytes 21-23. LAME and ffmpeg (Lavc/Lavf) write it.
+	if p+24 <= len(buf) {
+		switch string(buf[p : p+4]) {
+		case "LAME", "Lavc", "Lavf":
+			d := buf[p+21 : p+24]
+			delay := int64(d[0])<<4 | int64(d[1])>>4
+			padding := int64(d[1]&0x0F)<<8 | int64(d[2])
+			h.gapless = delay + padding
+		}
+	}
+	return h
+}
+
+// samplesDuration returns the duration of n samples at rate Hz, exactly.
+func samplesDuration(n int64, rate int) time.Duration {
+	r := int64(rate)
+	return time.Duration(n/r)*time.Second + time.Duration(n%r)*time.Second/time.Duration(r)
 }
 
 // estimateCBRDuration estimates duration for constant bitrate files.

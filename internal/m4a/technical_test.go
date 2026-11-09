@@ -2,8 +2,10 @@ package m4a
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"math"
+	"slices"
 	"testing"
 	"time"
 
@@ -44,7 +46,7 @@ func TestParseTechnicalInfo_Duration(t *testing.T) {
 	moovAtom, _ := readAtomHeader(sr, 0, int64(len(moov)))
 
 	file := &types.File{}
-	err := parseTechnicalInfo(sr, moovAtom, file)
+	err := parseTechnicalInfo(context.Background(), sr, moovAtom, file)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -65,7 +67,7 @@ func TestParseTechnicalInfo_NonStandardTimescale(t *testing.T) {
 	moovAtom, _ := readAtomHeader(sr, 0, int64(len(moov)))
 
 	file := &types.File{}
-	err := parseTechnicalInfo(sr, moovAtom, file)
+	err := parseTechnicalInfo(context.Background(), sr, moovAtom, file)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -89,7 +91,7 @@ func TestParseTechnicalInfo_NoMvhd(t *testing.T) {
 	moovAtom, _ := readAtomHeader(sr, 0, int64(len(moov)))
 
 	file := &types.File{}
-	err := parseTechnicalInfo(sr, moovAtom, file)
+	err := parseTechnicalInfo(context.Background(), sr, moovAtom, file)
 
 	// Should not error, just leave duration as 0
 	if err != nil {
@@ -180,7 +182,7 @@ func parseMoovTech(t *testing.T, children ...[]byte) *types.File {
 		t.Fatal(err)
 	}
 	file := &types.File{}
-	if err := parseTechnicalInfo(sr, moovAtom, file); err != nil {
+	if err := parseTechnicalInfo(context.Background(), sr, moovAtom, file); err != nil {
 		t.Fatal(err)
 	}
 	return file
@@ -228,5 +230,129 @@ func TestParseTechnicalInfo_UnknownSoundEntryVersionLeavesUnset(t *testing.T) {
 	file := parseMoovTech(t, trakWith("soun", stsdFor("mp4a", sampleEntryV01(7, 2, 48000))))
 	if file.Audio.SampleRate != 0 || file.Audio.Channels != 0 {
 		t.Errorf("rate %d channels %d, want unset", file.Audio.SampleRate, file.Audio.Channels)
+	}
+}
+
+// trakWithStbl is trakWith with extra stbl children after the stsd.
+func trakWithStbl(handler string, stbl ...[]byte) []byte {
+	var mdiaChildren []byte
+	if handler != "" {
+		mdiaChildren = append(mdiaChildren, fullAtom("hdlr", append(append(u32be(0), handler...), make([]byte, 12)...))...)
+	}
+	minf := createMockAtom("minf", createMockAtom("stbl", bytes.Join(stbl, nil)))
+	return createMockAtom("trak", createMockAtom("mdia", append(mdiaChildren, minf...)))
+}
+
+func TestParseTechnicalInfo_BitrateIgnoresFileSize(t *testing.T) {
+	// parseMoovTech's mvhd lasts 10 s. Audio: 4 samples of 40,000 bytes = 160,000 bytes = 128 kbit/s.
+	stsz := stszAtom(0, 4, 40000, 40000, 40000, 40000)
+	mp4aStsd := fullAtom("stsd", append(u32be(1), mp4aSampleEntry(esdsPayload(0, []byte{0x12, 0x10}))...))
+	tests := []struct {
+		name string
+		trak []byte
+		want int
+	}{
+		{"esds avgBitrate wins", trakWithStbl("soun", mp4aStsd, stsz), 128000},
+		{"stsz sum without esds", trakWithStbl("soun", stsdFor("alac", sampleEntryV01(0, 2, 44100)), stsz), 128000},
+		{"constant sample size", trakWithStbl("soun", stsdFor("alac", sampleEntryV01(0, 2, 44100)), stszAtom(40000, 4)), 128000},
+		{"no stsz: unknown", trakWithStbl("soun", stsdFor("alac", sampleEntryV01(0, 2, 44100))), 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// A large unrelated atom (cover-art sized) must not count.
+			file := parseMoovTech(t, tt.trak, createMockAtom("free", make([]byte, 1<<20)))
+			if file.Audio.Bitrate != tt.want {
+				t.Errorf("Bitrate = %d, want %d", file.Audio.Bitrate, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseTechnicalInfo_Lossless(t *testing.T) {
+	for codec, want := range map[string]bool{"alac": true, "fLaC": true, "mp4a": false, "Opus": false} {
+		t.Run(codec, func(t *testing.T) {
+			file := parseMoovTech(t, trakWith("soun", stsdFor(codec, sampleEntryV01(0, 2, 44100))))
+			if file.Audio.Lossless != want {
+				t.Errorf("Lossless = %v, want %v", file.Audio.Lossless, want)
+			}
+		})
+	}
+}
+
+// alacCookie is an "alac" child box: FullBox header plus ALACSpecificConfig.
+func alacCookie(bitDepth, channels byte, rate uint32) []byte {
+	cfg := u32be(4096)                                   // frameLength
+	cfg = append(cfg, 0, bitDepth, 40, 10, 14, channels) // compatibleVersion, bitDepth, pb, mb, kb, numChannels
+	cfg = append(cfg, 0, 0)                              // maxRun
+	cfg = append(cfg, u32be(0, 0, rate)...)              // maxFrameBytes, avgBitRate, sampleRate
+	return fullAtom("alac", cfg)
+}
+
+// dfLaBox is a "dfLa" child box holding one STREAMINFO block.
+func dfLaBox(rate uint32, channels, bits byte) []byte {
+	si := make([]byte, 34)
+	si[10] = byte(rate >> 12)
+	si[11] = byte(rate >> 4)
+	si[12] = byte(rate<<4) | (channels-1)<<1 | (bits-1)>>4
+	si[13] = (bits - 1) << 4
+	return fullAtom("dfLa", append([]byte{0x80, 0, 0, 34}, si...))
+}
+
+func TestDfLaBox_MatchesFFmpegBytes(t *testing.T) {
+	box := dfLaBox(96000, 2, 24)
+	// Atom header(8) + FullBox(4) + block header(4), then STREAMINFO bytes 10-13.
+	if got := box[16+10 : 16+14]; !bytes.Equal(got, []byte{0x17, 0x70, 0x03, 0x70}) {
+		t.Errorf("STREAMINFO bytes 10-13 = % x, want 17 70 03 70", got)
+	}
+}
+
+func TestParseTechnicalInfo_LosslessConfig(t *testing.T) {
+	tests := []struct {
+		name                 string
+		codec                string
+		entry                []byte
+		rate, bits, channels int
+	}{
+		{"ALAC 96k/24", "alac", append(sampleEntryV01(0, 2, 48000)[:20:20], alacCookie(24, 2, 96000)...), 96000, 24, 2},
+		{"ALAC 44.1k/16 mono", "alac", append(sampleEntryV01(0, 1, 44100)[:20:20], alacCookie(16, 1, 44100)...), 44100, 16, 1},
+		{"FLAC 96k/24", "fLaC", append(sampleEntryV01(0, 2, 48000)[:20:20], dfLaBox(96000, 2, 24)...), 96000, 24, 2},
+		{"ALAC without cookie", "alac", sampleEntryV01(0, 2, 44100)[:20:20], 44100, 0, 2},
+		{"ALAC cookie with bad depth", "alac", append(sampleEntryV01(0, 2, 44100)[:20:20], alacCookie(3, 2, 44100)...), 44100, 0, 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := parseMoovTech(t, trakWith("soun", stsdFor(tt.codec, tt.entry))).Audio
+			if a.SampleRate != tt.rate || a.BitDepth != tt.bits || a.Channels != tt.channels {
+				t.Errorf("rate %d bits %d channels %d, want %d/%d/%d", a.SampleRate, a.BitDepth, a.Channels, tt.rate, tt.bits, tt.channels)
+			}
+		})
+	}
+}
+
+func trakWithMdhd(timescale uint32, stsd []byte) []byte {
+	hdlr := fullAtom("hdlr", append(append(u32be(0), "soun"...), make([]byte, 12)...))
+	mdhd := fullAtom("mdhd", u32be(0, 0, timescale, 0, 0))
+	minf := createMockAtom("minf", createMockAtom("stbl", stsd))
+	return createMockAtom("trak", createMockAtom("mdia", slices.Concat(mdhd, hdlr, minf)))
+}
+
+func TestParseTechnicalInfo_RateFromMdhd(t *testing.T) {
+	tests := []struct {
+		name      string
+		timescale uint32
+		entryRate uint32
+		want      int
+	}{
+		{"96 kHz AAC: 16.16 says 48000", 96000, 48000, 96000},
+		{"16.16 rate zero", 22050, 0, 22050},
+		{"ordinary file: 16.16 wins over an odd timescale", 1000, 44100, 44100},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := parseMoovTech(t, trakWithMdhd(tt.timescale, stsdFor("mp4a", sampleEntryV01(0, 2, tt.entryRate)))).Audio
+			if a.SampleRate != tt.want {
+				t.Errorf("SampleRate = %d, want %d", a.SampleRate, tt.want)
+			}
+		})
 	}
 }

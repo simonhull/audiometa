@@ -3,6 +3,7 @@ package mp3
 import (
 	"bytes"
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -10,9 +11,15 @@ import (
 	"github.com/simonhull/audiometa/internal/types"
 )
 
-// audioBytes is one MPEG frame followed by zero padding, n bytes in total.
+// cbrFrameLen is the length of one unpadded 128 kbps 44.1 kHz MPEG-1 Layer III
+// frame: 144 * 128000 / 44100.
+const cbrFrameLen = 417
+
+// audioBytes returns n bytes of back-to-back 128 kbps frames (the header of
+// mpegFrame, then zeros), so the frame scan finds a confirmed first frame.
 func audioBytes(n int) []byte {
-	return append(append([]byte(nil), mpegFrame...), make([]byte, n-len(mpegFrame))...)
+	frame := append(slices.Clone(mpegFrame[:4]), make([]byte, cbrFrameLen-4)...)
+	return bytes.Repeat(frame, n/cbrFrameLen+1)[:n]
 }
 
 func hasWarning(f *types.File, sub string) bool {
