@@ -74,6 +74,13 @@ func newPageStream(r io.ReaderAt, size int64, path string, shared bool) *pageStr
 
 // check returns the error SafeReader reports for reading n bytes of what at off.
 func (s *pageStream) check(what string, off int64, n int) error {
+	// Mirrors binary.SafeReader.ReadAt: a zero-length read is valid anywhere in [0, size].
+	if n == 0 {
+		if off < 0 || off > s.size {
+			return &binary.OutOfBoundsError{Path: s.path, What: what, Offset: off, Length: n, Size: s.size}
+		}
+		return nil
+	}
 	if off < 0 || off >= s.size || off+int64(n) > s.size {
 		return &binary.OutOfBoundsError{Path: s.path, What: what, Offset: off, Length: n, Size: s.size}
 	}
