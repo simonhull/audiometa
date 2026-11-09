@@ -6,6 +6,7 @@ All notable changes to this project are documented here.
 
 ### Changed
 
+- `AudioInfo.Container` is now set for M4A/M4B (`"MP4"`) and MP3 (`"MP3"`), as it already was for FLAC, Ogg, WAV and AIFF.
 - `Write` with `WithInPlace` falls back to the atomic rewrite when the file's permissions do not allow opening it for writing, as it already did when the edit does not fit. It used to fail with a permission error, although the same `Write` without the option replaces the file.
 - FLAC: a metadata block chain that ends before a block flagged as last now always adds a `StageMetadata` warning, so `Open` fails on it under `WithStrictParsing`. That used to happen only when the file ended inside a block header; a chain that stopped exactly at the end of the file, or whose last block ran past it, was accepted without a warning. A header cut short by the end of the file still wraps an `*OutOfBoundsError`.
 - `DetectFormat` reports an ID3v2 tag followed by `fLaC` as `FormatFLAC`.
@@ -14,6 +15,8 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- M4A: Apple Lossless and FLAC-in-MP4 files report `Lossless`, their `BitDepth`, channels and true sample rate, read from the codec's configuration box. A 96 kHz ALAC file used to report 48000 Hz, 0 bits and lossy. Sample rates above 65535 Hz on other codecs come from the track's media header, since the sample entry cannot hold them.
+- M4A: FLAC-in-MP4 (`fLaC`) gets the codec description "FLAC".
 - MP3, WAV and AIFF: setting `Tags.Year` outside 1900–2100 returns `ErrUnsupportedWrite`. The ID3 reader ignores such years, so the write used to succeed and the year read back as 0.
 - M4A: an integer item (`tmpo`, `cpil`, `pgap`, `stik`, `rtng` and the like) whose data atom is labeled implicit or text but holds a binary number is read as that number and, when edited, stays an integer of the same width and label. Such items used to read as raw bytes and be rewritten as UTF-8 text, which Apple apps misread. `©mvi` was already read this way.
 - MP3, WAV, AIFF: setting or deleting a text frame's raw key such as `TIT2` also replaces the `TXXX` frames whose description is that frame ID in another case (`tit2`), which are read under the same key. It used to leave their values behind, so `Tags.Get` returned them after the edit.
