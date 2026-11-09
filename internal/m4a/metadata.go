@@ -86,7 +86,7 @@ func parseMetadataValues(sr *binary.SafeReader, tagAtom *Atom, file *types.File)
 				return values, err
 			}
 			if value != "" {
-				if !file.TakeValue() {
+				if !types.TakeValue(file) {
 					return values, nil
 				}
 				values = append(values, value)
@@ -207,7 +207,7 @@ func extractIlstMetadata(ctx context.Context, sr *binary.SafeReader, ilstAtom *A
 			// ----: freeform atoms, handled by parseAudiobookTags.
 		case keyGnre:
 			// ID3v1 genre index: recorded raw only, never mapped into Genres.
-			if index, ok := parseGnre(sr, tagAtom); ok && file.TakeValue() {
+			if index, ok := parseGnre(sr, tagAtom); ok && types.TakeValue(file) {
 				file.Tags.AddRaw(keyGnre, strconv.Itoa(index))
 			}
 		default:

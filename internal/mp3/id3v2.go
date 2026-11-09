@@ -505,7 +505,7 @@ func parseTXXXFrame(frame ID3v2Frame, file *types.File) {
 	values := takeTextValues(file, decodeText(data[nullIdx+terminatorSize(encoding):], encoding))
 	if len(values) == 0 {
 		// An empty value is still a value; no values at all means the cap is reached.
-		if !file.TakeValue() {
+		if !types.TakeValue(file) {
 			return
 		}
 		values = []string{""}
@@ -530,7 +530,7 @@ func parseTXXXFrame(frame ID3v2Frame, file *types.File) {
 // a binary identifier, or a frame with no owner, is not.
 func parseUFIDFrame(frame ID3v2Frame, file *types.File) {
 	owner, id, ok := parseUFID(frame.Data)
-	if !ok || id == "" || !utf8.ValidString(id) || strings.ContainsRune(id, 0) || !file.TakeValue() {
+	if !ok || id == "" || !utf8.ValidString(id) || strings.ContainsRune(id, 0) || !types.TakeValue(file) {
 		return
 	}
 	file.Tags.AddRaw(ufidKeyPrefix+owner, id)
@@ -557,7 +557,7 @@ func parseCommentFrame(frame ID3v2Frame, file *types.File, st *frameState) {
 		return
 	}
 
-	if c.text == "" || strings.HasPrefix(c.desc, "iTun") || !file.TakeValue() {
+	if c.text == "" || strings.HasPrefix(c.desc, "iTun") || !types.TakeValue(file) {
 		return
 	}
 
@@ -576,7 +576,7 @@ func parseCommentFrame(frame ID3v2Frame, file *types.File, st *frameState) {
 // language or description, fills Lyrics.
 func parseLyricsFrame(frame ID3v2Frame, file *types.File) {
 	c, ok := parseLangText(frame.Data)
-	if !ok || c.text == "" || !file.TakeValue() {
+	if !ok || c.text == "" || !types.TakeValue(file) {
 		return
 	}
 	file.Tags.AddRaw(frameIDUSLT, c.text)
@@ -752,7 +752,7 @@ func textValues(s string) iter.Seq[string] {
 func takeTextValues(file *types.File, s string) []string {
 	var out []string
 	for v := range textValues(s) {
-		if !file.TakeValue() {
+		if !types.TakeValue(file) {
 			break
 		}
 		out = append(out, v)

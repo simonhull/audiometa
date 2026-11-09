@@ -36,8 +36,9 @@ const MaxTagValues = 1 << 16
 
 // TakeValue reports whether f may record one more parsed tag value, counting
 // it if so. The first refusal appends a StageMetadata warning; later ones are
-// silent. Parsers call it before decoding or storing each value.
-func (f *File) TakeValue() bool {
+// silent. Parsers call it before decoding or storing each value. It is a
+// function, not a method, so types embedding File do not promote it.
+func TakeValue(f *File) bool {
 	switch {
 	case f.tagValues < MaxTagValues:
 		f.tagValues++

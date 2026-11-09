@@ -8,12 +8,12 @@ import (
 func TestFile_TakeValue(t *testing.T) {
 	var f File
 	for i := range MaxTagValues {
-		if !f.TakeValue() {
+		if !TakeValue(&f) {
 			t.Fatalf("value %d refused", i)
 		}
 	}
 	for range 3 {
-		if f.TakeValue() {
+		if TakeValue(&f) {
 			t.Fatal("value past MaxTagValues admitted")
 		}
 	}

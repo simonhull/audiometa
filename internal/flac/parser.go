@@ -269,7 +269,7 @@ func parseVorbisComment(ctx context.Context, sr *binary.SafeReader, b block, siz
 		if err := binary.Canceled(ctx, i); err != nil {
 			return comments, err
 		}
-		if !file.TakeValue() {
+		if !types.TakeValue(file) {
 			break
 		}
 		comment := string(c)
