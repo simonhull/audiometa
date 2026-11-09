@@ -4,7 +4,10 @@
 - `mise install` installs the pinned Go and golangci-lint (see `mise.toml`). `go.mod` targets Go 1.27.
 - Lint through `mise run lint` or `mise exec -- golangci-lint run ./...`. A stale global
   golangci-lint can report false typecheck errors.
-- Full local gate: `mise run check` (build, race tests, lint, vet, gofmt; mirrors CI).
+- Fast local gate: `mise run check` (build, race and 32-bit tests, lint, vet, gofmt, `go mod tidy -diff`,
+  generated-code freshness). `mise run ci` runs everything CI runs: `check` plus `go mod verify`,
+  govulncheck and the write gate. That needs network and `ffmpeg`, `ffprobe` and `flac` on PATH.
+- Tool versions live only in `mise.toml`; CI and the release workflow install them from there.
 - `go generate ./...` (`mise run generate`) needs `stringer`, which mise pins.
 - `mise run fuzz` fuzzes every target for 30 s (`scripts/fuzz.sh [time]`); fuzz failures land in
   `testdata/fuzz/`. Turn them into seeds or tests, never commit them. Allocation budgets live in
@@ -34,3 +37,8 @@
 
 ## Commits
 Gitmoji prefix, single line, no body.
+
+## Changes and releases
+- Every user-visible change gets an entry under `## Unreleased` in `CHANGELOG.md`.
+- Write-path changes also run `mise run write-gate` (oracles: `ffmpeg`, `ffprobe`, `flac`).
+- Releases follow `RELEASING.md`; the release workflow runs CI and refuses tags not on `main`.

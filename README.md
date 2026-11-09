@@ -483,11 +483,14 @@ than an optional dependency, following the same pattern as Go's `image` package.
 git clone https://github.com/simonhull/audiometa.git
 cd audiometa
 
-# Install the pinned toolchain (Go, golangci-lint, stringer, goimports)
+# Install the pinned toolchain (Go, golangci-lint, stringer, goimports, govulncheck, goreleaser)
 mise install
 
-# Everything CI checks: build, race tests, lint, vet, gofmt
+# Fast gate: build, race and 32-bit tests, lint, vet, gofmt, tidy, generated code
 mise run check
+
+# Everything CI runs (needs network, ffmpeg, ffprobe and flac)
+mise run ci
 
 # Run all tests (including the godoc examples)
 go test ./...
