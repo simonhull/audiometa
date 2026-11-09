@@ -11,20 +11,27 @@ package audiometa
 //	)
 type Option func(*openOptions)
 
+// warningPolicy says what Open does with the warnings a file produces.
+type warningPolicy uint8
+
+const (
+	warnKeep   warningPolicy = iota // report them in File.Warnings
+	warnIgnore                      // discard them
+	warnStrict                      // fail Open when there is any; wins over warnIgnore
+)
+
 // openOptions holds configuration for opening files.
 type openOptions struct {
-	strictParsing  bool // Fail on any warning
+	warnings       warningPolicy
 	preloadArtwork bool // Load artwork immediately instead of lazily
-	ignoreWarnings bool // Suppress all warnings
 	maxArtworkSize int  // Maximum artwork size in bytes (0 = no limit)
 }
 
 // defaultOptions returns the default configuration.
 func defaultOptions() *openOptions {
 	return &openOptions{
-		strictParsing:  false,
+		warnings:       warnKeep,
 		preloadArtwork: false,
-		ignoreWarnings: false,
 		maxArtworkSize: 0, // No limit
 	}
 }
@@ -48,7 +55,7 @@ func defaultOptions() *openOptions {
 //	}
 func WithStrictParsing() Option {
 	return func(o *openOptions) {
-		o.strictParsing = true
+		o.warnings = warnStrict
 	}
 }
 
@@ -72,7 +79,9 @@ func WithArtworkPreload() Option {
 // [WithStrictParsing] is also set, a file with warnings still fails to open.
 func WithIgnoreWarnings() Option {
 	return func(o *openOptions) {
-		o.ignoreWarnings = true
+		if o.warnings != warnStrict {
+			o.warnings = warnIgnore
+		}
 	}
 }
 

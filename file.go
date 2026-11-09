@@ -55,8 +55,8 @@ type File struct {
 	parser  FormatParser
 	artwork []Artwork
 
-	maxArtworkSize int  // from WithMaxArtworkSize; 0 = no limit
-	ignoreWarnings bool // from WithIgnoreWarnings; also suppresses artwork-stage warnings
+	maxArtworkSize int           // from WithMaxArtworkSize; 0 = no limit
+	warnings       warningPolicy // from the warning options; warnIgnore also suppresses artwork-stage warnings
 
 	artworkMu     sync.Mutex // guards artwork and artworkLoaded
 	artworkLoaded bool
@@ -124,7 +124,7 @@ func openWithContext(ctx context.Context, path string, opts ...Option) (*File, e
 		parser: typesFile.parser,
 
 		maxArtworkSize: options.maxArtworkSize,
-		ignoreWarnings: options.ignoreWarnings,
+		warnings:       options.warnings,
 	}
 
 	// Preload artwork if requested
@@ -183,11 +183,17 @@ type strictParsingError struct {
 func (e *strictParsingError) Error() string   { return e.msg }
 func (e *strictParsingError) Unwrap() []error { return e.errs }
 
-// applyWarningPolicy enforces WithStrictParsing, then WithIgnoreWarnings.
-// Strict takes precedence: a file with any warning fails even when
-// warnings are also being ignored.
+// applyWarningPolicy enforces the warning policy: warnStrict fails a file with
+// any warning, warnIgnore drops the warnings. Strict wins over ignore when both
+// options were given (see openOptions.warnings).
 func applyWarningPolicy(file *types.File, options *openOptions) error {
-	if options.strictParsing && len(file.Warnings) > 0 {
+	switch options.warnings {
+	case warnIgnore:
+		file.Warnings = nil
+	case warnStrict:
+		if len(file.Warnings) == 0 {
+			return nil
+		}
 		msg := "strict parsing failed: " + file.Warnings[0].Message
 		if n := len(file.Warnings) - 1; n > 0 {
 			msg += fmt.Sprintf(" (and %d more warnings)", n)
@@ -199,9 +205,7 @@ func applyWarningPolicy(file *types.File, options *openOptions) error {
 			}
 		}
 		return &strictParsingError{msg: msg, errs: errs}
-	}
-	if options.ignoreWarnings {
-		file.Warnings = nil
+	case warnKeep:
 	}
 	return nil
 }
@@ -407,7 +411,7 @@ func (f *File) filterOversized(artwork []Artwork) []Artwork {
 			kept = append(kept, a)
 			continue
 		}
-		if !f.ignoreWarnings {
+		if f.warnings != warnIgnore {
 			types.Warn(&f.File, StageArtwork, 0, nil, fmt.Sprintf("artwork (%s, %d bytes) exceeds max size %d; skipped", a.MIMEType, len(a.Data), f.maxArtworkSize))
 		}
 	}

@@ -74,7 +74,7 @@ func TestApplyWarningPolicy_JoinsErrors(t *testing.T) {
 		{Message: "first", Err: errA},
 		{Message: "second", Err: errB},
 	}}
-	err := applyWarningPolicy(file, &openOptions{strictParsing: true})
+	err := applyWarningPolicy(file, &openOptions{warnings: warnStrict})
 	if err == nil {
 		t.Fatal("expected error")
 	}
