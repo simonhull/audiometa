@@ -1,12 +1,11 @@
 package ogg
 
 import (
+	"context"
 	"encoding/binary"
-	"errors"
 	"fmt"
 
 	"github.com/simonhull/audiometa/internal/types"
-	"github.com/simonhull/audiometa/internal/vorbis"
 )
 
 // parseOpusHead parses the OpusHead identification header.
@@ -76,7 +75,7 @@ func parseOpusHead(data []byte, file *types.File) error {
 // The only difference from Vorbis comments is the "OpusTags" magic marker.
 //
 // Returns an error if the header is invalid or truncated.
-func parseOpusTags(data []byte, file *types.File) error {
+func parseOpusTags(ctx context.Context, data []byte, file *types.File) error {
 	if len(data) < 12 {
 		return fmt.Errorf("OpusTags packet too short: %d bytes (need at least 12)", len(data))
 	}
@@ -86,79 +85,5 @@ func parseOpusTags(data []byte, file *types.File) error {
 		return fmt.Errorf("invalid OpusTags magic: %q (expected \"OpusTags\")", string(data[0:8]))
 	}
 
-	offset := 8
-
-	// Read vendor string length (32-bit little-endian)
-	if offset+4 > len(data) {
-		return errors.New("truncated vendor length")
-	}
-	vendorLen := binary.LittleEndian.Uint32(data[offset : offset+4])
-	offset += 4
-
-	// Skip vendor string (we don't use it for metadata)
-	if offset+int(vendorLen) > len(data) {
-		return errors.New("truncated vendor string")
-	}
-	offset += int(vendorLen)
-
-	// Read comment count (32-bit little-endian)
-	if offset+4 > len(data) {
-		return errors.New("truncated comment count")
-	}
-	commentCount := binary.LittleEndian.Uint32(data[offset : offset+4])
-	offset += 4
-
-	// Collect all comments for later chapter parsing
-	var allComments []string
-
-	// Read each comment
-	for i := range commentCount {
-		if offset+4 > len(data) {
-			// Truncated, but don't fail - just stop reading
-			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-				Stage:   types.StageMetadata,
-				Message: fmt.Sprintf("truncated comment %d (missing length field)", i),
-			})
-			break
-		}
-
-		commentLen := binary.LittleEndian.Uint32(data[offset : offset+4])
-		offset += 4
-
-		if offset+int(commentLen) > len(data) {
-			// Truncated comment data
-			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-				Stage:   types.StageMetadata,
-				Message: fmt.Sprintf("truncated comment %d data (expected %d bytes)", i, commentLen),
-			})
-			break
-		}
-
-		if !types.TakeValue(file) {
-			break
-		}
-		comment := string(data[offset : offset+int(commentLen)])
-		offset += int(commentLen)
-
-		// Collect for chapter parsing
-		allComments = append(allComments, comment)
-
-		// Parse comment using shared Vorbis comment parser
-		// (OpusTags uses identical format to Vorbis comments)
-		if err := vorbis.ParseComment(comment, file); err != nil {
-			// Non-fatal - add warning and continue
-			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-				Stage:   types.StageMetadata,
-				Message: fmt.Sprintf("invalid Opus tag: %s", err),
-				Err:     err,
-			})
-		}
-	}
-
-	// Parse chapters from CHAPTER comments
-	if len(allComments) > 0 {
-		file.Chapters = vorbis.ParseChapters(allComments, file.Audio.Duration)
-	}
-
-	return nil
+	return applyCommentHeader(ctx, data[8:], file)
 }

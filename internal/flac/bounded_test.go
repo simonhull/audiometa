@@ -27,8 +27,8 @@ func TestParse_CommentPastBlockIsNotRead(t *testing.T) {
 	if file.Tags.Title != "" {
 		t.Errorf("Title = %q, read from past the end of the block", file.Tags.Title)
 	}
-	if len(file.Warnings) != 1 || !strings.Contains(file.Warnings[0].Message, "runs past the end of the block") {
-		t.Errorf("warnings = %+v, want one saying the length runs past the end of the block", file.Warnings)
+	if len(file.Warnings) != 1 || !strings.Contains(file.Warnings[0].Message, "runs past the end of the data") {
+		t.Errorf("warnings = %+v, want one saying the length runs past the end of the data", file.Warnings)
 	}
 }
 

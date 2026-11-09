@@ -2,8 +2,6 @@ package flac
 
 import (
 	"bytes"
-	"encoding/binary"
-	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -11,86 +9,14 @@ import (
 	"unicode/utf8"
 
 	"github.com/simonhull/audiometa/internal/types"
+	"github.com/simonhull/audiometa/internal/vorbis"
 )
 
-// vcomment is a VORBIS_COMMENT block being rewritten.
+// vcomment is a VORBIS_COMMENT block being rewritten: its vendor string and
+// tail are copied verbatim, its entries are the raw "KEY=VALUE" comments in
+// file order.
 type vcomment struct {
-	vendor   []byte   // copied verbatim
-	comments [][]byte // raw "KEY=VALUE" comments, in file order
-	tail     []byte   // bytes after the last comment, copied verbatim
-}
-
-// errShortVC reports a VORBIS_COMMENT length field that runs past the block.
-var errShortVC = errors.New("length runs past the end of the block")
-
-// parseVC splits a VORBIS_COMMENT payload: a little-endian 32-bit vendor
-// length and the vendor string, a little-endian 32-bit comment count, then
-// each comment as a little-endian 32-bit length and its bytes. It reads
-// nothing outside payload. The result is never nil: on error it holds the
-// vendor (when that was read) and the comments decoded before the failure,
-// and its tail is nil.
-func parseVC(payload []byte) (*vcomment, error) {
-	v := &vcomment{}
-	vendor, rest, err := takeLE(payload)
-	if err != nil {
-		return v, fmt.Errorf("vendor string: %w", err)
-	}
-	v.vendor = vendor
-	if len(rest) < 4 {
-		return v, fmt.Errorf("comment count: %w", errShortVC)
-	}
-	count := binary.LittleEndian.Uint32(rest)
-	rest = rest[4:]
-	// Each comment takes at least 4 bytes, so no more than len(rest)/4 fit.
-	n := len(rest) / 4
-	if uint64(count) < uint64(n) {
-		n = int(count)
-	}
-	v.comments = make([][]byte, 0, n)
-	for i := range count {
-		var c []byte
-		if c, rest, err = takeLE(rest); err != nil {
-			return v, fmt.Errorf("comment %d: %w", i, err)
-		}
-		v.comments = append(v.comments, c)
-	}
-	v.tail = rest
-	return v, nil
-}
-
-// takeLE splits a little-endian 32-bit length and that many bytes off b.
-func takeLE(b []byte) (field, rest []byte, err error) {
-	if len(b) < 4 {
-		return nil, nil, errShortVC
-	}
-	n := int64(binary.LittleEndian.Uint32(b))
-	if n > int64(len(b)-4) {
-		return nil, nil, errShortVC
-	}
-	return b[4 : 4+n], b[4+n:], nil
-}
-
-// bytes encodes the block payload. Lengths beyond the 32-bit range are not
-// checked here: such a payload exceeds the block size limit, which
-// serialize enforces.
-func (v *vcomment) bytes() []byte {
-	n := 8 + len(v.vendor) + len(v.tail)
-	for _, c := range v.comments {
-		n += 4 + len(c)
-	}
-	out := make([]byte, 0, n)
-	out = appendLE(out, v.vendor)
-	out = binary.LittleEndian.AppendUint32(out, uint32(len(v.comments))) //nolint:gosec // G115: bounded by the block size limit
-	for _, c := range v.comments {
-		out = appendLE(out, c)
-	}
-	return append(out, v.tail...)
-}
-
-// appendLE appends b preceded by its little-endian 32-bit length.
-func appendLE(out, b []byte) []byte {
-	out = binary.LittleEndian.AppendUint32(out, uint32(len(b))) //nolint:gosec // G115: bounded by the block size limit
-	return append(out, b...)
+	vorbis.Comments
 }
 
 // commentKey returns the key of a raw comment (the text before the first
@@ -108,7 +34,7 @@ func (v *vcomment) has(key string) bool {
 
 // first returns the value of the first comment with key (case-insensitively).
 func (v *vcomment) first(key string) (string, bool) {
-	for _, c := range v.comments {
+	for _, c := range v.Entries {
 		if k, ok := commentKey(c); ok && strings.EqualFold(k, key) {
 			return string(c[len(k)+1:]), true
 		}
@@ -135,8 +61,8 @@ func (v *vcomment) applyKey(key string, values []string) error {
 		}
 	}
 	spelling, at := key, -1
-	kept := make([][]byte, 0, len(v.comments)+len(values))
-	for _, c := range v.comments {
+	kept := make([][]byte, 0, len(v.Entries)+len(values))
+	for _, c := range v.Entries {
 		if k, ok := commentKey(c); ok && strings.EqualFold(k, key) {
 			if at < 0 {
 				spelling, at = k, len(kept)
@@ -152,7 +78,7 @@ func (v *vcomment) applyKey(key string, values []string) error {
 	for i, val := range values {
 		added[i] = []byte(spelling + "=" + val)
 	}
-	v.comments = slices.Insert(kept, at, added...)
+	v.Entries = slices.Insert(kept, at, added...)
 	return nil
 }
 

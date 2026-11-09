@@ -36,11 +36,14 @@ func (p *parser) ExtractArtwork(ctx context.Context, r io.ReaderAt, size int64, 
 	// failure, as in Parse, where it is only a warning.
 	switch codec := detectOggCodec(h.packets[0]); codec {
 	case codecVorbis:
-		_ = parseVorbisComment(h.packets[1], &file)
+		_ = parseVorbisComment(ctx, h.packets[1], &file)
 	case codecOpus:
-		_ = parseOpusTags(h.packets[1], &file)
+		_ = parseOpusTags(ctx, h.packets[1], &file)
 	default:
 		return nil, fmt.Errorf("parse file: unknown or unsupported Ogg codec: %q", codec)
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
 	}
 
 	var artwork []types.Artwork

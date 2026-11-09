@@ -15,6 +15,7 @@ import (
 	"github.com/simonhull/audiometa/internal/registry"
 	"github.com/simonhull/audiometa/internal/trailer"
 	"github.com/simonhull/audiometa/internal/types"
+	"github.com/simonhull/audiometa/internal/vorbis"
 	"github.com/simonhull/audiometa/internal/writeutil"
 )
 
@@ -243,13 +244,15 @@ func (m *fmeta) applyTags(edits *types.EditSet) error {
 	if len(at) > 1 {
 		return fmt.Errorf("%w: file has %d VORBIS_COMMENT blocks", types.ErrUnsupportedWrite, len(at))
 	}
-	v := &vcomment{vendor: []byte("audiometa")}
+	v := &vcomment{vorbis.Comments{Vendor: []byte("audiometa")}}
 	if len(at) == 1 {
 		b := m.blocks[at[0]]
-		var err error
-		if v, err = parseVC(b.payload); err != nil {
+		// A block holds at most 16 MiB, so the split needs no cancellation.
+		c, err := vorbis.Split(context.Background(), b.payload)
+		if err != nil {
 			return corrupted(m.path, b.off, "malformed VORBIS_COMMENT block: "+err.Error())
 		}
+		v = &vcomment{c}
 	}
 	for _, e := range edits.Keys {
 		if err := v.applyKey(e.Key, e.Values); err != nil {
@@ -262,11 +265,11 @@ func (m *fmeta) applyTags(edits *types.EditSet) error {
 		}
 	}
 	if len(at) == 1 {
-		m.blocks[at[0]].payload = v.bytes()
+		m.blocks[at[0]].payload = v.Encode()
 		return nil
 	}
-	if len(v.comments) > 0 {
-		m.blocks = slices.Insert(m.blocks, m.newCommentIndex(), fblock{typ: blockTypeVorbisComment, payload: v.bytes()})
+	if len(v.Entries) > 0 {
+		m.blocks = slices.Insert(m.blocks, m.newCommentIndex(), fblock{typ: blockTypeVorbisComment, payload: v.Encode()})
 	}
 	return nil
 }

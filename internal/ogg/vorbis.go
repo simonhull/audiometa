@@ -1,12 +1,11 @@
 package ogg
 
 import (
+	"context"
 	"encoding/binary"
-	"errors"
 	"fmt"
 
 	"github.com/simonhull/audiometa/internal/types"
-	"github.com/simonhull/audiometa/internal/vorbis"
 )
 
 // parseVorbisIdentification parses the Vorbis identification header (packet type 0x01).
@@ -71,7 +70,7 @@ func parseVorbisIdentification(data []byte, file *types.File) error {
 //   - Each comment: length + UTF-8 string
 //
 // Returns an error if the header is invalid or truncated.
-func parseVorbisComment(data []byte, file *types.File) error {
+func parseVorbisComment(ctx context.Context, data []byte, file *types.File) error {
 	if len(data) < 8 {
 		return fmt.Errorf("comment header too short: %d bytes", len(data))
 	}
@@ -86,78 +85,5 @@ func parseVorbisComment(data []byte, file *types.File) error {
 		return fmt.Errorf("invalid vorbis magic: %q", string(data[1:7]))
 	}
 
-	offset := 7
-
-	// Read vendor string length (32-bit little-endian)
-	if offset+4 > len(data) {
-		return errors.New("truncated vendor length")
-	}
-	vendorLen := binary.LittleEndian.Uint32(data[offset : offset+4])
-	offset += 4
-
-	// Skip vendor string (we don't use it)
-	if offset+int(vendorLen) > len(data) {
-		return errors.New("truncated vendor string")
-	}
-	offset += int(vendorLen)
-
-	// Read comment count (32-bit little-endian)
-	if offset+4 > len(data) {
-		return errors.New("truncated comment count")
-	}
-	commentCount := binary.LittleEndian.Uint32(data[offset : offset+4])
-	offset += 4
-
-	// Collect all comments for later chapter parsing
-	var allComments []string
-
-	// Read each comment
-	for i := range commentCount {
-		if offset+4 > len(data) {
-			// Truncated, but don't fail - just stop reading
-			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-				Stage:   types.StageMetadata,
-				Message: fmt.Sprintf("truncated comment %d", i),
-			})
-			break
-		}
-
-		commentLen := binary.LittleEndian.Uint32(data[offset : offset+4])
-		offset += 4
-
-		if offset+int(commentLen) > len(data) {
-			// Truncated comment
-			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-				Stage:   types.StageMetadata,
-				Message: fmt.Sprintf("truncated comment %d data", i),
-			})
-			break
-		}
-
-		if !types.TakeValue(file) {
-			break
-		}
-		comment := string(data[offset : offset+int(commentLen)])
-		offset += int(commentLen)
-
-		// Collect for chapter parsing
-		allComments = append(allComments, comment)
-
-		// Parse comment using shared Vorbis comment parser
-		if err := vorbis.ParseComment(comment, file); err != nil {
-			// Non-fatal - add warning and continue
-			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-				Stage:   types.StageMetadata,
-				Message: fmt.Sprintf("invalid Vorbis comment: %s", err),
-				Err:     err,
-			})
-		}
-	}
-
-	// Parse chapters from CHAPTER comments
-	if len(allComments) > 0 {
-		file.Chapters = vorbis.ParseChapters(allComments, file.Audio.Duration)
-	}
-
-	return nil
+	return applyCommentHeader(ctx, data[7:], file)
 }

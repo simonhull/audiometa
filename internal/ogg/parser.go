@@ -101,7 +101,10 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		}
 
 		// Parse Vorbis comment header (packet 1)
-		if err := parseVorbisComment(packets[1], file); err != nil {
+		if err := parseVorbisComment(ctx, packets[1], file); err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, ctxErr
+			}
 			// Non-fatal - add warning
 			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 				Stage:   types.StageMetadata,
@@ -132,7 +135,10 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		}
 
 		// Parse OpusTags comment header (packet 1)
-		if err := parseOpusTags(packets[1], file); err != nil {
+		if err := parseOpusTags(ctx, packets[1], file); err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, ctxErr
+			}
 			// Non-fatal - add warning
 			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 				Stage:   types.StageMetadata,

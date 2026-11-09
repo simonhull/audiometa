@@ -15,6 +15,7 @@ import (
 	"github.com/simonhull/audiometa/internal/registry"
 	"github.com/simonhull/audiometa/internal/testbudget"
 	"github.com/simonhull/audiometa/internal/types"
+	"github.com/simonhull/audiometa/internal/vorbis"
 )
 
 func TestWriter_Registered(t *testing.T) {
@@ -78,12 +79,12 @@ func TestFBlock_CorpusVerbatim(t *testing.T) {
 func grow(t *testing.T, m *fmeta, n int) {
 	t.Helper()
 	i := slices.IndexFunc(m.blocks, func(b fblock) bool { return b.typ == blockTypeVorbisComment })
-	v, err := parseVC(m.blocks[i].payload)
+	c, err := vorbis.Split(t.Context(), m.blocks[i].payload)
 	if err != nil {
 		t.Fatal(err)
 	}
-	v.comments = append(v.comments, []byte("X="+strings.Repeat("x", n-2)))
-	m.blocks[i].payload = v.bytes()
+	c.Entries = append(c.Entries, []byte("X="+strings.Repeat("x", n-2)))
+	m.blocks[i].payload = c.Encode()
 }
 
 func TestFBlock_PaddingAbsorbsGrowth(t *testing.T) {
@@ -313,8 +314,8 @@ func TestVC_CreatedWhenMissing(t *testing.T) {
 			t.Errorf("%s: blocks %v, want %v", name, got, tc.want)
 		}
 		v := commentsOf(t, out)
-		if string(v.vendor) != "audiometa" || !slices.Equal(strs(v.comments), []string{"TITLE=New"}) {
-			t.Errorf("%s: vendor %q, comments %q", name, v.vendor, strs(v.comments))
+		if string(v.Vendor) != "audiometa" || !slices.Equal(strs(v.Entries), []string{"TITLE=New"}) {
+			t.Errorf("%s: vendor %q, comments %q", name, v.Vendor, strs(v.Entries))
 		}
 		if f := parseBytes(t, out); f.Tags.Title != "New" {
 			t.Errorf("%s: Title = %q", name, f.Tags.Title)
@@ -462,7 +463,7 @@ func TestWriter_Corpus(t *testing.T) {
 				t.Errorf("%s: blocks of type %d changed", name, typ)
 			}
 		}
-		if string(commentsOf(t, out).vendor) != string(commentsOf(t, src).vendor) {
+		if string(commentsOf(t, out).Vendor) != string(commentsOf(t, src).Vendor) {
 			t.Errorf("%s: vendor changed", name)
 		}
 		if n.audioStart != m.audioStart {
@@ -482,8 +483,8 @@ func TestWriter_DeleteEveryKey(t *testing.T) {
 	})
 	out := writeBytes(t, src, edits)
 	v := commentsOf(t, out)
-	if len(v.comments) != 0 || string(v.vendor) != "reference libFLAC 1.5.0 20250211" {
-		t.Errorf("vendor %q, comments %q; want the vendor only", v.vendor, strs(v.comments))
+	if len(v.Entries) != 0 || string(v.Vendor) != "reference libFLAC 1.5.0 20250211" {
+		t.Errorf("vendor %q, comments %q; want the vendor only", v.Vendor, strs(v.Entries))
 	}
 	if f := parseBytes(t, out); len(maps.Collect(f.Tags.All())) != 0 {
 		t.Errorf("raw tags left: %v", maps.Collect(f.Tags.All()))

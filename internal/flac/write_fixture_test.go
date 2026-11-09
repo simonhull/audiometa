@@ -8,6 +8,7 @@ import (
 
 	binutil "github.com/simonhull/audiometa/internal/binary"
 	"github.com/simonhull/audiometa/internal/types"
+	"github.com/simonhull/audiometa/internal/vorbis"
 )
 
 // audioTail stands in for the audio frames after the metadata blocks.
@@ -97,11 +98,11 @@ func commentsOf(t *testing.T, data []byte) *vcomment {
 	if len(vcs) != 1 {
 		t.Fatalf("%d VORBIS_COMMENT blocks, want 1", len(vcs))
 	}
-	v, err := parseVC(vcs[0].payload)
+	c, err := vorbis.Split(t.Context(), vcs[0].payload)
 	if err != nil {
-		t.Fatalf("parseVC: %v", err)
+		t.Fatalf("vorbis.Split: %v", err)
 	}
-	return v
+	return &vcomment{c}
 }
 
 // strs converts raw comments to strings.

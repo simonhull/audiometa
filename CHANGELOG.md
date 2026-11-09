@@ -6,6 +6,7 @@ All notable changes to this project are documented here.
 
 ### Changed
 
+- FLAC, Ogg Vorbis and Opus decode Vorbis comments with one decoder. A comment header that runs past its block or packet adds one `StageMetadata` warning whose `Err` wraps the same error in all three formats (Ogg and Opus warnings had no `Err` and per-format texts), and Ogg and Opus comment lists are now checked for cancellation.
 - Fewer and smaller reads, with unchanged results. `Open` reads the start of the file once instead of two or three times (the fixtures in `testdata/bench` went from 3, 2, 3 and 6 reads to 1, 1, 1 and 4 for M4B, FLAC, Opus and MP3), and `DetectFormat` reads at most 1 KiB (24 B and 1 allocation per call instead of 16 KiB and 7). Ogg `AudioDigest` reads each byte once through one sequential stream: a 4 MB Opus file took 480 reads and 8 MB requested, and now takes 251 reads and 4 MB, with 50 KiB of allocations instead of 4.4 MiB. Ogg `ExtractArtwork` reads only the header packets instead of parsing the whole file, and no longer reads the file's tail. Opus files with a large embedded picture allocate about half as much on `Open`, because each header packet is assembled with one allocation. The MP3 Xing/VBRI header is taken from the frame window already in memory, and the buffer behind every `WriteTo`, `Write` and digest copy is reused across calls.
 - `AudioInfo.Container` is now set for M4A/M4B (`"MP4"`) and MP3 (`"MP3"`), as it already was for FLAC, Ogg, WAV and AIFF.
 - `Write` with `WithInPlace` falls back to the atomic rewrite when the file's permissions do not allow opening it for writing, as it already did when the edit does not fit. It used to fail with a permission error, although the same `Write` without the option replaces the file.
@@ -16,6 +17,7 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- Ogg Vorbis and Opus: on 32-bit platforms, a comment header whose vendor or comment length is close to 4 GiB made `Open` fail with a `*CorruptedFileError` (a recovered panic). It is now reported as a truncated comment header, as on 64-bit platforms.
 - M4A: Apple Lossless and FLAC-in-MP4 files report `Lossless`, their `BitDepth`, channels and true sample rate, read from the codec's configuration box. A 96 kHz ALAC file used to report 48000 Hz, 0 bits and lossy. Sample rates above 65535 Hz on other codecs come from the track's media header, since the sample entry cannot hold them.
 - M4A: FLAC-in-MP4 (`fLaC`) gets the codec description "FLAC".
 - MP3, WAV and AIFF: setting `Tags.Year` outside 1900–2100 returns `ErrUnsupportedWrite`. The ID3 reader ignores such years, so the write used to succeed and the year read back as 0.

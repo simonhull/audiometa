@@ -262,34 +262,15 @@ func parseStreamInfo(sr *binary.SafeReader, offset, blockLength int64, file *typ
 
 // parseVorbisComment decodes the VORBIS_COMMENT block b and maps each
 // comment onto file. Nothing outside the block's payload is read: a length
-// that runs past it ends the block with an error wrapping errShortVC. The
+// that runs past it ends the block with an error wrapping [vorbis.ErrTruncated]. The
 // comments decoded before an error are still applied and returned.
 func parseVorbisComment(ctx context.Context, sr *binary.SafeReader, b block, size int64, file *types.File) ([]string, error) {
 	payload, err := readPayload(sr, b, size)
 	if err != nil {
 		return nil, err
 	}
-	v, decodeErr := parseVC(payload)
-	comments := make([]string, 0, len(v.comments))
-	for i, c := range v.comments {
-		if err := binary.Canceled(ctx, i); err != nil {
-			return comments, err
-		}
-		if !types.TakeValue(file) {
-			break
-		}
-		comment := string(c)
-		comments = append(comments, comment)
-		if err := vorbis.ParseComment(comment, file); err != nil {
-			// Non-fatal - add warning and continue
-			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-				Stage:   types.StageMetadata,
-				Message: fmt.Sprintf("invalid Vorbis comment: %s", err),
-				Err:     err,
-			})
-		}
-	}
-	return comments, decodeErr
+	c, err := vorbis.Split(ctx, payload)
+	return vorbis.Apply(c.Entries, file), err
 }
 
 // init registers the FLAC parser.
