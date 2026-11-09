@@ -231,7 +231,7 @@ and does not touch.
 
 Tag formats:
 
-- **FLAC**: Vorbis comments, PICTURE blocks
+- **FLAC**: Vorbis comments, PICTURE blocks (a non-standard ID3v2 tag in front of the stream is skipped with a warning, and kept on write)
 - **WAV and AIFF**: an ID3v2 chunk (`id3 ` or `ID3 `), read as MP3's ID3v2 tag is, and the
   format's own text: WAV's `LIST`/`INFO` chunk (`INAM`, `IART`, `IPRD`, `ICRD`, `ITRK`, `ICMT`,
   `ISFT`, ...) and AIFF's `NAME`, `AUTH`, `(c) ` and `ANNO` chunks, each under its ID as a raw

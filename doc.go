@@ -43,7 +43,8 @@
 //     comments and pictures; every other metadata block and the vendor string
 //     are kept byte for byte, and the PADDING block absorbs growth so the
 //     audio usually stays in place. CHAPTER comments and the CUESHEET are
-//     never edited.
+//     never edited. A non-standard ID3v2 tag in front of the stream is skipped
+//     with a warning and kept byte for byte on write.
 //   - MP3: ID3v2.2, ID3v2.3 and ID3v2.4 tags with an ID3v1 fallback, APIC
 //     artwork, chapters from CHAP frames or OverDrive MediaMarkers, and
 //     Xing/VBRI-aware duration. Writing keeps the ID3v2 version (ID3v2.2 tags
