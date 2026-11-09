@@ -284,6 +284,13 @@ func TestParse_Latin1Text(t *testing.T) {
 	}
 }
 
+func TestParse_EmptyAIFFTextChunkLast(t *testing.T) {
+	t.Parallel()
+	data := append(corpus(t, "sample.aiff"), "NAME\x00\x00\x00\x00"...)
+	binary.BigEndian.PutUint32(data[4:], binary.BigEndian.Uint32(data[4:])+8)
+	parse(t, types.FormatAIFF, data) // fails the test when Parse errors
+}
+
 func TestExtendedFloat(t *testing.T) {
 	t.Parallel()
 	for _, rate := range []float64{8000, 44100, 48000, 96000, 192000, 11025.5} {

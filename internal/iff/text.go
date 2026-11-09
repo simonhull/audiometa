@@ -99,6 +99,9 @@ func (c *container) payload(ch chunk, what string) ([]byte, error) {
 	if n > binutil.MaxAllocBytes {
 		return nil, corrupted(c.sr, ch.off, fmt.Sprintf("%s of %d bytes is too big", what, n))
 	}
+	if n == 0 {
+		return []byte{}, nil // an empty chunk at the end of the file sits at the size, where reads are refused
+	}
 	b := make([]byte, n)
 	if err := c.sr.ReadAt(b, ch.data(), what); err != nil {
 		return nil, err

@@ -121,6 +121,8 @@ func FuzzWriteRoundTrip(f *testing.F) {
 	}
 	f.Add([]byte("ID3\x04\x00\x00\x00\x00\x00\x00"), []byte{0})
 	f.Add([]byte("fLaC"), []byte{0})
+	// An empty text chunk last in the file (plan 058).
+	f.Add([]byte("FORM0000AIFFCOMM\x00\x00\x00\x12000000000000000000"), []byte("00"))
 
 	img := fuzzPNG()
 	f.Fuzz(func(t *testing.T, data, ops []byte) {
