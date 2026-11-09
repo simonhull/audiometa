@@ -1,6 +1,7 @@
 package m4a
 
 import (
+	"context"
 	"math"
 	"time"
 
@@ -10,7 +11,7 @@ import (
 
 // parseTechnicalInfo extracts duration, bitrate, sample rate, channels, and codec.
 // Returns nil (no error) even if atoms are missing - technical info is best-effort.
-func parseTechnicalInfo(sr *binary.SafeReader, moovAtom *Atom, file *types.File) error {
+func parseTechnicalInfo(ctx context.Context, sr *binary.SafeReader, moovAtom *Atom, file *types.File) error {
 	// Find mvhd (movie header) atom for duration
 	mvhdAtom, err := findAtom(sr, moovAtom.DataOffset(), moovAtom.DataOffset()+moovAtom.DataSize(), "mvhd")
 	if err != nil {
@@ -62,15 +63,73 @@ func parseTechnicalInfo(sr *binary.SafeReader, moovAtom *Atom, file *types.File)
 		return nil
 	}
 
-	// Estimate bitrate if we have duration and file size
-	if file.Audio.Duration > 0 && file.Size > 0 {
-		durationSec := file.Audio.Duration.Seconds()
-		if durationSec > 0 {
-			file.Audio.Bitrate = int((float64(file.Size) * 8) / durationSec)
+	// The esds avgBitrate, when the sample description declared one, is already
+	// in file.Audio.Bitrate. Otherwise the track's own sample sizes, never the
+	// file size (cover art and other atoms are not audio).
+	if file.Audio.Bitrate == 0 {
+		if n, ok := sampleBytes(ctx, sr, stblAtom, file.Size); ok {
+			file.Audio.Bitrate = types.AverageBitrate(n, file.Audio.Duration)
 		}
 	}
 
 	return nil
+}
+
+// stszChunk is how many stsz table entries sampleBytes reads at a time.
+const stszChunk = 4096
+
+// sampleBytes returns the total size of a track's samples from its stsz
+// atom (ISO/IEC 14496-12 §8.7.3). ok is false when stsz is absent,
+// unreadable, or claims more bytes than limit (the file size, when known):
+// a table no file could hold is not believed.
+func sampleBytes(ctx context.Context, sr *binary.SafeReader, stbl *Atom, limit int64) (int64, bool) {
+	stsz, err := findAtom(sr, stbl.DataOffset(), stbl.DataOffset()+stbl.DataSize(), "stsz")
+	if err != nil || stsz.DataSize() < 12 {
+		return 0, false
+	}
+	off := stsz.DataOffset() + 4 // version and flags
+	defaultSize, err := sr.Read[uint32](off, "stsz default sample size")
+	if err != nil {
+		return 0, false
+	}
+	count, err := sr.Read[uint32](off+4, "stsz sample count")
+	if err != nil {
+		return 0, false
+	}
+	maxBytes := uint64(math.MaxInt64)
+	if limit > 0 {
+		maxBytes = uint64(limit)
+	}
+	if defaultSize != 0 {
+		total := uint64(defaultSize) * uint64(count) // < 2^64: both factors < 2^32
+		return int64(min(total, maxBytes)), total <= maxBytes
+	}
+	if int64(count) > (stsz.DataSize()-12)/4 {
+		return 0, false // the table would run past its atom
+	}
+
+	buf := make([]byte, 4*min(count, stszChunk))
+	var total uint64
+	pos := off + 8
+	for i, left := 0, count; left > 0; i++ {
+		if binary.Canceled(ctx, i) != nil {
+			return 0, false
+		}
+		n := min(left, stszChunk)
+		chunk := buf[:4*n]
+		if err := sr.ReadAt(chunk, pos, "stsz sample sizes"); err != nil {
+			return 0, false
+		}
+		for j := 0; j < len(chunk); j += 4 {
+			total += uint64(chunk[j])<<24 | uint64(chunk[j+1])<<16 | uint64(chunk[j+2])<<8 | uint64(chunk[j+3])
+		}
+		if total > maxBytes {
+			return 0, false
+		}
+		pos += int64(4 * n)
+		left -= n
+	}
+	return int64(total), true
 }
 
 // handlerSound is the hdlr handler type of an audio track.

@@ -78,7 +78,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	}
 
 	// Parse technical info (duration, bitrate, codec, sample rate, channels)
-	if err := parseTechnicalInfo(sr, moovAtom, file); err != nil {
+	if err := parseTechnicalInfo(ctx, sr, moovAtom, file); err != nil {
 		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
 			Stage:   types.StageTechnical,
 			Message: err.Error(),

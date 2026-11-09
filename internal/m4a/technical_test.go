@@ -2,6 +2,7 @@ package m4a
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"math"
 	"testing"
@@ -44,7 +45,7 @@ func TestParseTechnicalInfo_Duration(t *testing.T) {
 	moovAtom, _ := readAtomHeader(sr, 0, int64(len(moov)))
 
 	file := &types.File{}
-	err := parseTechnicalInfo(sr, moovAtom, file)
+	err := parseTechnicalInfo(context.Background(), sr, moovAtom, file)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -65,7 +66,7 @@ func TestParseTechnicalInfo_NonStandardTimescale(t *testing.T) {
 	moovAtom, _ := readAtomHeader(sr, 0, int64(len(moov)))
 
 	file := &types.File{}
-	err := parseTechnicalInfo(sr, moovAtom, file)
+	err := parseTechnicalInfo(context.Background(), sr, moovAtom, file)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -89,7 +90,7 @@ func TestParseTechnicalInfo_NoMvhd(t *testing.T) {
 	moovAtom, _ := readAtomHeader(sr, 0, int64(len(moov)))
 
 	file := &types.File{}
-	err := parseTechnicalInfo(sr, moovAtom, file)
+	err := parseTechnicalInfo(context.Background(), sr, moovAtom, file)
 
 	// Should not error, just leave duration as 0
 	if err != nil {
@@ -180,7 +181,7 @@ func parseMoovTech(t *testing.T, children ...[]byte) *types.File {
 		t.Fatal(err)
 	}
 	file := &types.File{}
-	if err := parseTechnicalInfo(sr, moovAtom, file); err != nil {
+	if err := parseTechnicalInfo(context.Background(), sr, moovAtom, file); err != nil {
 		t.Fatal(err)
 	}
 	return file
@@ -228,5 +229,40 @@ func TestParseTechnicalInfo_UnknownSoundEntryVersionLeavesUnset(t *testing.T) {
 	file := parseMoovTech(t, trakWith("soun", stsdFor("mp4a", sampleEntryV01(7, 2, 48000))))
 	if file.Audio.SampleRate != 0 || file.Audio.Channels != 0 {
 		t.Errorf("rate %d channels %d, want unset", file.Audio.SampleRate, file.Audio.Channels)
+	}
+}
+
+// trakWithStbl is trakWith with extra stbl children after the stsd.
+func trakWithStbl(handler string, stbl ...[]byte) []byte {
+	var mdiaChildren []byte
+	if handler != "" {
+		mdiaChildren = append(mdiaChildren, fullAtom("hdlr", append(append(u32be(0), handler...), make([]byte, 12)...))...)
+	}
+	minf := createMockAtom("minf", createMockAtom("stbl", bytes.Join(stbl, nil)))
+	return createMockAtom("trak", createMockAtom("mdia", append(mdiaChildren, minf...)))
+}
+
+func TestParseTechnicalInfo_BitrateIgnoresFileSize(t *testing.T) {
+	// parseMoovTech's mvhd lasts 10 s. Audio: 4 samples of 40,000 bytes = 160,000 bytes = 128 kbit/s.
+	stsz := stszAtom(0, 4, 40000, 40000, 40000, 40000)
+	mp4aStsd := fullAtom("stsd", append(u32be(1), mp4aSampleEntry(esdsPayload(0, []byte{0x12, 0x10}))...))
+	tests := []struct {
+		name string
+		trak []byte
+		want int
+	}{
+		{"esds avgBitrate wins", trakWithStbl("soun", mp4aStsd, stsz), 128000},
+		{"stsz sum without esds", trakWithStbl("soun", stsdFor("alac", sampleEntryV01(0, 2, 44100)), stsz), 128000},
+		{"constant sample size", trakWithStbl("soun", stsdFor("alac", sampleEntryV01(0, 2, 44100)), stszAtom(40000, 4)), 128000},
+		{"no stsz: unknown", trakWithStbl("soun", stsdFor("alac", sampleEntryV01(0, 2, 44100))), 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// A large unrelated atom (cover-art sized) must not count.
+			file := parseMoovTech(t, tt.trak, createMockAtom("free", make([]byte, 1<<20)))
+			if file.Audio.Bitrate != tt.want {
+				t.Errorf("Bitrate = %d, want %d", file.Audio.Bitrate, tt.want)
+			}
+		})
 	}
 }

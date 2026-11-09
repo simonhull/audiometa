@@ -406,7 +406,7 @@
     "SampleRate": 44100,
     "BitDepth": 0,
     "Channels": 1,
-    "Bitrate": 6110,
+    "Bitrate": 1403,
     "Lossless": false,
     "VBR": false
   },
