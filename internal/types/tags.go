@@ -291,21 +291,19 @@ func (t *Tags) Delete(keys ...string) {
 // Delete to keep typed fields in sync with raw keys. Called by the root
 // package after parsing.
 //
-// It also resolves every field that has several candidate keys from the
-// highest-precedence key present, as FieldBindings orders them, so a parser that
-// filled the field from whichever key came first in the file cannot disagree
-// with Set, Delete and the writers. A field none of whose keys decodes keeps the
-// parser's value, and no key fills a field it is not bound to.
+// It also resolves every field that has several candidate keys, as
+// [DeriveFields] does, so a Tags whose raw tags came from more than one source
+// (WAV and AIFF add their native text tags after the ID3 tag is read) cannot
+// disagree with Set, Delete and the writers. Fields with one key stay as the
+// parser derived them: only the parser knows what it filled from outside the
+// raw tags, and re-deriving would overwrite an ID3v1 value. A field none of
+// whose keys decodes keeps its value, and no key fills a field it is not bound
+// to.
 func BindFormat(t *Tags, format Format) {
 	t.format = format
 	for _, b := range bindingsFor(format) {
-		if len(b.Keys) < 2 {
-			continue
-		}
-		for _, k := range b.Keys {
-			if decodeField(t, format, b.Field, k, t.raw[k]) {
-				break
-			}
+		if len(b.Keys) >= 2 {
+			deriveField(t, format, b)
 		}
 	}
 }

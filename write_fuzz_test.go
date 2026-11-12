@@ -17,8 +17,10 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	binutil "github.com/simonhull/audiometa/internal/binary"
 	"github.com/simonhull/audiometa/internal/registry"
 	"github.com/simonhull/audiometa/internal/testbudget"
+	"github.com/simonhull/audiometa/internal/trailer"
 	"github.com/simonhull/audiometa/internal/types"
 )
 
@@ -142,6 +144,8 @@ func FuzzWriteRoundTrip(f *testing.F) {
 	f.Add([]byte("fLaC"), []byte{0})
 	// A raw TYER edit on an empty ID3v2.2 tag, which is rewritten as v2.4 (plan 085).
 	f.Add([]byte("ID3\x0200\x00\x00\x00\x00"), []byte("0000"))
+	// A raw TORY edit on an ID3v2.2 tag lands in TDOR (plan 077).
+	f.Add([]byte("ID3\x0200\x00\x00\x00\x000"), []byte("0X00"))
 	// An empty text chunk last in the file (plan 058).
 	f.Add([]byte("FORM0000AIFFCOMM\x00\x00\x00\x12000000000000000000"), []byte("00"))
 
@@ -169,6 +173,11 @@ func FuzzWriteRoundTrip(f *testing.F) {
 			return
 		}
 		applyFuzzOps(file, ops, img)
+		// MP3 writes also update an existing ID3v1 trailer, so no edit can be
+		// shadowed by a stale trailer.
+		if c, ok := tw.(registry.ID3v1Configurer); ok {
+			tw = c.WithID3v1(registry.ID3v1Update)
+		}
 
 		edits, err := file.buildEdits(ctx)
 		if err != nil {
@@ -181,8 +190,8 @@ func FuzzWriteRoundTrip(f *testing.F) {
 
 		budget := testbudget.For(testbudget.Write, file.Format)
 		var out bytes.Buffer
-		testbudget.Check(t, budget, len(data), "WriteToContext", func() {
-			_, err = file.WriteToContext(ctx, &out)
+		testbudget.Check(t, budget, len(data), "WriteFile", func() {
+			_, err = writeSafely(ctx, tw, &out, file.reader, file.src.size, file.src.path, edits)
 		})
 		if err != nil {
 			failOnPanic(t, err)
@@ -200,13 +209,14 @@ func FuzzWriteRoundTrip(f *testing.F) {
 			t.Fatalf("audio digest of output: %v, equal %v", err, bytes.Equal(before, after))
 		}
 		var again bytes.Buffer
-		if _, err := file.WriteToContext(ctx, &again); err != nil {
+		if _, err := writeSafely(ctx, tw, &again, file.reader, file.src.size, file.src.path, edits); err != nil {
 			t.Fatalf("second write: %v", err)
 		}
 		if !bytes.Equal(again.Bytes(), out.Bytes()) {
 			t.Fatal("second write is not byte-identical")
 		}
 		checkLanded(t, file.Format, data, &p.file.Tags, &q.file.Tags, edits)
+		checkID3v1Trailer(t, file.Format, data, out.Bytes(), &file.Tags)
 	})
 }
 
@@ -245,6 +255,20 @@ func checkInPlace(ctx context.Context, t *testing.T, tw registry.TagWriter, file
 	if p.Off < 0 || p.Off+int64(len(p.Data)) > int64(len(data)) {
 		t.Fatalf("%v: InPlacePatch at %d of %d bytes does not fit in %d bytes", file.Format, p.Off, len(p.Data), len(data))
 	}
+	if pr, ok := tw.(registry.PreservedRanger); ok {
+		preserved, err := safely("fuzz", func() ([]registry.Range, error) {
+			return pr.PreservedRanges(ctx, bytes.NewReader(data), int64(len(data)))
+		})
+		if err != nil {
+			t.Fatalf("%v: PreservedRanges failed after WriteToContext succeeded: %v", file.Format, err)
+		}
+		patch := registry.Range{Off: p.Off, End: p.Off + int64(len(p.Data))}
+		for _, r := range preserved {
+			if patch.Overlaps(r) {
+				t.Fatalf("%v: in-place patch %v overlaps preserved bytes %v", file.Format, patch, r)
+			}
+		}
+	}
 	patched := slices.Clone(data)
 	copy(patched[p.Off:], p.Data)
 	if !bytes.Equal(patched, out) {
@@ -269,17 +293,11 @@ func checkLanded(t *testing.T, format Format, data []byte, orig, final *Tags, ed
 		}
 	}
 	for _, e := range edits.Keys {
-		if reason := landedExempt(format, data, 0, e.Values); reason != "" {
-			continue
-		}
 		if got := final.Get(landedKey(format, data, e.Key)); !slices.Equal(got, e.Values) {
 			t.Errorf("%v: key %q = %q, want %q", format, e.Key, got, e.Values)
 		}
 	}
 	for _, e := range edits.Fields {
-		if reason := landedExempt(format, data, e.Field, e.Values); reason != "" {
-			continue
-		}
 		if got := typedValues(final, e.Field); !slices.Equal(got, e.Values) {
 			t.Errorf("%v: field %v = %q, want %q", format, e.Field, got, e.Values)
 		}
@@ -347,14 +365,15 @@ func typedValues(t *Tags, f types.Field) []string {
 
 // v22Renames maps the raw keys an ID3v2.2 tag exposes to the ID3v2.4 frame
 // that holds the value once the tag is rewritten. The reader normalizes the
-// year frame to TYER and keeps the other 3-character text frames under their
-// ID3v2.2 IDs.
+// year frame to TYER and the original year frame to TORY, which are v2.3-only,
+// and keeps the other 3-character text frames under their ID3v2.2 IDs unless
+// it has an ID3v2.3 equivalent (TRC, TCR, TPB read as TSRC, TCOP, TPUB).
 var v22Renames = map[string]string{
-	"TYER": "TDRC",
-	"TBP":  "TBPM", "TCP": "TCMP", "TCR": "TCOP", "TDY": "TDLY", "TEN": "TENC",
+	"TYER": "TDRC", "TORY": "TDOR",
+	"TBP": "TBPM", "TCP": "TCMP", "TDY": "TDLY", "TEN": "TENC",
 	"TFT": "TFLT", "TKE": "TKEY", "TLA": "TLAN", "TLE": "TLEN", "TMT": "TMED",
-	"TOA": "TOPE", "TOF": "TOFN", "TOL": "TOLY", "TOR": "TDOR", "TOT": "TOAL",
-	"TP3": "TPE3", "TP4": "TPE4", "TPB": "TPUB", "TRC": "TSRC", "TS2": "TSO2",
+	"TOA": "TOPE", "TOF": "TOFN", "TOL": "TOLY", "TOT": "TOAL",
+	"TP3": "TPE3", "TP4": "TPE4", "TS2": "TSO2",
 	"TSA": "TSOA", "TSC": "TSOC", "TSP": "TSOP", "TSS": "TSSE", "TST": "TSOT",
 	"TXT": "TEXT",
 }
@@ -404,20 +423,92 @@ func id3ChunkIsV22(data []byte) bool {
 	return false
 }
 
-// landedExempt names why an edit of field (0 for a raw key) to values may
-// legitimately not read back, or returns "". Each case is a debt with an owner.
-func landedExempt(format Format, data []byte, field types.Field, values []string) string {
-	switch {
-	case len(values) == 0 && format == FormatMP3 && hasID3v1(data):
-		// Known finding 3 (plan 058): clearing a field on an MP3 with an ID3v1
-		// trailer reads back the ID3v1 value, which Write does not update
-		// (documented in the README; plan 079 owns it).
-		return "cleared field shadowed by the ID3v1 trailer"
+// checkID3v1Trailer fails t when an MP3 that ended in an ID3v1 trailer no
+// longer ends in one that holds final's title, artist, album, comment, year
+// and track number, within the ID3v1 field widths. The expected values come
+// from this independent encoding of the format's rules, not from the writer.
+func checkID3v1Trailer(t *testing.T, format Format, data, out []byte, final *Tags) {
+	t.Helper()
+	if format != FormatMP3 || !endsInID3v1(t, data) {
+		return
 	}
-	return ""
+	if !endsInID3v1(t, out) {
+		t.Fatal("the output lost the ID3v1 trailer")
+	}
+	tr := out[len(out)-128:]
+	text := func(name string, from, to int, want string) {
+		t.Helper()
+		if got, exp := id3v1Field(tr[from:to]), id3v1Expected(want, to-from); got != exp {
+			t.Errorf("ID3v1 %s = %q, want %q (from %q)", name, got, exp, want)
+		}
+	}
+	text("title", 3, 33, final.Title)
+	text("artist", 33, 63, final.Artist)
+	text("album", 63, 93, final.Album)
+	commentEnd := 127
+	if final.TrackNumber >= 1 && final.TrackNumber <= 255 {
+		commentEnd = 125
+		if tr[125] != 0 || int(tr[126]) != final.TrackNumber {
+			t.Errorf("ID3v1 track bytes = %d, %d, want 0, %d", tr[125], tr[126], final.TrackNumber)
+		}
+	}
+	text("comment", 97, commentEnd, final.Comment)
+	wantYear := make([]byte, 4)
+	if final.Year >= 1900 && final.Year <= 2100 {
+		wantYear = []byte(strconv.Itoa(final.Year))
+	}
+	if !bytes.Equal(tr[93:97], wantYear) {
+		t.Errorf("ID3v1 year = %q, want %q", tr[93:97], wantYear)
+	}
 }
 
-// hasID3v1 reports whether data ends in an ID3v1 tag.
-func hasID3v1(data []byte) bool {
-	return len(data) >= 128 && string(data[len(data)-128:][:3]) == "TAG"
+// endsInID3v1 reports whether data, an MP3 file, ends in an ID3v1 trailer that
+// follows its ID3v2 tag.
+func endsInID3v1(t *testing.T, data []byte) bool {
+	t.Helper()
+	var start int64
+	if len(data) >= 10 && string(data[:3]) == "ID3" {
+		start = 10 + int64(data[6])<<21 | int64(data[7])<<14 | int64(data[8])<<7 | int64(data[9])
+		if data[3] == 4 && data[5]&0x10 != 0 {
+			start += 10
+		}
+	}
+	size := int64(len(data))
+	if size-start < 128 {
+		return false
+	}
+	ok, err := trailer.EndsWithID3v1(binutil.NewSafeReader(bytes.NewReader(data), size, ""), start, size)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ok
+}
+
+// id3v1Field decodes an ID3v1 text field: cut at the first NUL, read as
+// ISO-8859-1, surrounding white space removed.
+func id3v1Field(b []byte) string {
+	if i := bytes.IndexByte(b, 0); i >= 0 {
+		b = b[:i]
+	}
+	runes := make([]rune, len(b))
+	for i, c := range b {
+		runes[i] = rune(c)
+	}
+	return strings.TrimSpace(string(runes))
+}
+
+// id3v1Expected returns what an ID3v1 field of width bytes reads back as for
+// s: ISO-8859-1 with '?' for other characters, cut to width and at a NUL.
+func id3v1Expected(s string, width int) string {
+	var b []byte
+	for _, r := range s {
+		if r == 0 || len(b) == width {
+			break
+		}
+		if r > 0xFF {
+			r = '?'
+		}
+		b = append(b, byte(r))
+	}
+	return id3v1Field(b)
 }

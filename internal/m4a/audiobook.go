@@ -2,21 +2,19 @@ package m4a
 
 import (
 	"context"
-	"strings"
 
 	"github.com/simonhull/audiometa/internal/binary"
 	"github.com/simonhull/audiometa/internal/types"
 )
 
-// parseAudiobookTags extracts narrator, series, publisher, etc. from custom atoms.
-// A malformed atom header ends the scan of its container; what was read before
-// it is applied, and the first such error is returned.
+// parseAudiobookTags records the freeform (----) atoms of the ilst atom (narrator,
+// series, publisher, ...) in the raw tags. A malformed atom header ends the scan of
+// its container; what was read before it is recorded, and the first such error is
+// returned.
 func parseAudiobookTags(ctx context.Context, sr *binary.SafeReader, ilstAtom *Atom, file *types.File) error {
 	offset := ilstAtom.DataOffset()
 	end := offset + ilstAtom.DataSize()
 
-	// Collect all custom tags for series part resolution
-	customTags := make(map[string]string)
 	var firstErr error
 
 	// Scan through ilst for custom atoms (----)
@@ -33,22 +31,15 @@ func parseAudiobookTags(ctx context.Context, sr *binary.SafeReader, ilstAtom *At
 			break
 		}
 
-		// Check if this is a custom atom (----)
-		// Type: 0x2D2D2D2D = "----"
+		// A freeform atom has the type "----" (0x2D2D2D2D).
 		if atom.Type == "----" {
-			// Parse custom atom and collect tags
-			fieldName, value, err := parseCustomAtomWithTags(sr, atom, file)
-			if firstErr == nil {
+			if err := parseCustomAtom(sr, atom, file); firstErr == nil {
 				firstErr = err
 			}
-			customTags[fieldName] = value
 		}
 
 		offset += atom.Size
 	}
-
-	// Series part comes only from explicit custom atoms; nothing is inferred.
-	applyExplicitSeriesPart(file, customTags)
 
 	return firstErr
 }
@@ -65,20 +56,20 @@ func recordFreeformRaw(file *types.File, name string, values []string) {
 	}
 }
 
-// parseCustomAtomWithTags parses a ---- custom atom and returns the field name
-// and its first value. Every non-empty value of its data atoms goes to the raw
-// tags; like a repeated atom, only the first can fill a typed field. A
-// malformed child header ends the scan: what was read before it is applied and
-// returned, with the error.
-func parseCustomAtomWithTags(sr *binary.SafeReader, customAtom *Atom, file *types.File) (string, string, error) {
+// parseCustomAtom parses a ---- custom atom and records every non-empty value of
+// its data atoms in the raw tags under the upper-cased freeform name. A malformed
+// child header ends the scan: what was read before it is recorded, and the error
+// is returned.
+func parseCustomAtom(sr *binary.SafeReader, customAtom *Atom, file *types.File) error {
 	offset := customAtom.DataOffset()
 	end := offset + customAtom.DataSize()
 
-	var namespace, fieldName string
+	var fieldName string
 	var values []string
 	var headerErr error
 
-	// Parse child atoms (mean, name, data)
+	// Parse child atoms (mean, name, data). The namespace in mean (usually
+	// "com.apple.iTunes") does not take part in the key.
 	for offset < end {
 		atom, err := readAtomHeader(sr, offset, end)
 		if err != nil {
@@ -87,9 +78,6 @@ func parseCustomAtomWithTags(sr *binary.SafeReader, customAtom *Atom, file *type
 		}
 
 		switch atom.Type {
-		case "mean":
-			// Namespace (usually "com.apple.iTunes"), after version and flags.
-			namespace = readAtomText(sr, atom, 4, "mean namespace")
 		case "name":
 			// Field name (e.g., "Narrator", "Series"), after version and flags.
 			fieldName = readAtomText(sr, atom, 4, "name field")
@@ -103,17 +91,8 @@ func parseCustomAtomWithTags(sr *binary.SafeReader, customAtom *Atom, file *type
 		offset += atom.Size
 	}
 
-	// Map field name to metadata field
-	// Namespace is usually "com.apple.iTunes" but can vary
-	_ = namespace // Unused for now, but parsed for potential future filtering
-	var first string
-	if len(values) > 0 {
-		first = values[0]
-	}
-	mapAudiobookField(fieldName, first, file)
 	recordFreeformRaw(file, fieldName, values)
-
-	return fieldName, first, headerErr
+	return headerErr
 }
 
 // readAtomText returns an atom's content after skip bytes, or "" when there is
@@ -128,71 +107,4 @@ func readAtomText(sr *binary.SafeReader, atom *Atom, skip int64, what string) st
 		return ""
 	}
 	return string(buf)
-}
-
-// freeformTextFields maps lowercased freeform atom names whose value is assigned verbatim.
-var freeformTextFields = map[string]func(*types.Tags) *string{
-	"subtitle":     func(t *types.Tags) *string { return &t.Subtitle },
-	"narrator":     func(t *types.Tags) *string { return &t.Narrator },
-	"series":       func(t *types.Tags) *string { return &t.Series },
-	"publisher":    func(t *types.Tags) *string { return &t.Publisher },
-	"isbn":         func(t *types.Tags) *string { return &t.ISBN },
-	"asin":         func(t *types.Tags) *string { return &t.ASIN },
-	"audible_asin": func(t *types.Tags) *string { return &t.ASIN },
-	"language":     func(t *types.Tags) *string { return &t.Language },
-	"lang":         func(t *types.Tags) *string { return &t.Language },
-}
-
-// to allow multi-source validation and fallback.
-func mapAudiobookField(fieldName, value string, file *types.File) {
-	// An explicit freeform atom overrides values taken from standard atoms,
-	// but among repeated freeform atoms of the same name the first wins.
-	// Callers record the atom in the raw tags only after this returns.
-	seen := file.Tags.GetFirst(strings.ToUpper(fieldName)) != ""
-	fieldName = strings.ToLower(fieldName)
-	if field, ok := freeformTextFields[fieldName]; ok {
-		if !seen && value != "" {
-			*field(&file.Tags) = value
-		}
-		return
-	}
-
-	switch fieldName {
-	case "description":
-		if file.Tags.Description == "" {
-			file.Tags.Description = value
-		}
-	case "mvnm", "movement name", "movement":
-		if file.Tags.Series == "" {
-			file.Tags.Series = value
-		}
-	case "mvin", "movement number", "movement index":
-		if file.Tags.SeriesPart == "" {
-			file.Tags.SeriesPart = value
-		}
-	}
-}
-
-// lookupFold returns the first non-empty value whose key equals key case-insensitively.
-func lookupFold(tags map[string]string, key string) string {
-	for k, v := range tags {
-		if v != "" && strings.EqualFold(k, key) {
-			return v
-		}
-	}
-	return ""
-}
-
-// applyExplicitSeriesPart sets SeriesPart from the first explicit custom atom
-// present, in priority order, unless an MVIN atom already filled it.
-func applyExplicitSeriesPart(file *types.File, customTags map[string]string) {
-	if file.Tags.SeriesPart != "" {
-		return
-	}
-	for _, name := range []string{"Series Part", "Series Position"} {
-		if v := lookupFold(customTags, name); v != "" {
-			file.Tags.SeriesPart = v
-			return
-		}
-	}
 }

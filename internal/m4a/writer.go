@@ -104,6 +104,16 @@ func (w *writer) WriteFile(ctx context.Context, out io.Writer, src io.ReaderAt, 
 // the free/skip run after it: the bytes WriteFile copies verbatim, wherever
 // they end up in the new file.
 func (w *writer) PreservedDigest(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error) {
+	ranges, err := w.PreservedRanges(ctx, src, size)
+	if err != nil {
+		return nil, err
+	}
+	return writeutil.DigestRanges(ctx, src, ranges)
+}
+
+// PreservedRanges returns everything before moov and everything after the
+// free/skip run that follows it.
+func (w *writer) PreservedRanges(ctx context.Context, src io.ReaderAt, size int64) ([]registry.Range, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -116,14 +126,7 @@ func (w *writer) PreservedDigest(ctx context.Context, src io.ReaderAt, size int6
 		return nil, err
 	}
 	start, end := top.moovRegion()
-	h := sha256.New()
-	if _, err := writeutil.CopyRange(ctx, h, src, 0, start); err != nil {
-		return nil, err
-	}
-	if _, err := writeutil.CopyRange(ctx, h, src, end, size-end); err != nil {
-		return nil, err
-	}
-	return h.Sum(nil), nil
+	return []registry.Range{{Off: 0, End: start}, {Off: end, End: size}}, nil
 }
 
 // AudioDigest returns the SHA-256 of the payloads of every top-level mdat

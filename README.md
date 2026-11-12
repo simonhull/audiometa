@@ -188,9 +188,16 @@ file.Tags.SeriesPart // SERIESPART / MVIN (Vorbis), TXXX SERIES PART / frame MVI
 file.Tags.Grouping   // GROUPING / GRP1 / ©grp, as stored
 
 // Cataloging
-file.Tags.MusicBrainzTrackID
-file.Tags.ISRC
+// MP3 and M4A: read from the keys MusicBrainz Picard writes (TXXX/freeform "MusicBrainz Album Id", UFID, TSRC, TCOP, ...)
+file.Tags.MusicBrainzTrackID  // MP3: UFID "http://musicbrainz.org"; M4A: "MusicBrainz Track Id"
+file.Tags.MusicBrainzAlbumID
+file.Tags.MusicBrainzArtistID
+file.Tags.ISRC                // TSRC (MP3)
 file.Tags.Barcode
+file.Tags.CatalogNumber
+file.Tags.Copyright           // TCOP (MP3), cprt (M4A)
+file.Tags.Label               // M4A "LABEL"; MP3 stores it in TPUB, which fills Publisher
+file.Tags.OriginalDate        // TDOR or TORY (MP3)
 ```
 
 ### Raw Tags
@@ -216,6 +223,31 @@ Raw keys are format-specific:
 
 TXXX descriptions and freeform names keep the spelling the file has: `Tags.Name` reports it, so
 a file Picard tagged gives `MusicBrainz Album Id` for the key `MUSICBRAINZ ALBUM ID`.
+
+### Which tags a file has
+
+`File.TagSources` lists the tag containers a file stores, so an editor does not have to parse the
+file again to learn them:
+
+```go
+for _, s := range file.TagSources {
+    fmt.Println(s.Kind, s.Version, s.Used) // e.g. "id3v2 4 true", then "id3v1 0 false"
+}
+```
+
+Each `TagSource` has a `Kind` (`TagID3v2`, `TagID3v1`, `TagAPEv2`, `TagLyrics3`, `TagVorbisComment`,
+`TagMP4`, `TagRIFFInfo`, `TagAIFFText`), the ID3v2 major `Version` (0 for other kinds) and `Used`:
+whether audiometa read the container into `Tags`. The list is in the order the reader consults the
+containers; those it does not read (APEv2, Lyrics3, an ID3v2 tag in front of a FLAC stream or after
+the audio) come last with `Used` false. An ID3v1 trailer is used only when the ID3v2 tag left both
+title and artist empty and the trailer is the last block of the file. `Used` is per container, not
+per field. A file without tags has an empty list.
+
+`CanWrite(format)` says whether audiometa has a tag writer for a format, and `File.Writable()`
+whether the file itself would be refused by `Write` (DRM, fragmented MP4, a damaged layout),
+without writing anything. It stops the writer at its first output byte, so it costs the metadata
+and structure, not the audio. A nil result does not cover edit-specific failures such as
+`ErrTagTooLarge`.
 
 ## Supported Formats
 
@@ -308,6 +340,7 @@ done they stop and return an error wrapping `ctx.Err()`, and the original file i
 | Option | Effect |
 |--------|--------|
 | `WithInPlace()` | overwrite the metadata region of the file when the edit fits the space already reserved for it (for example ID3v2 or FLAC padding), instead of rewriting the whole file; a hint that falls back to the atomic rewrite when the edit does not fit, the format cannot patch in place, or the file is read-only; not crash-atomic (the audio is never touched), and a failed verification restores the overwritten bytes and the modification time |
+| `WithID3v1(mode)` | what to do with an MP3's ID3v1 trailer: `ID3v1Keep` (the default) copies it, `ID3v1Update` rewrites an existing trailer from the edited tags, `ID3v1Remove` drops it; a trailer is never added; a write that only changes the trailer still happens, and `WithInPlace` falls back to the atomic rewrite for it; other formats ignore it |
 | `WithPreserveModTime()` | keep the file's modification time instead of setting the time of the write |
 
 ### Write errors
@@ -340,8 +373,11 @@ Match these with `errors.Is`; they are always wrapped with detail.
   targets chapter data returns `ErrUnsupportedWrite`.
 - **ID3.** A `Year` outside 1900-2100 is refused with `ErrUnsupportedWrite` (an ID3 tag cannot
   hold it, and it would read back as 0). v2.3 stays v2.3, v2.4 stays v2.4, and v2.2 or untagged files get v2.4. An existing
-  ID3v1 trailer is copied verbatim: it is never updated, added or removed. After deleting
-  `TIT2`, a reader that falls back to ID3v1 can show the stale ID3v1 title. v2.3 accepts the
+  ID3v1 trailer is copied verbatim by default. `WithID3v1(ID3v1Update)` rewrites it from the edited
+  tags (30-byte Latin-1 fields; the genre is kept) and `WithID3v1(ID3v1Remove)` drops it; a trailer is
+  never added. A file whose tags come from ID3v1 gets the ID3v1 title, artist, album, comment, year
+  and track copied into its ID3v2 tag (a new ID3v2.4 tag when it had none), so no field disappears.
+  v2.3 accepts the
   sort frames `TSOT`, `TSOA` and `TSOP`, as iTunes writes them; other v2.4-only frames are
   refused there.
 - **Editing.** Change `f.Tags` fields directly, or use `Tags.Set` and `Tags.Delete` with
@@ -354,15 +390,24 @@ Match these with `errors.Is`; they are always wrapped with detail.
   the language `XXX` (unknown).
 - **Tag names.** A TXXX frame or freeform item that exists keeps its name as spelled, whatever
   case the key is given in. A new one is named by its key, or as `Tags.SetNamed` spells it:
-  `SetNamed("MusicBrainz Album Id", id)` writes the name Picard and other taggers use. Frames
-  or items whose names differ only in case are read as one key, and writing it makes them one
-  frame or item, named and placed as the first was. `UFID:<owner>` writes a UFID frame with one
-  identifier of up to 64 bytes.
+  `SetNamed("MusicBrainz Album Id", id)` writes the name Picard and other taggers use. Setting
+  the typed field (`Tags.MusicBrainzAlbumID`, `MusicBrainzArtistID`, `MusicBrainzTrackID` on M4A)
+  names a new frame or item that way without `SetNamed`. Frames or items whose names differ only
+  in case are read as one key, and writing it makes them one frame or item, named and placed as
+  the first was. `UFID:<owner>` writes a UFID frame with one identifier of up to 64 bytes;
+  `Tags.MusicBrainzTrackID` on MP3, WAV and AIFF is the `UFID:http://musicbrainz.org` frame, so
+  a longer value is refused, not cut. Writing a typed MusicBrainz ID replaces every value of its
+  key with the one value.
+- **Release fields.** `OriginalDate` is written to `TDOR` on ID3v2.4 as it is, and to `TORY` on
+  ID3v2.3, which holds only a year: the value's first four digits are stored, and a value
+  without them returns `ErrUnsupportedWrite`. The frame of the other version is removed.
+  `TPUB` is the ID3 Publisher frame, so it fills `Publisher` (after TXXX `PUBLISHER`), not
+  `Label`.
 - **WAV and AIFF.** Edits go to the ID3v2 chunk, which keeps its version; a file without one
   gets an ID3v2.4 chunk at the end. A raw key that is native text (an INFO ID, or an AIFF text
   chunk) is written there instead. Setting or clearing a typed field also rewrites the native
-  text holding it (`INAM`, `IART`, `IPRD`, `IGNR`, `ICRD`, `ITRK`/`IPRT`, `ICMT`; `NAME`,
-  `AUTH`, `ANNO`) when the file has native text, so no reader sees a stale value. Every other
+  text holding it (`INAM`, `IART`, `IPRD`, `IGNR`, `ICRD`, `ITRK`/`IPRT`, `ICOP`, `ICMT`; `NAME`,
+  `AUTH`, `(c) `, `ANNO`) when the file has native text, so no reader sees a stale value. Every other
   chunk, the audio included, is copied byte for byte. A file whose chunks are cut short is
   refused with a `CorruptedFileError`.
 - **Artwork.** `AddArtwork`, `ReplaceArtwork`, `RemoveArtwork` and `RemoveAllArtwork`.
@@ -376,9 +421,11 @@ Typed fields a format has no native place for return `ErrUnsupportedWrite`:
 
 | Format | Typed fields that cannot be written |
 |--------|-------------------------------------|
-| MP3, WAV, AIFF | `Date`, `OriginalDate`, `Performers`, `Copyright`, `Label`, `CatalogNumber`, `Barcode`, `ISRC`, `MusicBrainz*` |
-| M4A/M4B | `OriginalDate`, `Performers`, `Label`, `CatalogNumber`, `Barcode`, `ISRC`, `MusicBrainz*` |
+| MP3, WAV, AIFF | `Date`, `Performers`, `Label` (TPUB is `Publisher`) |
+| M4A/M4B | `OriginalDate`, `Performers` |
 | FLAC | none |
+
+On ID3v2.3, `OriginalDate` is written to `TORY`, which holds only a year.
 
 Every writable format is gated in CI: a round-trip over the test corpus (audio bit-identical,
 untouched tags unchanged), an external check of edited files with `ffprobe`, `ffmpeg` and

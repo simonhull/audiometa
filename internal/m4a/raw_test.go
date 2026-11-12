@@ -7,9 +7,9 @@ import (
 	"github.com/simonhull/audiometa/internal/types"
 )
 
-func TestMapTagToFieldRecordsRawAndArtists(t *testing.T) {
-	var f types.File
-	mapTagToField("\xA9ART", "Someone", &f)
+func TestIlstItemRecordsRawAndArtists(t *testing.T) {
+	f := runIlst(t, ilstText("\xA9ART", "Someone"))
+	types.DeriveFields(&f.Tags, types.FormatM4A)
 	if got := f.Tags.Get("\xA9ART"); !slices.Equal(got, []string{"Someone"}) {
 		t.Errorf("raw = %q", got)
 	}

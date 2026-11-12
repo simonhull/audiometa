@@ -55,8 +55,8 @@ func TestFieldBindings_KeysAreNonEmpty(t *testing.T) {
 // every MP3 key keeps its place, and the native key comes last.
 func TestFieldBindings_NativeTextAfterID3(t *testing.T) {
 	native := map[Format]map[Field]string{
-		FormatWAV:  {FieldTitle: "INAM", FieldArtist: "IART", FieldArtists: "IART", FieldAlbum: "IPRD", FieldGenres: "IGNR", FieldYear: "ICRD"},
-		FormatAIFF: {FieldTitle: "NAME", FieldArtist: "AUTH", FieldArtists: "AUTH"},
+		FormatWAV:  {FieldTitle: "INAM", FieldArtist: "IART", FieldArtists: "IART", FieldAlbum: "IPRD", FieldGenres: "IGNR", FieldYear: "ICRD", FieldCopyright: "ICOP"},
+		FormatAIFF: {FieldTitle: "NAME", FieldArtist: "AUTH", FieldArtists: "AUTH", FieldCopyright: "(c) "},
 	}
 	mp3 := FieldBindings(FormatMP3)
 	for format, want := range native {
@@ -172,5 +172,85 @@ func TestNativeTextBindings(t *testing.T) {
 	}
 	if b := NativeTextBindings(FormatMP3); b != nil {
 		t.Errorf("MP3: native text bindings = %v, want nil", b)
+	}
+}
+
+// keysOf returns the keys format binds to field, or nil when it binds none.
+func keysOf(format Format, field Field) []string {
+	for _, b := range FieldBindings(format) {
+		if b.Field == field {
+			return b.Keys
+		}
+	}
+	return nil
+}
+
+func TestFieldBindings_ReleaseFields(t *testing.T) {
+	id3 := map[Field][]string{
+		FieldMusicBrainzAlbumID:  {"MUSICBRAINZ ALBUM ID"},
+		FieldMusicBrainzArtistID: {"MUSICBRAINZ ARTIST ID"},
+		FieldMusicBrainzTrackID:  {"UFID:http://musicbrainz.org"},
+		FieldISRC:                {"TSRC"},
+		FieldBarcode:             {"BARCODE"},
+		FieldCatalogNumber:       {"CATALOGNUMBER"},
+		FieldCopyright:           {"TCOP"},
+		FieldOriginalDate:        {"TDOR", "TORY"},
+		FieldPublisher:           {"PUBLISHER", "TPUB"},
+	}
+	m4a := map[Field][]string{
+		FieldMusicBrainzTrackID:  {"MUSICBRAINZ TRACK ID"},
+		FieldMusicBrainzAlbumID:  {"MUSICBRAINZ ALBUM ID"},
+		FieldMusicBrainzArtistID: {"MUSICBRAINZ ARTIST ID"},
+		FieldISRC:                {"ISRC"},
+		FieldBarcode:             {"BARCODE"},
+		FieldCatalogNumber:       {"CATALOGNUMBER"},
+		FieldLabel:               {"LABEL"},
+		FieldCopyright:           {"cprt"},
+	}
+	want := map[Format]map[Field][]string{
+		FormatMP3: id3, FormatWAV: id3, FormatAIFF: id3, FormatM4A: m4a, FormatM4B: m4a,
+	}
+	// The native copyright text follows the ID3 frame.
+	nativeCopyright := map[Format][]string{FormatWAV: {"TCOP", "ICOP"}, FormatAIFF: {"TCOP", "(c) "}}
+	for format, fields := range want {
+		for field, keys := range fields {
+			if native, ok := nativeCopyright[format]; ok && field == FieldCopyright {
+				keys = native
+			}
+			if got := keysOf(format, field); !slices.Equal(got, keys) {
+				t.Errorf("%s %s: keys %v, want %v", format, field, got, keys)
+			}
+		}
+	}
+
+	unbound := []struct {
+		format Format
+		field  Field
+	}{
+		{FormatMP3, FieldLabel}, {FormatMP3, FieldPerformers}, {FormatMP3, FieldDate},
+		{FormatWAV, FieldLabel}, {FormatAIFF, FieldLabel},
+		{FormatM4A, FieldOriginalDate}, {FormatM4A, FieldPerformers},
+		{FormatM4B, FieldOriginalDate}, {FormatM4B, FieldPerformers},
+	}
+	for _, u := range unbound {
+		if got := keysOf(u.format, u.field); got != nil {
+			t.Errorf("%s %s: keys %v, want none", u.format, u.field, got)
+		}
+	}
+}
+
+// TPUB is one frame, so it may feed only one field: a Label edit and a
+// Publisher edit must never overwrite each other.
+func TestFieldBindings_TPUBBoundOnce(t *testing.T) {
+	for _, format := range []Format{FormatMP3, FormatWAV, FormatAIFF} {
+		var fields []Field
+		for _, b := range FieldBindings(format) {
+			if slices.Contains(b.Keys, "TPUB") {
+				fields = append(fields, b.Field)
+			}
+		}
+		if !slices.Equal(fields, []Field{FieldPublisher}) {
+			t.Errorf("%s: TPUB is bound to %v, want only Publisher", format, fields)
+		}
 	}
 }

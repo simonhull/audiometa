@@ -36,6 +36,8 @@ import (
 //   - Audio holds the technical properties ([AudioInfo]).
 //   - Chapters lists the chapter markers ([Chapter]), in playback order.
 //   - Warnings lists non-fatal problems found while parsing ([Warning]).
+//   - TagSources lists the tag containers the file stores ([TagSource]), and
+//     which of them Tags was read from.
 //
 // A File also keeps the underlying file handle open for lazy artwork
 // extraction, so call [File.Close] when done with it.

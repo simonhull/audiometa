@@ -37,7 +37,8 @@ var lookupWriter = registry.GetWriter
 // The original file is never modified and f is unchanged: the edits stay
 // pending, and calling WriteTo again writes identical bytes. With no pending
 // edits the output is byte-identical to the input. To replace the file on
-// disk, use [Write].
+// disk, use [Write]. WriteTo always keeps an MP3's ID3v1 trailer; use [Write]
+// with [WithID3v1] to update or remove it.
 //
 // WriteTo reads f.Tags and f.Chapters without synchronization; do not modify
 // them while it runs. The artwork edit methods may be called concurrently.
@@ -90,7 +91,8 @@ func (f *File) WriteToContext(ctx context.Context, w io.Writer) (int64, error) {
 // [File.WriteTo]: through f.Tags and the artwork edit methods. Because the
 // file is read inside Write, the edits always apply to what is on disk now,
 // not to a copy read earlier. If edit leaves no pending edits, Write returns
-// nil and does not touch the file. The File passed to edit is only valid
+// nil and does not touch the file, unless [WithID3v1] asks for an MP3's ID3v1
+// trailer to change. The File passed to edit is only valid
 // during the call; do not keep it.
 //
 // The replacement is atomic: the new contents are written to a temporary
@@ -173,6 +175,7 @@ func WriteContext(ctx context.Context, path string, edit func(f *File) error, op
 	if err != nil {
 		return err
 	}
+	tw = withID3v1Mode(tw, o.id3v1)
 	if err := edit(f); err != nil {
 		return err
 	}
@@ -180,18 +183,14 @@ func WriteContext(ctx context.Context, path string, edit func(f *File) error, op
 	if err != nil {
 		return err
 	}
-	if edits.Empty() {
-		return nil
+	if idle, err := f.leavesFileAsIs(ctx, tw, edits); idle || err != nil {
+		return err
 	}
 
-	digest, err := safely(target, func() ([]byte, error) { return tw.PreservedDigest(ctx, f.reader, f.src.size) })
-	if err != nil {
-		return fmt.Errorf("digest source audio: %w", err)
-	}
 	job := &writeJob{
 		f: f, tw: tw, edits: edits, opts: o,
 		target: target, st0: f.src.stat, // the handle's stat; a successful Open always sets it
-		ref: verifyRef{format: f.src.format, digest: digest, chapters: slices.Clone(f.Chapters)},
+		ref: verifyRef{format: f.src.format, chapters: slices.Clone(f.Chapters)},
 	}
 
 	if o.inPlace {
@@ -203,6 +202,30 @@ func WriteContext(ctx context.Context, path string, edit func(f *File) error, op
 	return job.writeAtomic(ctx)
 }
 
+// withID3v1Mode returns tw set to apply mode to an ID3v1 trailer, or tw itself
+// when its format has none.
+func withID3v1Mode(tw registry.TagWriter, mode ID3v1Mode) registry.TagWriter {
+	if c, ok := tw.(registry.ID3v1Configurer); ok {
+		return c.WithID3v1(mode)
+	}
+	return tw
+}
+
+// leavesFileAsIs reports whether a write of edits would change nothing: there
+// are no tag edits and the writer, if it handles an ID3v1 trailer mode, would
+// not change the trailer either.
+func (f *File) leavesFileAsIs(ctx context.Context, tw registry.TagWriter, edits *types.EditSet) (bool, error) {
+	if !edits.Empty() {
+		return false, nil
+	}
+	tc, ok := tw.(registry.TrailerChanger)
+	if !ok {
+		return true, nil
+	}
+	changed, err := safely(f.src.path, func() (bool, error) { return tc.ChangesTrailer(ctx, f.reader, f.src.size, edits) })
+	return !changed, err
+}
+
 // writeJob is one Write call after the edits have been collected.
 type writeJob struct {
 	f      *File
@@ -212,6 +235,21 @@ type writeJob struct {
 	target string      // path with symlinks resolved
 	ref    verifyRef
 	opts   writeOptions
+}
+
+// reference computes the digest of the source's preserved bytes, once. Only
+// jobs that verify by digest call it: the atomic rewrite, and an in-place
+// patch by a writer that cannot report its preserved ranges.
+func (j *writeJob) reference(ctx context.Context) error {
+	if j.ref.digest != nil {
+		return nil
+	}
+	digest, err := safely(j.target, func() ([]byte, error) { return j.tw.PreservedDigest(ctx, j.f.reader, j.f.src.size) })
+	if err != nil {
+		return fmt.Errorf("digest source audio: %w", err)
+	}
+	j.ref.digest = digest
+	return nil
 }
 
 // verifyRef is what a written file must match.
@@ -250,6 +288,9 @@ func (j *writeJob) sameAsOpened(st os.FileInfo) error {
 // writeAtomic streams the edited file into a temp file, verifies it and
 // renames it over the target.
 func (j *writeJob) writeAtomic(ctx context.Context) error {
+	if err := j.reference(ctx); err != nil {
+		return err
+	}
 	return atomicfile.Replace(j.target,
 		func(w io.Writer) error {
 			_, err := writeSafely(ctx, j.tw, w, j.f.reader, j.f.src.size, j.target, j.edits)
@@ -289,6 +330,10 @@ func (j *writeJob) writeInPlace(ctx context.Context) (done bool, err error) {
 	if p.Off < 0 || p.Off+int64(len(p.Data)) > j.f.src.size {
 		return true, fmt.Errorf("in-place patch [%d, %d) outside file of %d bytes", p.Off, p.Off+int64(len(p.Data)), j.f.src.size)
 	}
+	verify, err := j.inPlaceVerifier(ctx, p)
+	if err != nil {
+		return true, err
+	}
 	rw, err := os.OpenFile(j.target, os.O_RDWR, 0)
 	if errors.Is(err, fs.ErrPermission) {
 		return false, nil // read-only: the atomic rewrite needs only a writable directory
@@ -296,12 +341,57 @@ func (j *writeJob) writeInPlace(ctx context.Context) (done bool, err error) {
 	if err != nil {
 		return true, fmt.Errorf("open for in-place write: %w", err)
 	}
-	return true, j.patch(ctx, rw, p.Off, p.Data)
+	return true, j.patch(rw, p.Off, p.Data, verify)
 }
 
-// patch overwrites len(patch) bytes of rw at off, verifies the result and
-// restores the original bytes if verification fails. It closes rw.
-func (j *writeJob) patch(ctx context.Context, rw *os.File, off int64, patch []byte) (err error) {
+// inPlaceVerifier returns the check that decides whether the patched file may
+// stay, and refuses before any byte is written a patch that cannot pass it.
+//
+// A writer that reports its preserved ranges is checked by structure: the
+// patch must lie outside the ranges computed on the source, and the ranges
+// computed again on the patched file must equal them, so the audio and the
+// other preserved bytes are neither touched nor moved, without reading them.
+// Any other writer is checked by the digest of its preserved bytes before and
+// after.
+func (j *writeJob) inPlaceVerifier(ctx context.Context, p *registry.Patch) (func(*os.File) error, error) {
+	pr, ok := j.tw.(registry.PreservedRanger)
+	if !ok {
+		if err := j.reference(ctx); err != nil {
+			return nil, err
+		}
+		return func(rw *os.File) error {
+			return verifyFile(ctx, rw, j.st0.Size(), j.target, j.tw, j.ref)
+		}, nil
+	}
+	r0, err := safely(j.target, func() ([]registry.Range, error) { return pr.PreservedRanges(ctx, j.f.reader, j.f.src.size) })
+	if err != nil {
+		return nil, fmt.Errorf("preserved ranges of source: %w", err)
+	}
+	patch := registry.Range{Off: p.Off, End: p.Off + int64(len(p.Data))}
+	for _, r := range r0 {
+		if patch.Overlaps(r) {
+			return nil, fmt.Errorf("%w: in-place patch %v overlaps preserved bytes %v", ErrVerifyFailed, patch, r)
+		}
+	}
+	return func(rw *os.File) error {
+		size := j.st0.Size()
+		if err := verifyParsed(ctx, rw, size, j.target, j.ref); err != nil {
+			return err
+		}
+		r1, err := safely(j.target, func() ([]registry.Range, error) { return pr.PreservedRanges(ctx, rw, size) })
+		if err != nil {
+			return fmt.Errorf("%w: preserved ranges of written file: %w", ErrVerifyFailed, err)
+		}
+		if !slices.Equal(r0, r1) {
+			return fmt.Errorf("%w: preserved ranges moved from %v to %v", ErrVerifyFailed, r0, r1)
+		}
+		return nil
+	}, nil
+}
+
+// patch overwrites len(patch) bytes of rw at off, checks the result with
+// verify and restores the original bytes if that fails. It closes rw.
+func (j *writeJob) patch(rw *os.File, off int64, patch []byte, verify func(*os.File) error) (err error) {
 	written, restored := false, false
 	defer func() {
 		if cerr := rw.Close(); cerr != nil && err == nil {
@@ -333,7 +423,7 @@ func (j *writeJob) patch(ctx context.Context, rw *os.File, off int64, patch []by
 		restored = rerr == nil
 		return errors.Join(fmt.Errorf("in-place write: %w", err), rerr)
 	}
-	if err := verifyFile(ctx, rw, j.st0.Size(), j.target, j.tw, j.ref); err != nil {
+	if err := verify(rw); err != nil {
 		rerr := restore(rw, backup, off)
 		restored = rerr == nil
 		return errors.Join(err, rerr)
@@ -361,6 +451,22 @@ func restore(f *os.File, backup []byte, off int64) error {
 // the original path, so path-dependent parser behavior sees the real name.
 // Every failure wraps ErrVerifyFailed.
 func verifyFile(ctx context.Context, r io.ReaderAt, size int64, labelPath string, tw registry.TagWriter, ref verifyRef) error {
+	if err := verifyParsed(ctx, r, size, labelPath, ref); err != nil {
+		return err
+	}
+	digest, err := safely(labelPath, func() ([]byte, error) { return tw.PreservedDigest(ctx, r, size) })
+	if err != nil {
+		return fmt.Errorf("%w: digest written audio: %w", ErrVerifyFailed, err)
+	}
+	if !bytes.Equal(digest, ref.digest) {
+		return fmt.Errorf("%w: audio data changed", ErrVerifyFailed)
+	}
+	return nil
+}
+
+// verifyParsed re-parses a written file and checks its format and chapters
+// against ref. Every failure wraps ErrVerifyFailed.
+func verifyParsed(ctx context.Context, r io.ReaderAt, size int64, labelPath string, ref verifyRef) error {
 	parsed, err := openReader(ctx, r, size, labelPath)
 	if err != nil {
 		return fmt.Errorf("%w: re-read: %w", ErrVerifyFailed, err)
@@ -370,13 +476,6 @@ func verifyFile(ctx context.Context, r io.ReaderAt, size int64, labelPath string
 	}
 	if !slices.EqualFunc(parsed.file.Chapters, ref.chapters, chapterEqual) {
 		return fmt.Errorf("%w: chapters changed", ErrVerifyFailed)
-	}
-	digest, err := safely(labelPath, func() ([]byte, error) { return tw.PreservedDigest(ctx, r, size) })
-	if err != nil {
-		return fmt.Errorf("%w: digest written audio: %w", ErrVerifyFailed, err)
-	}
-	if !bytes.Equal(digest, ref.digest) {
-		return fmt.Errorf("%w: audio data changed", ErrVerifyFailed)
 	}
 	return nil
 }
@@ -391,13 +490,22 @@ func writerFor(format Format) (registry.TagWriter, error) {
 	return tw, nil
 }
 
-// buildEdits re-parses the source and diffs it against f's current state.
-func (f *File) buildEdits(ctx context.Context) (*types.EditSet, error) {
+// reparse re-reads the source as the writers see it: tags bound to the format.
+func (f *File) reparse(ctx context.Context) (*types.File, error) {
 	orig, err := safely(f.src.path, func() (*types.File, error) { return f.parser.Parse(ctx, f.reader, f.src.size, f.src.path) })
 	if err != nil {
 		return nil, fmt.Errorf("re-read %s: %w", f.src.format, err)
 	}
 	types.BindFormat(&orig.Tags, f.src.format)
+	return orig, nil
+}
+
+// buildEdits re-parses the source and diffs it against f's current state.
+func (f *File) buildEdits(ctx context.Context) (*types.EditSet, error) {
+	orig, err := f.reparse(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	if !slices.EqualFunc(f.Chapters, orig.Chapters, chapterEqual) {
 		return nil, fmt.Errorf("%w: chapter editing is not supported", ErrUnsupportedWrite)

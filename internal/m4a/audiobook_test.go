@@ -51,6 +51,14 @@ func createAtomWithType(atomType []byte, data []byte) []byte {
 	return buf.Bytes()
 }
 
+// parseAudiobookAndDerive records the freeform atoms of ilstAtom and derives the
+// typed fields from the raw tags, as Parse does.
+func parseAudiobookAndDerive(ctx context.Context, sr *audiobinary.SafeReader, ilstAtom *Atom, file *types.File) error {
+	err := parseAudiobookTags(ctx, sr, ilstAtom, file)
+	types.DeriveFields(&file.Tags, types.FormatM4B)
+	return err
+}
+
 func TestParseAudiobookTags_Narrator(t *testing.T) {
 	// Create ilst with custom narrator atom
 	narratorAtom := createCustomAtom("com.apple.iTunes", "Narrator", "Wil Wheaton")
@@ -60,7 +68,7 @@ func TestParseAudiobookTags_Narrator(t *testing.T) {
 	ilstAtom, _ := readAtomHeader(sr, 0, int64(len(ilst)))
 
 	file := &types.File{}
-	err := parseAudiobookTags(context.Background(), sr, ilstAtom, file)
+	err := parseAudiobookAndDerive(context.Background(), sr, ilstAtom, file)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -109,7 +117,7 @@ func TestParseAudiobookTags_FreeformByDataType(t *testing.T) {
 			ilstAtom, _ := readAtomHeader(sr, 0, int64(len(ilst)))
 
 			file := &types.File{}
-			if err := parseAudiobookTags(context.Background(), sr, ilstAtom, file); err != nil {
+			if err := parseAudiobookAndDerive(context.Background(), sr, ilstAtom, file); err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
 			if got := file.Tags.Get(tt.rawKey); !slices.Equal(got, tt.wantRaw) {
@@ -130,7 +138,7 @@ func TestParseAudiobookTags_Series(t *testing.T) {
 	ilstAtom, _ := readAtomHeader(sr, 0, int64(len(ilst)))
 
 	file := &types.File{}
-	err := parseAudiobookTags(context.Background(), sr, ilstAtom, file)
+	err := parseAudiobookAndDerive(context.Background(), sr, ilstAtom, file)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -154,7 +162,7 @@ func TestParseAudiobookTags_MultipleFields(t *testing.T) {
 	ilstAtom, _ := readAtomHeader(sr, 0, int64(len(ilst)))
 
 	file := &types.File{}
-	err := parseAudiobookTags(context.Background(), sr, ilstAtom, file)
+	err := parseAudiobookAndDerive(context.Background(), sr, ilstAtom, file)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -182,7 +190,7 @@ func TestParseAudiobookTags_NoCustomAtoms(t *testing.T) {
 	ilstAtom, _ := readAtomHeader(sr, 0, int64(len(ilst)))
 
 	file := &types.File{}
-	err := parseAudiobookTags(context.Background(), sr, ilstAtom, file)
+	err := parseAudiobookAndDerive(context.Background(), sr, ilstAtom, file)
 
 	// Should not error, just no audiobook tags extracted
 	if err != nil {
@@ -194,56 +202,6 @@ func TestParseAudiobookTags_NoCustomAtoms(t *testing.T) {
 	}
 }
 
-func TestApplyExplicitSeriesPart(t *testing.T) {
-	tests := []struct {
-		name       string
-		customTags map[string]string
-		file       *types.File
-		expected   string
-	}{
-		{
-			name:       "Series Part custom atom",
-			customTags: map[string]string{"Series Part": "2"},
-			file:       &types.File{},
-			expected:   "2",
-		},
-		{
-			name:       "Series Position custom atom",
-			customTags: map[string]string{"Series Position": "3"},
-			file:       &types.File{},
-			expected:   "3",
-		},
-		{
-			name:       "Part custom atom is not a series part",
-			customTags: map[string]string{"Part": "4"},
-			file:       &types.File{},
-			expected:   "",
-		},
-		{
-			name:       "Volume custom atom is not a series part",
-			customTags: map[string]string{"Volume": "5"},
-			file:       &types.File{},
-			expected:   "",
-		},
-		{
-			name:       "Priority: Series Part wins",
-			customTags: map[string]string{"Series Part": "2", "Part": "99"},
-			file:       &types.File{Tags: types.Tags{TrackNumber: 3, TrackTotal: 4}},
-			expected:   "2",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			applyExplicitSeriesPart(tt.file, tt.customTags)
-			result := tt.file.Tags.SeriesPart
-			if result != tt.expected {
-				t.Errorf("expected '%s', got '%s'", tt.expected, result)
-			}
-		})
-	}
-}
-
 func TestParseAudiobookTags_SeriesPartCaseInsensitive(t *testing.T) {
 	ilst := createMockAtom("ilst", append(
 		createCustomAtom("com.apple.iTunes", "Series", "Dune"),
@@ -252,7 +210,7 @@ func TestParseAudiobookTags_SeriesPartCaseInsensitive(t *testing.T) {
 	ilstAtom, _ := readAtomHeader(sr, 0, int64(len(ilst)))
 
 	file := &types.File{}
-	if err := parseAudiobookTags(context.Background(), sr, ilstAtom, file); err != nil {
+	if err := parseAudiobookAndDerive(context.Background(), sr, ilstAtom, file); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if file.Tags.SeriesPart != "3" {
@@ -273,7 +231,7 @@ func TestParseAudiobookTags_NoInference(t *testing.T) {
 		Title:     "Foo Book 4",
 		Album:     "Foo Book 5",
 	}}
-	if err := parseAudiobookTags(context.Background(), sr, ilstAtom, file); err != nil {
+	if err := parseAudiobookAndDerive(context.Background(), sr, ilstAtom, file); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if file.Tags.Narrator != "" || file.Tags.Series != "" || file.Tags.SeriesPart != "" {
@@ -294,7 +252,7 @@ func TestParseAudiobookTags_NonSeriesFreeformStaysRaw(t *testing.T) {
 			ilstAtom, _ := readAtomHeader(sr, 0, int64(len(ilst)))
 
 			file := &types.File{}
-			if err := parseAudiobookTags(context.Background(), sr, ilstAtom, file); err != nil {
+			if err := parseAudiobookAndDerive(context.Background(), sr, ilstAtom, file); err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
 			if file.Tags.SeriesPart != "" {

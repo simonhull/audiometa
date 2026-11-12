@@ -108,7 +108,7 @@ func hasMagicAt(r io.ReaderAt, size int64, head []byte, off int64, magic string)
 // Detection is based on file signatures (magic bytes) at the beginning of the
 // file. An ID3v2 tag followed by "fLaC" is a FLAC file.
 // Format detection does not validate the entire file structure.
-func DetectFormat(r io.ReaderAt, size int64, path string) (Format, error) { //nolint:gocyclo // Format detection requires checking multiple magic byte patterns
+func DetectFormat(r io.ReaderAt, size int64, path string) (Format, error) {
 	// File must be at least 4 bytes for any meaningful detection
 	if size < 4 {
 		return FormatUnknown, &UnsupportedFormatError{
@@ -123,59 +123,107 @@ func DetectFormat(r io.ReaderAt, size int64, path string) (Format, error) { //no
 	if n, err := r.ReadAt(head, 0); n < len(head) || (err != nil && !errors.Is(err, io.EOF)) {
 		return FormatUnknown, errHeaderUnreadable(path)
 	}
-	magic := head[:4]
 
-	// Check for FLAC (fLaC = 0x664C6143)
-	if string(magic) == "fLaC" {
-		return FormatFLAC, nil
+	// The families have distinct leading bytes, so the order only matters
+	// between FLAC and the ID3v2 prefix, which detectID3 resolves itself.
+	if f, ok := detectFLAC(head); ok {
+		return f, nil
 	}
+	if f, ok := detectID3(r, size, head); ok {
+		return f, nil
+	}
+	if f, ok := detectMPEGSync(head); ok {
+		return f, nil
+	}
+	if f, ok := detectOgg(head, size); ok {
+		return f, nil
+	}
+	if f, ok := detectRIFF(head, size); ok {
+		return f, nil
+	}
+	if f, ok := detectFORM(head, size); ok {
+		return f, nil
+	}
+	return detectMP4(head, path)
+}
 
-	// An ID3v2 tag starts an MP3 file, or, against the FLAC spec but written
-	// by some taggers, sits in front of a FLAC stream.
-	if string(magic[:3]) == "ID3" {
-		if hasMagicAt(r, size, head, id3v2Size(head), "fLaC") {
-			return FormatFLAC, nil
+// detectFLAC reports a native FLAC stream ("fLaC" at offset 0). head holds at
+// least 4 bytes.
+func detectFLAC(head []byte) (Format, bool) {
+	if string(head[:4]) == "fLaC" {
+		return FormatFLAC, true
+	}
+	return FormatUnknown, false
+}
+
+// detectID3 classifies a file that starts with an ID3v2 tag: an MP3 file or,
+// against the FLAC spec but written by some taggers, a FLAC stream whose "fLaC"
+// follows the tag. The look past the tag costs a read only when the tag
+// reaches beyond head.
+func detectID3(r io.ReaderAt, size int64, head []byte) (Format, bool) {
+	if string(head[:3]) != "ID3" {
+		return FormatUnknown, false
+	}
+	if hasMagicAt(r, size, head, id3v2Size(head), "fLaC") {
+		return FormatFLAC, true
+	}
+	return FormatMP3, true
+}
+
+// detectMPEGSync reports an MP3 file without an ID3 tag, recognized by the
+// 11-bit frame sync (0xFFE or 0xFFF).
+func detectMPEGSync(head []byte) (Format, bool) {
+	if head[0] == 0xFF && head[1]&0xE0 == 0xE0 {
+		return FormatMP3, true
+	}
+	return FormatUnknown, false
+}
+
+// detectOgg classifies an Ogg file ("OggS") as Opus or Ogg Vorbis. The first
+// packet starts after the 27-byte page header and the segment table (at most
+// 255 bytes), so it lies inside head; "OpusHead" there selects Opus.
+func detectOgg(head []byte, size int64) (Format, bool) {
+	if string(head[:4]) != "OggS" {
+		return FormatUnknown, false
+	}
+	// Minimum needed: 27 (header) + 1 (segment table) + 8 (OpusHead) = 36 bytes
+	if size >= 36 {
+		packetOffset := 27 + int(head[26])
+		if packetOffset+8 <= len(head) && string(head[packetOffset:packetOffset+8]) == "OpusHead" {
+			return FormatOpus, true
 		}
-		return FormatMP3, nil
 	}
+	return FormatOgg, true
+}
 
-	// Check for MP3 frame sync (0xFFE or 0xFFF)
-	// This catches MP3 files without ID3 tags
-	if magic[0] == 0xFF && (magic[1]&0xE0) == 0xE0 {
-		return FormatMP3, nil
+// detectRIFF reports a WAV file: RIFF, its big-endian twin RIFX or RF64 with
+// the "WAVE" form type.
+func detectRIFF(head []byte, size int64) (Format, bool) {
+	switch string(head[:4]) {
+	case "RIFF", "RIFX", "RF64":
+	default:
+		return FormatUnknown, false
 	}
-
-	// Check for Ogg (OggS) - could be Vorbis or Opus
-	if string(magic) == "OggS" {
-		// Need to read into first Ogg page to find codec magic.
-		// Ogg page header: 27 bytes fixed + segment table (variable).
-		// Minimum needed: 27 (header) + 1 (segment table) + 8 (OpusHead) = 36 bytes
-		// The first packet starts after the 27-byte header and the segment
-		// table (at most 255 bytes), so it lies inside head.
-		if size >= 36 {
-			packetOffset := 27 + int(head[26])
-			if packetOffset+8 <= len(head) && string(head[packetOffset:packetOffset+8]) == "OpusHead" {
-				return FormatOpus, nil
-			}
-		}
-		return FormatOgg, nil
+	if size >= 12 && string(head[8:12]) == "WAVE" {
+		return FormatWAV, true
 	}
+	return FormatUnknown, false
+}
 
-	// Check for WAV (RIFF....WAVE), its big-endian twin RIFX and RF64.
-	if (string(magic) == "RIFF" || string(magic) == "RIFX" || string(magic) == "RF64") && size >= 12 {
-		if string(head[8:12]) == "WAVE" {
-			return FormatWAV, nil
-		}
+// detectFORM reports an AIFF file: FORM with the "AIFF" or "AIFC" form type.
+func detectFORM(head []byte, size int64) (Format, bool) {
+	if string(head[:4]) != "FORM" || size < 12 {
+		return FormatUnknown, false
 	}
-
-	// Check for AIFF (FORM....AIFF)
-	if string(magic) == "FORM" && size >= 12 {
-		if tag := string(head[8:12]); tag == "AIFF" || tag == "AIFC" {
-			return FormatAIFF, nil
-		}
+	if tag := string(head[8:12]); tag == "AIFF" || tag == "AIFC" {
+		return FormatAIFF, true
 	}
+	return FormatUnknown, false
+}
 
-	// Check for M4B/M4A ftyp atom: size (4 bytes) then type (4 bytes).
+// detectMP4 classifies an ISO-BMFF file by its ftyp atom (size, then type),
+// the last family tried: anything else is an unsupported format.
+func detectMP4(head []byte, path string) (Format, error) {
 	if len(head) < 8 {
 		return FormatUnknown, errHeaderUnreadable(path)
 	}

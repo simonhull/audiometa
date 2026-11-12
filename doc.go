@@ -34,6 +34,10 @@
 //   - Chapters: a slice of [Chapter]; each records the [ChapterSource] it was
 //     read from.
 //   - Warnings: non-fatal problems found while parsing, as [Warning] values.
+//   - TagSources: a slice of [TagSource], one for each tag container the file
+//     stores (ID3v2 with its version, ID3v1, APEv2, Lyrics3, Vorbis comment,
+//     MP4 ilst, RIFF INFO, AIFF text), and whether its values were read into
+//     Tags.
 //   - Format, Path and Size.
 //
 // # Supported Formats
@@ -51,10 +55,10 @@
 //     gapless length when a LAME tag records the encoder delay (MPEG-1, MPEG-2
 //     and MPEG-2.5 Layer III). Writing keeps the ID3v2 version (ID3v2.2 tags
 //     and untagged files get ID3v2.4), re-emits untouched frames byte for byte,
-//     and never edits chapters. An ID3v1 trailer is copied unchanged, never
-//     updated from ID3v2 edits, so after deleting TIT2 a reader that falls
-//     back to ID3v1 can show the stale ID3v1 title (audiometa itself does so
-//     when both TIT2 and TPE1 are gone).
+//     and never edits chapters. An ID3v1 trailer is copied unchanged unless
+//     [WithID3v1] asks for [ID3v1Update] or [ID3v1Remove]; a trailer is never
+//     added. Values that only the trailer held are copied into the ID3v2 tag
+//     on every write, so no field disappears.
 //   - M4A/M4B: iTunes ilst atoms including freeform (----) atoms, covr
 //     artwork, and QuickTime or Nero chapters. Writing rebuilds only the
 //     edited ilst items and covr, re-emits every other atom byte for byte,
@@ -93,7 +97,9 @@
 // the file is replaced atomically; [WithInPlace] patches the metadata region in
 // place when the edit fits, and [WithPreserveModTime] keeps the modification
 // time. Ogg Vorbis and Opus files cannot be written yet: both return
-// [ErrUnsupportedWrite].
+// [ErrUnsupportedWrite]. [CanWrite] tells whether a format has a writer, and
+// [File.Writable] whether a particular file would be refused (encrypted,
+// fragmented, damaged), without writing.
 //
 // # Artwork
 //

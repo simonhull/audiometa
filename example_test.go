@@ -464,3 +464,77 @@ func ExampleGetVersionInfo() {
 	info := audiometa.GetVersionInfo()
 	fmt.Println(info.Version, info.GitCommit, info.BuildTime, info.GoVersion)
 }
+
+// List the tag containers a file stores, and which of them its Tags were read
+// from. sample_v24.mp3 has an ID3v2.4 tag with a title, so the ID3v1 trailer
+// behind it is stored but not used.
+func ExampleFile_TagSources() {
+	file, err := audiometa.Open("testdata/sample_v24.mp3")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	for _, s := range file.TagSources {
+		fmt.Println(s.Kind, s.Version, s.Used)
+	}
+	// Output:
+	// id3v2 4 true
+	// id3v1 0 false
+}
+
+// A WAV file can hold an ID3 chunk and native LIST/INFO text; both are listed,
+// in the order the reader consults them. Their kinds print as stable strings.
+func ExampleTagSource() {
+	file, err := audiometa.Open("testdata/sample_id3.wav")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	for _, s := range file.TagSources {
+		if s.Kind == audiometa.TagID3v2 {
+			fmt.Printf("ID3v2.%d, used: %t\n", s.Version, s.Used)
+		} else {
+			fmt.Printf("%s, used: %t\n", s.Kind, s.Used)
+		}
+	}
+	// Output:
+	// ID3v2.3, used: true
+	// riff-info, used: true
+}
+
+// Ask whether a format has a tag writer before offering to edit it.
+func ExampleCanWrite() {
+	fmt.Println(audiometa.CanWrite(audiometa.FormatFLAC))
+	fmt.Println(audiometa.CanWrite(audiometa.FormatOpus))
+	// Output:
+	// true
+	// false
+}
+
+// Ask whether Write would accept this file, before the user has edited it.
+// A nil result covers the file, not the edit that follows.
+func ExampleFile_Writable() {
+	file, err := audiometa.Open("testdata/sample.m4a")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	fmt.Println(file.Writable())
+	// Output: <nil>
+}
+
+// Writable names the reason a file is refused. Ogg Vorbis has no writer.
+func ExampleFile_WritableContext() {
+	file, err := audiometa.Open("testdata/sample.ogg")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	err = file.WritableContext(context.Background())
+	fmt.Println(errors.Is(err, audiometa.ErrUnsupportedWrite))
+	// Output: true
+}

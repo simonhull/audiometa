@@ -99,10 +99,11 @@ func appendLE(out, b []byte) []byte {
 }
 
 // Apply records each entry on file with [ParseComment], adding one StageMetadata warning
-// ("invalid Vorbis comment: ...", Err set) for each entry ParseComment rejects, and returns
-// the entries as strings for [ParseChapters]. Each entry takes one value from the file's
-// tag-value budget ([types.TakeValue]); the rest are ignored once it is spent.
-func Apply(entries [][]byte, file *types.File) []string {
+// ("invalid Vorbis comment: ...", Err set) for each entry ParseComment rejects, then derives
+// the typed fields of format from the raw tags ([types.DeriveFields]). It returns the entries
+// as strings for [ParseChapters]. Each entry takes one value from the file's tag-value budget
+// ([types.TakeValue]); the rest are ignored once it is spent.
+func Apply(entries [][]byte, file *types.File, format types.Format) []string {
 	comments := make([]string, 0, len(entries))
 	for _, e := range entries {
 		if !types.TakeValue(file) {
@@ -115,5 +116,6 @@ func Apply(entries [][]byte, file *types.File) []string {
 			types.Warn(file, types.StageMetadata, 0, err, fmt.Sprintf("invalid Vorbis comment: %s", err))
 		}
 	}
+	types.DeriveFields(&file.Tags, format)
 	return comments
 }

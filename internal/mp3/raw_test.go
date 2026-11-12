@@ -11,6 +11,7 @@ import (
 func TestParseTextFrameRecordsRawAndArtists(t *testing.T) {
 	var f types.File
 	parseTextFrame(id3v2Frame{ID: "TPE1", Data: append([]byte{3}, "A\x00B"...)}, &f)
+	types.DeriveFields(&f.Tags, types.FormatMP3)
 	if got := f.Tags.Get("TPE1"); !slices.Equal(got, []string{"A", "B"}) {
 		t.Errorf("raw TPE1 = %q", got)
 	}
@@ -69,6 +70,7 @@ func TestParseTXXXReadsEveryValue(t *testing.T) {
 func TestParseTXXXFirstValueFillsTheField(t *testing.T) {
 	var f types.File
 	parseTXXXFrame(id3v2Frame{ID: "TXXX", Data: append([]byte{3}, "Narrator\x00A\x00B"...)}, &f)
+	types.DeriveFields(&f.Tags, types.FormatMP3)
 	if f.Tags.Narrator != "A" {
 		t.Errorf("Narrator = %q, want A", f.Tags.Narrator)
 	}

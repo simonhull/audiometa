@@ -108,7 +108,15 @@ func TestIlst_FieldEdits(t *testing.T) {
 		{"description canonical", nil, func(tg *types.Tags) { tg.Description = "D" }, "ldes", ilstText("ldes", "D"), nil},
 		{"description existing desc", [][]byte{ilstText("desc", "old")}, func(tg *types.Tags) { tg.Description = "D" },
 			"desc", ilstText("desc", "D"), nil},
-		{"isrc unsupported", nil, func(tg *types.Tags) { tg.ISRC = "X" }, "", nil, types.ErrUnsupportedWrite},
+		{"isrc canonical", nil, func(tg *types.Tags) { tg.ISRC = "X" }, itemFreeform, ilstFreeform("ISRC", "X"), nil},
+		{"isrc existing name", [][]byte{ilstFreeform("isrc", "old")}, func(tg *types.Tags) { tg.ISRC = "X" },
+			itemFreeform, ilstFreeform("isrc", "X"), nil},
+		{"barcode canonical", nil, func(tg *types.Tags) { tg.Barcode = "0123" }, itemFreeform, ilstFreeform("BARCODE", "0123"), nil},
+		{"catalog number canonical", nil, func(tg *types.Tags) { tg.CatalogNumber = "C-1" },
+			itemFreeform, ilstFreeform("CATALOGNUMBER", "C-1"), nil},
+		{"label canonical", nil, func(tg *types.Tags) { tg.Label = "L" }, itemFreeform, ilstFreeform("LABEL", "L"), nil},
+		{"copyright is cprt", nil, func(tg *types.Tags) { tg.Copyright = "(c)" }, "cprt", ilstText("cprt", "(c)"), nil},
+		{"original date unsupported", nil, func(tg *types.Tags) { tg.OriginalDate = "1999" }, "", nil, types.ErrUnsupportedWrite},
 		{"performers unsupported", nil, func(tg *types.Tags) { tg.Performers = []string{"P"} }, "", nil, types.ErrUnsupportedWrite},
 	}
 	for _, tc := range tests {

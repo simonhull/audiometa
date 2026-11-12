@@ -60,5 +60,12 @@
     "VBR": false
   },
   "Format": 1,
-  "Size": 13654
+  "Size": 13654,
+  "TagSources": [
+    {
+      "Kind": "vorbis-comment",
+      "Version": 0,
+      "Used": true
+    }
+  ]
 }

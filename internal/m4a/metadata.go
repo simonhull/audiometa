@@ -203,108 +203,18 @@ func extractIlstMetadata(ctx context.Context, sr *binary.SafeReader, ilstAtom *A
 	return nil
 }
 
-// ilstTextFields maps ilst atoms whose value is assigned verbatim to a Tags field.
-var ilstTextFields = map[string]func(*types.Tags) *string{
-	"\xA9nam":    func(t *types.Tags) *string { return &t.Title },       // ©nam
-	itemArtist:   func(t *types.Tags) *string { return &t.Artist },      // ©ART
-	"\xA9alb":    func(t *types.Tags) *string { return &t.Album },       // ©alb
-	"\xA9cmt":    func(t *types.Tags) *string { return &t.Comment },     // ©cmt
-	"\xA9grp":    func(t *types.Tags) *string { return &t.Grouping },    // ©grp - often series info for audiobooks
-	"\xA9lyr":    func(t *types.Tags) *string { return &t.Lyrics },      // ©lyr
-	"aART":       func(t *types.Tags) *string { return &t.AlbumArtist }, // album artist
-	"cprt":       func(t *types.Tags) *string { return &t.Copyright },   // copyright
-	itemLongDesc: func(t *types.Tags) *string { return &t.Description }, // long description wins over desc
-}
-
-// applyIlstDate stores a ©day value: Date verbatim, Year from its leading four digits.
-func applyIlstDate(file *types.File, value string) {
-	if file.Tags.Date != "" {
-		return
-	}
-	file.Tags.Date = value
-	if len(value) >= 4 {
-		if year, err := strconv.Atoi(value[:4]); err == nil && year > 0 {
-			file.Tags.Year = year
-		}
-	}
-}
-
-// assignIlstText stores a verbatim text atom: the first occurrence wins, except
-// that the first ldes also overrides a desc/©des value that came before it.
-func assignIlstText(dst *string, tag, value string, seen bool) {
-	if *dst == "" || tag == itemLongDesc && !seen {
-		*dst = value
-	}
-}
-
-// Note: In MP4, © is represented as byte 0xA9, so "©nam" is "\xA9nam" in Go strings.
-func mapTagToField(tag string, value string, file *types.File) {
-	if value == "" {
-		return
-	}
-	// The first occurrence of a repeated single-valued atom wins.
-	seen := file.Tags.GetFirst(tag) != ""
-	file.Tags.AddRaw(tag, value)
-	if tag == itemArtist {
-		file.Tags.Artists = append(file.Tags.Artists, value)
-	}
-	if field, ok := ilstTextFields[tag]; ok {
-		assignIlstText(field(&file.Tags), tag, value, seen)
-		return
-	}
-
-	switch tag {
-	case itemGenre: // Genre (©gen)
-		file.Tags.Genres = append(file.Tags.Genres, value)
-	case itemComposer: // Composer (©wrt)
-		file.Tags.Composers = append(file.Tags.Composers, value)
-	case "\xA9day": // Date (©day)
-		applyIlstDate(file, value)
-	case "desc", "\xA9des": // Description - ldes takes priority regardless of order
-		if file.Tags.Description == "" {
-			file.Tags.Description = value
-		}
-	case "\xA9mvn": // Movement Name (©mvn) - used for series in audiobooks
-		if file.Tags.Series == "" {
-			file.Tags.Series = value
-		}
-	case "\xA9mvi": // Movement Index (©mvi) - used for series position; 0 means unset
-		if value != "0" && file.Tags.SeriesPart == "" {
-			file.Tags.SeriesPart = value
-		}
-	}
-}
-
-// mapTextItem reads every value of a text or integer ilst item and maps it:
-// the first through mapTagToField, the rest through mapExtraValue. A damaged
-// item adds a warning and still maps the values read before the damage.
+// mapTextItem records every value of a text or integer ilst item in the raw
+// tags under the item's atom type. A damaged item adds a warning and still
+// records the values read before the damage. Typed fields are derived from the
+// raw tags once the whole ilst is read.
 func mapTextItem(sr *binary.SafeReader, tagAtom *Atom, file *types.File) {
 	values, err := parseMetadataValues(sr, tagAtom, file)
 	if err != nil {
 		// Keep the values read before the damage.
 		types.Warn(file, types.StageMetadata, 0, err, fmt.Sprintf("failed to parse tag %s: %v", tagAtom.Type, err))
 	}
-	if len(values) == 0 {
-		return
-	}
-	mapTagToField(tagAtom.Type, values[0], file)
-	for _, v := range values[1:] {
-		mapExtraValue(tagAtom.Type, v, file)
-	}
-}
-
-// mapExtraValue records a second or later value of a multi-value ilst item:
-// it is added to the raw tags and to the item's slice field, if it has one.
-// Single-valued fields keep the first value.
-func mapExtraValue(tag, value string, file *types.File) {
-	file.Tags.AddRaw(tag, value)
-	switch tag {
-	case itemArtist:
-		file.Tags.Artists = append(file.Tags.Artists, value)
-	case itemGenre:
-		file.Tags.Genres = append(file.Tags.Genres, value)
-	case itemComposer:
-		file.Tags.Composers = append(file.Tags.Composers, value)
+	for _, v := range values {
+		file.Tags.AddRaw(tagAtom.Type, v)
 	}
 }
 

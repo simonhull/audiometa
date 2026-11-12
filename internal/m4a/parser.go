@@ -68,9 +68,11 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 
 	// Extract metadata from ilst
 	if ilstAtom != nil {
-		if err := extractIlstMetadata(ctx, sr, ilstAtom, file); err != nil {
+		err := extractIlstMetadata(ctx, sr, ilstAtom, file)
+		if err != nil {
 			types.Warn(file, types.StageMetadata, 0, err, err.Error())
 		}
+		types.AddTagSource(file, types.TagSource{Kind: types.TagMP4, Used: err == nil})
 	}
 
 	// Technical info is two independent stages: the movie duration, and the
@@ -96,6 +98,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		if err := parseAudiobookTags(ctx, sr, ilstAtom, file); err != nil {
 			types.Warn(file, types.StageMetadata, 0, err, err.Error())
 		}
+		types.DeriveFields(&file.Tags, file.Format)
 	}
 
 	// Stages that observed cancellation record it as a warning; report it as the result.

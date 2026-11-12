@@ -90,6 +90,136 @@ func TestApply_TXXXSpelling(t *testing.T) {
 	}
 }
 
+// A typed-field write names a new MusicBrainz TXXX frame as Picard does; a
+// raw-key write keeps the upper-case key unless the caller named it, and an
+// existing frame always keeps its own spelling.
+func TestApply_TXXXTypedFieldSpelling(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		existing string
+		set      func(*types.Tags)
+		want     string
+	}{
+		{"album ID", "", func(tg *types.Tags) { tg.MusicBrainzAlbumID = "new" }, picardAlbumID},
+		{"artist ID", "", func(tg *types.Tags) { tg.MusicBrainzArtistID = "new" }, "MusicBrainz Artist Id"},
+		{"existing upper-case frame", upperAlbumID, func(tg *types.Tags) { tg.MusicBrainzAlbumID = "new" }, upperAlbumID},
+		{"existing Picard frame", picardAlbumID, func(tg *types.Tags) { tg.MusicBrainzAlbumID = "new" }, picardAlbumID},
+		{"existing lower-case frame", "musicbrainz album id", func(tg *types.Tags) { tg.MusicBrainzAlbumID = "new" }, "musicbrainz album id"},
+		{"barcode", "", func(tg *types.Tags) { tg.Barcode = "new" }, "BARCODE"},
+		{"catalog number", "", func(tg *types.Tags) { tg.CatalogNumber = "new" }, "CATALOGNUMBER"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			for _, v := range []byte{3, 4} {
+				frames := [][]byte{id3Frame(v, "TIT2", latin1Text("T"))}
+				if tt.existing != "" {
+					frames = append(frames, id3Frame(v, frameIDTXXX, txxxPayload(0, tt.existing, "old")))
+				}
+				src := file(id3Tag(v, frames...))
+				out := writeBytes(t, src, editsFor(t, src, tt.set))
+				if got := txxxDescriptions(t, out); !slices.Equal(got, []string{tt.want}) {
+					t.Errorf("v2.%d: TXXX descriptions %q, want [%q]", v, got, tt.want)
+				}
+			}
+		})
+	}
+}
+
+func TestApply_TypedUFID(t *testing.T) {
+	t.Parallel()
+	for _, v := range []byte{3, 4} {
+		src := file(id3Tag(v, id3Frame(v, "TIT2", latin1Text("T"))))
+		out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.MusicBrainzTrackID = recordingID }))
+		ufid := framesWithID(framesOf(t, out).frames, frameIDUFID)
+		if len(ufid) != 1 || !bytes.Equal(ufid[0].payload, ufidPayload(mbOwner, recordingID)) {
+			t.Errorf("v2.%d: UFID frames %+v", v, ufid)
+		}
+		if got := parseBytes(t, out).Tags.MusicBrainzTrackID; got != recordingID {
+			t.Errorf("v2.%d: MusicBrainzTrackID = %q", v, got)
+		}
+
+		// Replace in place, then clear.
+		src = out
+		out = writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.MusicBrainzTrackID = "other" }))
+		if got := parseBytes(t, out).Tags.Get(mbUFIDKey); !slices.Equal(got, []string{"other"}) {
+			t.Errorf("v2.%d: replaced UFID = %q", v, got)
+		}
+		out = writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.MusicBrainzTrackID = "" }))
+		if ufid := framesWithID(framesOf(t, out).frames, frameIDUFID); len(ufid) != 0 {
+			t.Errorf("v2.%d: cleared, UFID frames %+v", v, ufid)
+		}
+		if got := txxxDescriptions(t, out); len(got) != 0 {
+			t.Errorf("v2.%d: wrote TXXX frames %q", v, got)
+		}
+
+		// Refused, never truncated.
+		long := strings.Repeat("a", maxUFIDIdentifier+1)
+		if _, err := tryWrite(src, editsFor(t, src, func(tg *types.Tags) { tg.MusicBrainzTrackID = long })); !errors.Is(err, types.ErrUnsupportedWrite) {
+			t.Errorf("v2.%d: %d-byte identifier: err = %v, want ErrUnsupportedWrite", v, len(long), err)
+		}
+	}
+}
+
+func TestApply_OriginalDate(t *testing.T) {
+	t.Parallel()
+	text := func(version byte, id, v string) []byte { return id3Frame(version, id, latin1Text(v)) }
+	set := func(v string) func(*types.Tags) { return func(tg *types.Tags) { tg.OriginalDate = v } }
+	tests := []struct {
+		name       string
+		tag        []byte
+		mutate     func(*types.Tags)
+		tdor, tory []string
+		err        bool
+	}{
+		{"v2.4 writes the timestamp", id3Tag(4, text(4, "TIT2", "T")), set("2001-05-03"), []string{"2001-05-03"}, nil, false},
+		{"v2.4 drops TORY", id3Tag(4, text(4, "TIT2", "T"), text(4, "TORY", "1999")), set("2001-05-03"), []string{"2001-05-03"}, nil, false},
+		{"v2.4 keeps a present TDOR", id3Tag(4, text(4, "TDOR", "1999")), set("2001"), []string{"2001"}, nil, false},
+		{"v2.4 clears both", id3Tag(4, text(4, "TDOR", "1999"), text(4, "TORY", "1998")), set(""), nil, nil, false},
+		{"v2.3 writes the year", id3Tag(3, text(3, "TIT2", "T")), set("2001-05-03"), nil, []string{"2001"}, false},
+		{"v2.3 replaces TORY", id3Tag(3, text(3, "TORY", "1999")), set("2002"), nil, []string{"2002"}, false},
+		{"v2.3 clears", id3Tag(3, text(3, "TORY", "1999")), set(""), nil, nil, false},
+		{"v2.3 refuses a value with no year", id3Tag(3, text(3, "TORY", "1999")), set("May 2001"), nil, nil, true},
+		{"v2.3 refuses a short year", id3Tag(3, text(3, "TIT2", "T")), set("99"), nil, nil, true},
+		{"v2.2 source writes TDOR", id3Tag(2, id3v22Frame("TOR", latin1Text("1999"))), set("2001-05-03"), []string{"2001-05-03"}, nil, false},
+		{"v2.2 source: raw TORY edit becomes TDOR", id3Tag(2, id3v22Frame("TOR", latin1Text("1999"))),
+			func(tg *types.Tags) { tg.Set("TORY", "2000") }, []string{"2000"}, nil, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			src := file(tt.tag)
+			out, err := tryWrite(src, editsFor(t, src, tt.mutate))
+			if tt.err {
+				if !errors.Is(err, types.ErrUnsupportedWrite) {
+					t.Fatalf("err = %v, want ErrUnsupportedWrite", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			tags := parseBytes(t, out).Tags
+			if got := tags.Get("TDOR"); !slices.Equal(got, tt.tdor) {
+				t.Errorf("TDOR = %q, want %q", got, tt.tdor)
+			}
+			if got := tags.Get("TORY"); !slices.Equal(got, tt.tory) {
+				t.Errorf("TORY = %q, want %q", got, tt.tory)
+			}
+			want := ""
+			if len(tt.tdor) > 0 {
+				want = tt.tdor[0]
+			} else if len(tt.tory) > 0 {
+				want = tt.tory[0]
+			}
+			if tags.OriginalDate != want {
+				t.Errorf("OriginalDate = %q, want %q", tags.OriginalDate, want)
+			}
+		})
+	}
+}
+
 // Frames whose descriptions differ only in case share one raw key. Reading
 // gives every value and the first frame's spelling; writing the key makes them
 // one frame, named and placed as the first was; an edit to another key leaves

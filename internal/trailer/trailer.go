@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"slices"
 	"strconv"
 
 	binutil "github.com/simonhull/audiometa/internal/binary"
@@ -21,11 +22,32 @@ const (
 	id3v2HasFoot  = 0x10
 )
 
-// structuredTagLens recognize tags with long, structured markers. They are
+// Kind names a trailing tag format.
+type Kind uint8
+
+// The trailing tag formats [Scan] recognizes.
+const (
+	KindID3v1   Kind = iota + 1 // 128-byte "TAG" block
+	KindAPEv2                   // APEv1 or APEv2, with or without a header
+	KindLyrics3                 // Lyrics3v2: "LYRICSBEGIN" ... "LYRICS200"
+	KindID3v2                   // ID3v2.4 tag with a footer, appended after the audio
+)
+
+// Block is one trailing tag block: Size bytes at Off.
+type Block struct {
+	Kind Kind
+	Off  int64
+	Size int64
+}
+
+// structuredTags recognize tags with long, structured markers. They are
 // tried before id3v1Len, so a stray "TAG" inside an APEv2 or Lyrics3v2 tag
 // is not taken for ID3v1.
-var structuredTagLens = [...]func(*binutil.SafeReader, int64, int64) (int64, error){
-	apeLen, lyrics3v2Len, id3v2FooterLen,
+var structuredTags = [...]struct {
+	kind Kind
+	size func(*binutil.SafeReader, int64, int64) (int64, error)
+}{
+	{KindAPEv2, apeLen}, {KindLyrics3, lyrics3v2Len}, {KindID3v2, id3v2FooterLen},
 }
 
 // Start returns where the trailing tags of sr[start:end) begin, or end if
@@ -33,11 +55,29 @@ var structuredTagLens = [...]func(*binutil.SafeReader, int64, int64) (int64, err
 // none matches; a block that is incomplete, inconsistent or would reach before
 // start is left in place, as audio. It stops early when ctx is done.
 func Start(ctx context.Context, sr *binutil.SafeReader, start, end int64) (int64, error) {
+	return peel(ctx, sr, start, end, nil)
+}
+
+// Scan is [Start] that also names the blocks it peels, in file order. The
+// result is nil when there are none.
+func Scan(ctx context.Context, sr *binutil.SafeReader, start, end int64) (int64, []Block, error) {
+	var blocks []Block
+	audioEnd, err := peel(ctx, sr, start, end, &blocks)
+	if err != nil {
+		return 0, nil, err
+	}
+	slices.Reverse(blocks) // peeled last to first
+	return audioEnd, blocks, nil
+}
+
+// peel is the loop behind [Start] and [Scan]; it appends each block to blocks
+// unless that is nil.
+func peel(ctx context.Context, sr *binutil.SafeReader, start, end int64, blocks *[]Block) (int64, error) {
 	for i := 0; ; i++ {
 		if err := binutil.Canceled(ctx, i); err != nil {
 			return 0, err
 		}
-		n, err := trailingTag(sr, start, end)
+		kind, n, err := trailingTag(sr, start, end)
 		if err != nil {
 			return 0, err
 		}
@@ -45,28 +85,33 @@ func Start(ctx context.Context, sr *binutil.SafeReader, start, end int64) (int64
 			return end, nil
 		}
 		end -= n
-	}
-}
-
-// trailingTag returns the size of the tag block that ends at end, or 0.
-func trailingTag(sr *binutil.SafeReader, start, end int64) (int64, error) {
-	n, err := structuredTagLen(sr, start, end)
-	if err != nil || n > 0 {
-		return n, err
-	}
-	return id3v1Len(sr, start, end)
-}
-
-// structuredTagLen returns the size of the structured tag block that ends at
-// end, or 0.
-func structuredTagLen(sr *binutil.SafeReader, start, end int64) (int64, error) {
-	for _, size := range structuredTagLens {
-		n, err := size(sr, start, end)
-		if err != nil || n > 0 {
-			return n, err
+		if blocks != nil {
+			*blocks = append(*blocks, Block{Kind: kind, Off: end, Size: n})
 		}
 	}
-	return 0, nil
+}
+
+// trailingTag returns the kind and size of the tag block that ends at end, or
+// size 0.
+func trailingTag(sr *binutil.SafeReader, start, end int64) (Kind, int64, error) {
+	kind, n, err := structuredTag(sr, start, end)
+	if err != nil || n > 0 {
+		return kind, n, err
+	}
+	n, err = id3v1Len(sr, start, end)
+	return KindID3v1, n, err
+}
+
+// structuredTag returns the kind and size of the structured tag block that ends
+// at end, or size 0.
+func structuredTag(sr *binutil.SafeReader, start, end int64) (Kind, int64, error) {
+	for _, t := range structuredTags {
+		n, err := t.size(sr, start, end)
+		if err != nil || n > 0 {
+			return t.kind, n, err
+		}
+	}
+	return 0, 0, nil
 }
 
 // EndsWithID3v1 reports whether the last trailing tag block of
@@ -77,7 +122,7 @@ func structuredTagLen(sr *binutil.SafeReader, start, end int64) (int64, error) {
 //
 // It returns the error of a failed read of sr.
 func EndsWithID3v1(sr *binutil.SafeReader, start, end int64) (bool, error) {
-	n, err := structuredTagLen(sr, start, end)
+	_, n, err := structuredTag(sr, start, end)
 	if err != nil || n > 0 {
 		return false, err
 	}

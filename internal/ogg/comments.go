@@ -18,7 +18,7 @@ func applyCommentHeader(ctx context.Context, body []byte, file *types.File) erro
 		}
 		types.Warn(file, types.StageMetadata, 0, err, "failed to parse Vorbis comments: "+err.Error())
 	}
-	if comments := vorbis.Apply(c.Entries, file); len(comments) > 0 {
+	if comments := vorbis.Apply(c.Entries, file, file.Format); len(comments) > 0 {
 		file.Chapters = vorbis.ParseChapters(comments, file.Audio.Duration)
 	}
 	return nil

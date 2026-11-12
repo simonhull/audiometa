@@ -17,7 +17,7 @@ import (
 )
 
 // writer rewrites the ID3v2 tag of an MP3 file. It implements
-// registry.TagWriter and registry.InPlaceWriter.
+// registry.TagWriter, registry.InPlaceWriter and registry.ID3v1Configurer.
 //
 // The tag keeps its ID3v2 version (2.3 or 2.4); an ID3v2.2 tag, or a file
 // without one, gets an ID3v2.4 tag. Only the frames for the keys and fields
@@ -27,15 +27,65 @@ import (
 // dropped. When the frames fit in the existing tag it keeps its exact size;
 // otherwise it gets new padding.
 //
-// Everything after the tag, including the audio, any APEv2 or Lyrics3 tag and
-// the ID3v1 trailer, is copied verbatim. The ID3v1 trailer is a separate tag
-// and is never updated from ID3v2 edits, so after deleting TIT2 (or TPE1) a
-// reader that falls back to ID3v1 may show its stale title (or artist).
+// Everything after the tag, including the audio and any APEv2 or Lyrics3 tag,
+// is copied verbatim. So is the ID3v1 trailer, unless the writer was made with
+// WithID3v1: ID3v1Update then rewrites an existing trailer from the edited
+// tags and ID3v1Remove drops it. A file without a trailer never gets one. The
+// default, ID3v1Keep, never changes the trailer, so after deleting TIT2 (or
+// TPE1) a reader that falls back to ID3v1 may show its stale title (or artist).
 //
 // Deleting every raw key leaves an ID3v2 tag holding only the frames that are
 // not raw keys (APIC, CHAP, CTOC, COMM, PRIV, ...) plus padding; the tag
 // itself is kept, even when empty.
-type writer struct{}
+type writer struct {
+	id3v1 registry.ID3v1Mode // what to do with an existing ID3v1 trailer
+}
+
+// WithID3v1 returns a copy of w that applies mode to an existing ID3v1
+// trailer.
+func (w *writer) WithID3v1(mode registry.ID3v1Mode) registry.TagWriter {
+	c := *w
+	c.id3v1 = mode
+	return &c
+}
+
+// trailer returns the ID3v1 trailer a write puts after the audio ending at
+// end, and whether that differs from the trailer src has there: nil, true for
+// ID3v1Remove, the rewritten trailer for ID3v1Update, the existing one
+// otherwise. Without edits.Final, ID3v1Update keeps the trailer.
+func (w *writer) trailer(sr *binutil.SafeReader, end int64, edits *types.EditSet) (out []byte, changed bool, err error) {
+	var old [id3v1Size]byte
+	if err := sr.ReadAt(old[:], end, "ID3v1 tag"); err != nil {
+		return nil, false, err
+	}
+	switch {
+	case w.id3v1 == registry.ID3v1Remove:
+		return nil, true, nil
+	case w.id3v1 == registry.ID3v1Update && edits.Final != nil:
+		enc := encodeID3v1(edits.Final, old)
+		return enc[:], enc != old, nil
+	default:
+		return old[:], false, nil
+	}
+}
+
+// ChangesTrailer reports whether WriteFile would write a different ID3v1
+// trailer than src has.
+func (w *writer) ChangesTrailer(ctx context.Context, src io.ReaderAt, size int64, edits *types.EditSet) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	if w.id3v1 == registry.ID3v1Keep {
+		return false, nil
+	}
+	sr := binutil.NewSafeReader(src, size, "")
+	_, end, hasV1, err := audioRange(sr, size)
+	if err != nil || !hasV1 {
+		return false, err
+	}
+	_, changed, err := w.trailer(sr, end, edits)
+	return changed, err
+}
 
 // WriteFile streams src with edits applied to w.
 func (w *writer) WriteFile(ctx context.Context, out io.Writer, src io.ReaderAt, size int64, edits *types.EditSet) (int64, error) {
@@ -67,7 +117,11 @@ func (w *writer) WriteFile(ctx context.Context, out io.Writer, src io.ReaderAt, 
 		return cw.N, err
 	}
 	if hasV1 {
-		if _, err := writeutil.CopyRange(ctx, cw, src, end, id3v1Size); err != nil {
+		trailer, _, err := w.trailer(sr, end, edits)
+		if err != nil {
+			return cw.N, err
+		}
+		if _, err := cw.Write(trailer); err != nil {
 			return cw.N, err
 		}
 	}
@@ -94,23 +148,35 @@ func (w *writer) AudioDigest(ctx context.Context, src io.ReaderAt, size int64) (
 	return writeutil.DigestRange(ctx, src, start, end-start)
 }
 
-// PreservedDigest returns the SHA-256 of everything after the ID3v2 tag,
-// including any APEv2, Lyrics3 and ID3v1 tags: the bytes WriteFile copies
-// verbatim.
+// PreservedDigest returns the SHA-256 of everything after the ID3v2 tag up to
+// an ID3v1 trailer, including any APEv2 and Lyrics3 tags: the bytes WriteFile
+// always copies verbatim. The trailer is left out because a write may update
+// or remove it.
 func (w *writer) PreservedDigest(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	start, _, _, err := audioRange(binutil.NewSafeReader(src, size, ""), size)
+	ranges, err := w.PreservedRanges(ctx, src, size)
 	if err != nil {
 		return nil, err
 	}
-	return writeutil.DigestRange(ctx, src, start, size-start)
+	return writeutil.DigestRanges(ctx, src, ranges)
+}
+
+// PreservedRanges returns everything after the ID3v2 tag up to an ID3v1
+// trailer.
+func (w *writer) PreservedRanges(ctx context.Context, src io.ReaderAt, size int64) ([]registry.Range, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	start, end, _, err := audioRange(binutil.NewSafeReader(src, size, ""), size)
+	if err != nil {
+		return nil, err
+	}
+	return []registry.Range{{Off: start, End: end}}, nil
 }
 
 // InPlacePatch returns the new tag to write at offset 0 when the file has an
 // ID3v2 tag and the edited frames fit in its space. The patch is then
-// exactly what WriteFile writes before the audio.
+// exactly what WriteFile writes before the audio. It returns nil when the
+// write would change the ID3v1 trailer, which lies at the end of the file.
 func (w *writer) InPlacePatch(ctx context.Context, src io.ReaderAt, size int64, edits *types.EditSet) (*registry.Patch, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -118,6 +184,9 @@ func (w *writer) InPlacePatch(ctx context.Context, src io.ReaderAt, size int64, 
 	sr := binutil.NewSafeReader(src, size, "")
 	edits, err := withID3v1Seed(ctx, sr, size, edits)
 	if err != nil {
+		return nil, err
+	}
+	if changed, err := w.ChangesTrailer(ctx, src, size, edits); err != nil || changed {
 		return nil, err
 	}
 	t, tag, err := buildTag(ctx, sr, size, edits)

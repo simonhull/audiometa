@@ -215,18 +215,35 @@ func TestAudioDigestIgnoresTAGInsideAPE(t *testing.T) {
 	}
 }
 
-func TestPreservedDigestCoversID3v1(t *testing.T) {
+func TestPreservedDigest_ExcludesID3v1(t *testing.T) {
 	t.Parallel()
 	data, err := os.ReadFile("../../testdata/sample.mp3")
 	if err != nil {
 		t.Fatal(err)
 	}
-	id3v1 := append([]byte("TAG"), bytes.Repeat([]byte{'x'}, 125)...)
-	tagged := slices.Concat(data, id3v1)
-	damaged := slices.Clone(tagged)
-	damaged[len(damaged)-1] ^= 0xFF
+	trailer := func(fill byte) []byte { return append([]byte("TAG"), bytes.Repeat([]byte{fill}, 125)...) }
 	w := &writer{}
-	if bytes.Equal(digestOf(t, tagged, w.PreservedDigest), digestOf(t, damaged, w.PreservedDigest)) {
-		t.Error("PreservedDigest must change when the ID3v1 trailer is damaged")
+	digest := func(b []byte) []byte { return digestOf(t, b, w.PreservedDigest) }
+
+	if !bytes.Equal(digest(slices.Concat(data, trailer('x'))), digest(slices.Concat(data, trailer('y')))) {
+		t.Error("different ID3v1 trailers give different digests")
+	}
+	if !bytes.Equal(digest(slices.Concat(data, trailer('x'))), digest(data)) {
+		t.Error("a file with a trailer and the same file without one give different digests")
+	}
+
+	ape := apeWithHeader(200)
+	damaged := slices.Clone(ape)
+	damaged[40] ^= 0xFF // an item byte
+	if bytes.Equal(digest(slices.Concat(data, ape, trailer('x'))), digest(slices.Concat(data, damaged, trailer('x')))) {
+		t.Error("a damaged APEv2 byte before the trailer left the digest unchanged")
+	}
+
+	ranges, err := w.PreservedRanges(t.Context(), bytes.NewReader(slices.Concat(data, trailer('x'))), int64(len(data)+128))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ranges) != 1 || ranges[0].End != int64(len(data)) {
+		t.Errorf("PreservedRanges = %v, want one range ending at %d", ranges, len(data))
 	}
 }
