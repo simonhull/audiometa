@@ -188,9 +188,16 @@ file.Tags.SeriesPart // SERIESPART / MVIN (Vorbis), TXXX SERIES PART / frame MVI
 file.Tags.Grouping   // GROUPING / GRP1 / ©grp, as stored
 
 // Cataloging
-file.Tags.MusicBrainzTrackID
-file.Tags.ISRC
+// MP3 and M4A: read from the keys MusicBrainz Picard writes (TXXX/freeform "MusicBrainz Album Id", UFID, TSRC, TCOP, ...)
+file.Tags.MusicBrainzTrackID  // MP3: UFID "http://musicbrainz.org"; M4A: "MusicBrainz Track Id"
+file.Tags.MusicBrainzAlbumID
+file.Tags.MusicBrainzArtistID
+file.Tags.ISRC                // TSRC (MP3)
 file.Tags.Barcode
+file.Tags.CatalogNumber
+file.Tags.Copyright           // TCOP (MP3), cprt (M4A)
+file.Tags.Label               // M4A "LABEL"; MP3 stores it in TPUB, which fills Publisher
+file.Tags.OriginalDate        // TDOR or TORY (MP3)
 ```
 
 ### Raw Tags
@@ -358,15 +365,24 @@ Match these with `errors.Is`; they are always wrapped with detail.
   the language `XXX` (unknown).
 - **Tag names.** A TXXX frame or freeform item that exists keeps its name as spelled, whatever
   case the key is given in. A new one is named by its key, or as `Tags.SetNamed` spells it:
-  `SetNamed("MusicBrainz Album Id", id)` writes the name Picard and other taggers use. Frames
-  or items whose names differ only in case are read as one key, and writing it makes them one
-  frame or item, named and placed as the first was. `UFID:<owner>` writes a UFID frame with one
-  identifier of up to 64 bytes.
+  `SetNamed("MusicBrainz Album Id", id)` writes the name Picard and other taggers use. Setting
+  the typed field (`Tags.MusicBrainzAlbumID`, `MusicBrainzArtistID`, `MusicBrainzTrackID` on M4A)
+  names a new frame or item that way without `SetNamed`. Frames or items whose names differ only
+  in case are read as one key, and writing it makes them one frame or item, named and placed as
+  the first was. `UFID:<owner>` writes a UFID frame with one identifier of up to 64 bytes;
+  `Tags.MusicBrainzTrackID` on MP3, WAV and AIFF is the `UFID:http://musicbrainz.org` frame, so
+  a longer value is refused, not cut. Writing a typed MusicBrainz ID replaces every value of its
+  key with the one value.
+- **Release fields.** `OriginalDate` is written to `TDOR` on ID3v2.4 as it is, and to `TORY` on
+  ID3v2.3, which holds only a year: the value's first four digits are stored, and a value
+  without them returns `ErrUnsupportedWrite`. The frame of the other version is removed.
+  `TPUB` is the ID3 Publisher frame, so it fills `Publisher` (after TXXX `PUBLISHER`), not
+  `Label`.
 - **WAV and AIFF.** Edits go to the ID3v2 chunk, which keeps its version; a file without one
   gets an ID3v2.4 chunk at the end. A raw key that is native text (an INFO ID, or an AIFF text
   chunk) is written there instead. Setting or clearing a typed field also rewrites the native
-  text holding it (`INAM`, `IART`, `IPRD`, `IGNR`, `ICRD`, `ITRK`/`IPRT`, `ICMT`; `NAME`,
-  `AUTH`, `ANNO`) when the file has native text, so no reader sees a stale value. Every other
+  text holding it (`INAM`, `IART`, `IPRD`, `IGNR`, `ICRD`, `ITRK`/`IPRT`, `ICOP`, `ICMT`; `NAME`,
+  `AUTH`, `(c) `, `ANNO`) when the file has native text, so no reader sees a stale value. Every other
   chunk, the audio included, is copied byte for byte. A file whose chunks are cut short is
   refused with a `CorruptedFileError`.
 - **Artwork.** `AddArtwork`, `ReplaceArtwork`, `RemoveArtwork` and `RemoveAllArtwork`.
@@ -380,9 +396,11 @@ Typed fields a format has no native place for return `ErrUnsupportedWrite`:
 
 | Format | Typed fields that cannot be written |
 |--------|-------------------------------------|
-| MP3, WAV, AIFF | `Date`, `OriginalDate`, `Performers`, `Copyright`, `Label`, `CatalogNumber`, `Barcode`, `ISRC`, `MusicBrainz*` |
-| M4A/M4B | `OriginalDate`, `Performers`, `Label`, `CatalogNumber`, `Barcode`, `ISRC`, `MusicBrainz*` |
+| MP3, WAV, AIFF | `Date`, `Performers`, `Label` (TPUB is `Publisher`) |
+| M4A/M4B | `OriginalDate`, `Performers` |
 | FLAC | none |
+
+On ID3v2.3, `OriginalDate` is written to `TORY`, which holds only a year.
 
 Every writable format is gated in CI: a round-trip over the test corpus (audio bit-identical,
 untouched tags unchanged), an external check of edited files with `ffprobe`, `ffmpeg` and

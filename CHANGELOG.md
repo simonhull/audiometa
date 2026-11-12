@@ -7,8 +7,14 @@ All notable changes to this project are documented here.
 ### Added
 
 - MP3: `WithID3v1` chooses what `Write` does with an ID3v1 trailer: `ID3v1Keep` (the default) copies it, `ID3v1Update` rewrites it from the edited tags, and `ID3v1Remove` drops it. A trailer is never added. `File.WriteTo` always keeps it.
+- MP3, WAV, AIFF and M4A/M4B: `MusicBrainzAlbumID`, `MusicBrainzArtistID`, `ISRC`, `Barcode` and `CatalogNumber` are read from and written to the tags MusicBrainz Picard uses (TXXX `MusicBrainz Album Id` and `MusicBrainz Artist Id`, `TSRC`, TXXX `BARCODE` and `CATALOGNUMBER`; the matching `----:com.apple.iTunes:` items). `MusicBrainzTrackID` is the UFID `http://musicbrainz.org` on MP3, WAV and AIFF and `MusicBrainz Track Id` on M4A/M4B, which also fills `Label` from `LABEL`. MP3, WAV and AIFF fill `Copyright` from `TCOP` (WAV also from `ICOP`, AIFF from `(c) `, which a `Copyright` edit now keeps in step) and `OriginalDate` from `TDOR` or `TORY`; on ID3v2.3, writing `OriginalDate` stores only its year in `TORY`. A MusicBrainz ID written through its typed field to a file without one is named as Picard names it (`MusicBrainz Album Id`).
 
 ### Changed
+
+- MP3, WAV, AIFF, M4A and M4B: these typed fields are no longer empty when the file has the tags above, and writing them no longer returns `ErrUnsupportedWrite`. A raw `Set` is unchanged, and a UFID identifier over 64 bytes is refused, not truncated. Writing a typed MusicBrainz ID replaces all values of its key, so a second artist ID of the raw key `MUSICBRAINZ ARTIST ID` is dropped.
+- Editing a release field and its own raw key (`ISRC` and `TSRC`, say) in one save returns `ErrConflictingEdits`, as it does for every other bound field.
+- MP3, WAV and AIFF: `Publisher` is also read from `TPUB` when there is no TXXX `PUBLISHER`.
+- ID3v2.2 `TRC`, `TCR`, `TOR` and `TPB` frames are read under the raw keys `TSRC`, `TCOP`, `TORY` and `TPUB`, as other v2.2 frames are read under their ID3v2.3 IDs.
 
 - MP3: write verification no longer covers the ID3v1 trailer; the audio and any APEv2 or Lyrics3 tags are still checked.
 - Every format now fills its typed fields by one rule: the first non-empty value of the highest-precedence raw key that holds a usable value, in the order `FieldBindings` lists the keys; slice fields take all values of that one key. An empty value falls through to the next value and then to the next key. Most files read as before; the cases that move are below.
