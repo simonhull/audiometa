@@ -224,6 +224,31 @@ Raw keys are format-specific:
 TXXX descriptions and freeform names keep the spelling the file has: `Tags.Name` reports it, so
 a file Picard tagged gives `MusicBrainz Album Id` for the key `MUSICBRAINZ ALBUM ID`.
 
+### Which tags a file has
+
+`File.TagSources` lists the tag containers a file stores, so an editor does not have to parse the
+file again to learn them:
+
+```go
+for _, s := range file.TagSources {
+    fmt.Println(s.Kind, s.Version, s.Used) // e.g. "id3v2 4 true", then "id3v1 0 false"
+}
+```
+
+Each `TagSource` has a `Kind` (`TagID3v2`, `TagID3v1`, `TagAPEv2`, `TagLyrics3`, `TagVorbisComment`,
+`TagMP4`, `TagRIFFInfo`, `TagAIFFText`), the ID3v2 major `Version` (0 for other kinds) and `Used`:
+whether audiometa read the container into `Tags`. The list is in the order the reader consults the
+containers; those it does not read (APEv2, Lyrics3, an ID3v2 tag in front of a FLAC stream or after
+the audio) come last with `Used` false. An ID3v1 trailer is used only when the ID3v2 tag left both
+title and artist empty and the trailer is the last block of the file. `Used` is per container, not
+per field. A file without tags has an empty list.
+
+`CanWrite(format)` says whether audiometa has a tag writer for a format, and `File.Writable()`
+whether the file itself would be refused by `Write` (DRM, fragmented MP4, a damaged layout),
+without writing anything. It stops the writer at its first output byte, so it costs the metadata
+and structure, not the audio. A nil result does not cover edit-specific failures such as
+`ErrTagTooLarge`.
+
 ## Supported Formats
 
 | Format      | Read | Write | Artwork | Chapters | Technical Info |

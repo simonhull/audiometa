@@ -6,6 +6,9 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- `File.TagSources`, with the `TagSource` and `TagKind` types, reports which tag containers a file stores (ID3v2 with its version, ID3v1, APEv2, Lyrics3, Vorbis comment, MP4 `ilst`, RIFF INFO, AIFF text) and which of them supplied `Tags`. APEv2 and Lyrics3 blocks, an ID3v2 tag in front of a FLAC stream and a footer-terminated ID3v2 tag after the audio are listed with `Used` false. `Open` costs one more allocation for it on FLAC, M4B and Opus files.
+- `CanWrite(Format)` reports whether audiometa can write a format's tags.
+- `File.Writable` and `File.WritableContext` report, without writing, whether the file itself would be refused (no writer, DRM, fragmented MP4, damaged layout).
 - MP3: `WithID3v1` chooses what `Write` does with an ID3v1 trailer: `ID3v1Keep` (the default) copies it, `ID3v1Update` rewrites it from the edited tags, and `ID3v1Remove` drops it. A trailer is never added. `File.WriteTo` always keeps it.
 - MP3, WAV, AIFF and M4A/M4B: `MusicBrainzAlbumID`, `MusicBrainzArtistID`, `ISRC`, `Barcode` and `CatalogNumber` are read from and written to the tags MusicBrainz Picard uses (TXXX `MusicBrainz Album Id` and `MusicBrainz Artist Id`, `TSRC`, TXXX `BARCODE` and `CATALOGNUMBER`; the matching `----:com.apple.iTunes:` items). `MusicBrainzTrackID` is the UFID `http://musicbrainz.org` on MP3, WAV and AIFF and `MusicBrainz Track Id` on M4A/M4B, which also fills `Label` from `LABEL`. MP3, WAV and AIFF fill `Copyright` from `TCOP` (WAV also from `ICOP`, AIFF from `(c) `, which a `Copyright` edit now keeps in step) and `OriginalDate` from `TDOR` or `TORY`; on ID3v2.3, writing `OriginalDate` stores only its year in `TORY`. A MusicBrainz ID written through its typed field to a file without one is named as Picard names it (`MusicBrainz Album Id`).
 

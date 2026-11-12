@@ -34,6 +34,10 @@
 //   - Chapters: a slice of [Chapter]; each records the [ChapterSource] it was
 //     read from.
 //   - Warnings: non-fatal problems found while parsing, as [Warning] values.
+//   - TagSources: a slice of [TagSource], one for each tag container the file
+//     stores (ID3v2 with its version, ID3v1, APEv2, Lyrics3, Vorbis comment,
+//     MP4 ilst, RIFF INFO, AIFF text), and whether its values were read into
+//     Tags.
 //   - Format, Path and Size.
 //
 // # Supported Formats
@@ -93,7 +97,9 @@
 // the file is replaced atomically; [WithInPlace] patches the metadata region in
 // place when the edit fits, and [WithPreserveModTime] keeps the modification
 // time. Ogg Vorbis and Opus files cannot be written yet: both return
-// [ErrUnsupportedWrite].
+// [ErrUnsupportedWrite]. [CanWrite] tells whether a format has a writer, and
+// [File.Writable] whether a particular file would be refused (encrypted,
+// fragmented, damaged), without writing.
 //
 // # Artwork
 //
