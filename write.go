@@ -173,6 +173,9 @@ func WriteContext(ctx context.Context, path string, edit func(f *File) error, op
 	if err != nil {
 		return err
 	}
+	if c, ok := tw.(registry.ID3v1Configurer); ok {
+		tw = c.WithID3v1(o.id3v1)
+	}
 	if err := edit(f); err != nil {
 		return err
 	}
@@ -181,7 +184,15 @@ func WriteContext(ctx context.Context, path string, edit func(f *File) error, op
 		return err
 	}
 	if edits.Empty() {
-		return nil
+		// A trailer mode can still have work to do.
+		tc, ok := tw.(registry.TrailerChanger)
+		if !ok {
+			return nil
+		}
+		changed, err := safely(target, func() (bool, error) { return tc.ChangesTrailer(ctx, f.reader, f.src.size, edits) })
+		if err != nil || !changed {
+			return err
+		}
 	}
 
 	job := &writeJob{

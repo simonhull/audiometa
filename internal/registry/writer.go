@@ -48,6 +48,37 @@ type InPlaceWriter interface {
 	InPlacePatch(ctx context.Context, src io.ReaderAt, size int64, edits *types.EditSet) (*Patch, error)
 }
 
+// ID3v1Mode says what a write does with an ID3v1 trailer.
+type ID3v1Mode int
+
+// ID3v1 trailer modes.
+const (
+	// ID3v1Keep copies an existing trailer unchanged.
+	ID3v1Keep ID3v1Mode = iota
+	// ID3v1Update rewrites an existing trailer from the edited tags.
+	ID3v1Update
+	// ID3v1Remove drops an existing trailer.
+	ID3v1Remove
+)
+
+// ID3v1Configurer is optionally implemented by TagWriters whose format can
+// end in an ID3v1 trailer.
+type ID3v1Configurer interface {
+	// WithID3v1 returns a writer that applies mode to the trailer. The
+	// receiver is unchanged. The returned writer also implements
+	// [TrailerChanger].
+	WithID3v1(mode ID3v1Mode) TagWriter
+}
+
+// TrailerChanger is implemented by writers returned from
+// [ID3v1Configurer.WithID3v1].
+type TrailerChanger interface {
+	// ChangesTrailer reports whether WriteFile with edits would write a
+	// different ID3v1 trailer than src has. The write path uses it to decide
+	// that a write with no tag edits still has work to do.
+	ChangesTrailer(ctx context.Context, src io.ReaderAt, size int64, edits *types.EditSet) (bool, error)
+}
+
 // Patch is an in-place edit: Data is written over the file at offset Off.
 type Patch struct {
 	Off  int64
