@@ -310,7 +310,9 @@ func (e *ilstEditor) setItem(typ string, values []string) error {
 	return nil
 }
 
-// encodeInt encodes decimal v as a big-endian integer of spec's width.
+// encodeInt encodes decimal v as a big-endian integer of spec's width. v must
+// be in the form the reader returns ("7", not "07" or "+7"), so the value
+// written is the value read back.
 func encodeInt(spec intSpec, v string) ([]byte, error) {
 	if !slices.Contains([]int{1, 2, 3, 4, 8}, spec.width) {
 		return nil, fmt.Errorf("integer width %d", spec.width)
@@ -319,14 +321,14 @@ func encodeInt(spec intSpec, v string) ([]byte, error) {
 	var u uint64
 	if spec.dataType == dataTypeBESigned {
 		n, err := strconv.ParseInt(v, 10, int(bits))
-		if err != nil {
-			return nil, fmt.Errorf("%q is not a %d-bit signed integer", v, bits)
+		if err != nil || strconv.FormatInt(n, 10) != v {
+			return nil, fmt.Errorf("%q is not a %d-bit signed integer in plain decimal", v, bits)
 		}
 		u = uint64(n) //nolint:gosec // G115: two's-complement bits, truncated to the width below
 	} else {
 		n, err := strconv.ParseUint(v, 10, int(bits))
-		if err != nil {
-			return nil, fmt.Errorf("%q is not a %d-bit unsigned integer", v, bits)
+		if err != nil || strconv.FormatUint(n, 10) != v {
+			return nil, fmt.Errorf("%q is not a %d-bit unsigned integer in plain decimal", v, bits)
 		}
 		u = n
 	}
@@ -432,10 +434,10 @@ func (e *ilstEditor) applyField(f types.FieldEdit) error {
 }
 
 // isMovementIndex reports whether v fits ©mvi: an integer from 1 to 32767
-// (a 16-bit signed integer; 0 means unset).
+// (a 16-bit signed integer; 0 means unset) in plain decimal, as it reads back.
 func isMovementIndex(v string) bool {
 	n, err := strconv.ParseInt(v, 10, 16)
-	return err == nil && n >= 1
+	return err == nil && n >= 1 && strconv.FormatInt(n, 10) == v
 }
 
 // fieldTargets returns the raw keys a field edit writes: when setting, the

@@ -118,6 +118,10 @@ func TestIlst_FieldEdits(t *testing.T) {
 			itemFreeform, ilstFreeform(keySeriesPart, "4.5"), nil,
 		},
 		{
+			"series part zero-padded", nil, func(tg *types.Tags) { tg.SeriesPart = "04" },
+			itemFreeform, ilstFreeform(keySeriesPart, "04"), nil,
+		},
+		{
 			"series part into mvi refused",
 			[][]byte{ilstInt(itemMvi, dataTypeBESigned, []byte{0, 2})},
 			func(tg *types.Tags) { tg.SeriesPart = "4.5" }, itemMvi, nil, types.ErrUnsupportedWrite,
@@ -350,7 +354,8 @@ func TestIlst_IntegerItemEdit(t *testing.T) {
 	if want := ilstInt("tmpo", dataTypeBESigned, []byte{0, 0x78}); !bytes.Equal(itemOf(t, out, "tmpo"), want) {
 		t.Errorf("tmpo = %x, want %x", itemOf(t, out, "tmpo"), want)
 	}
-	for _, v := range []string{"fast", "40000"} {
+	// "007", "+7" and "-0" parse, but would read back as "7", "7" and "0".
+	for _, v := range []string{"fast", "40000", "007", "+7", "-0", "00"} {
 		if _, err := tryTags(t, src, func(tg *types.Tags) { tg.Set("tmpo", v) }); !errors.Is(err, types.ErrUnsupportedWrite) {
 			t.Errorf("tmpo %q: err = %v, want ErrUnsupportedWrite", v, err)
 		}
@@ -358,6 +363,9 @@ func TestIlst_IntegerItemEdit(t *testing.T) {
 	u := buildMP4(false, ilstInt("cpil", dataTypeBEUnsigned, []byte{1}))
 	if _, err := tryTags(t, u, func(tg *types.Tags) { tg.Set("cpil", "-1") }); !errors.Is(err, types.ErrUnsupportedWrite) {
 		t.Errorf("negative unsigned: err = %v", err)
+	}
+	if _, err := tryTags(t, u, func(tg *types.Tags) { tg.Set("cpil", "+1") }); !errors.Is(err, types.ErrUnsupportedWrite) {
+		t.Errorf("unsigned with a sign: err = %v", err)
 	}
 }
 

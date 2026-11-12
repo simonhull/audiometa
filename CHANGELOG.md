@@ -39,6 +39,7 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- M4A: an integer item (`tmpo`, `©mvi`, `cpil`, ...) set to a number that is not in plain decimal, such as `"07"`, `"+7"` or `"-0"`, now fails with `ErrUnsupportedWrite` instead of being stored as the number and reading back as `"7"` or `"0"`. A `SeriesPart` like `"04"` goes to the `SERIES PART` text item, which keeps it as written, instead of `©mvi`.
 - FLAC, Ogg Vorbis and Opus: a picture written by `AddArtwork`/`ReplaceArtwork` now carries its color depth along with its width and height (or none of them when the image header cannot be read), as the FLAC picture format requires; the depth used to be left at 0. PNG, JPEG and GIF depths are read. A GIF's size is now read too, so MP3 and M4A report it.
 - M4A/M4B: a QuickTime chapter track whose time table claims far more samples than the file holds no longer makes Open allocate tens of megabytes; the chapters are bounded by the samples the file actually contains.
 - MP3: a file ending in an APEv2 or Lyrics3 tag whose bytes happen to contain "TAG" 128 bytes before the end is no longer read as having an ID3v1 tag. Its title, artist and other fallback fields used to be filled from those bytes.
