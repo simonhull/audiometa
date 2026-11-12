@@ -7,10 +7,30 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 )
 
 // chunkSize is the copy buffer size for CopyRange.
 const chunkSize = 1 << 20
+
+// chunkPool recycles full-size copy buffers: every writer and digest copies
+// large ranges, and a fresh 1 MiB buffer per call is most of their garbage.
+// Copies shorter than chunkSize allocate exactly what they need instead. An
+// [io.Writer] must not retain the slice it is given, which makes reuse safe.
+var chunkPool = sync.Pool{New: func() any { return newChunk() }}
+
+func newChunk() *[]byte {
+	b := make([]byte, chunkSize)
+	return &b
+}
+
+// getChunk returns a chunkSize buffer from chunkPool.
+func getChunk() *[]byte {
+	if p, ok := chunkPool.Get().(*[]byte); ok {
+		return p
+	}
+	return newChunk()
+}
 
 // CopyRange copies n bytes of src, starting at off, to w in 1 MiB chunks. It
 // checks ctx before every chunk and returns ctx.Err() once ctx is done. A
@@ -20,7 +40,14 @@ func CopyRange(ctx context.Context, w io.Writer, src io.ReaderAt, off, n int64) 
 	if off < 0 || n < 0 {
 		return 0, fmt.Errorf("copy range: invalid range off=%d n=%d", off, n)
 	}
-	buf := make([]byte, min(n, chunkSize))
+	var buf []byte
+	if n >= chunkSize {
+		p := getChunk()
+		defer chunkPool.Put(p)
+		buf = *p
+	} else {
+		buf = make([]byte, n)
+	}
 	var written int64
 	for written < n {
 		if err := ctx.Err(); err != nil {

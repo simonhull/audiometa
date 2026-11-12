@@ -98,7 +98,7 @@ func parseTechnicalInfo(ctx context.Context, sr *binutil.SafeReader, tagSize int
 		file.Audio.SampleRate = sampleRate
 		file.Audio.Channels = channels
 		file.Audio.Codec = "MP3"
-		vbr := parseVBRHeader(sr, frameOffset, header, fileSize)
+		vbr := parseVBRHeader(sr, window, start, frameOffset, header, fileSize)
 		file.Audio.VBR = vbr.kind == vbrXing || vbr.kind == vbrVBRI
 		if vbr.frames == 0 {
 			// No frame count: constant bitrate, duration from the audio size.
@@ -270,13 +270,28 @@ const xingReadLen = 120 + 24
 
 // parseVBRHeader reads the Xing/Info header (and a LAME tag after it) or the
 // VBRI header of the first frame. end bounds the read.
-func parseVBRHeader(sr *binutil.SafeReader, frameOffset int64, header uint32, end int64) vbrHeader {
+//
+// The bytes come from window (which starts at windowStart in the file) when
+// they lie inside it, and from sr otherwise: a frame found near the end of the
+// window has its header partly beyond it.
+func parseVBRHeader(sr *binutil.SafeReader, window []byte, windowStart, frameOffset int64, header uint32, end int64) vbrHeader {
+	// bytesAt returns the n bytes at off, or nil when they cannot be read.
+	bytesAt := func(off int64, n int, what string) []byte {
+		if rel := off - windowStart; rel >= 0 && rel+int64(n) <= int64(len(window)) {
+			return window[rel : rel+int64(n)]
+		}
+		buf := make([]byte, n)
+		if err := sr.ReadAt(buf, off, what); err != nil {
+			return nil
+		}
+		return buf
+	}
+
 	// Xing/Info follows the frame header and the side information, whose size
 	// depends on MPEG version and channel mode.
 	xingOffset := frameOffset + 4 + sideInfoSize(header)
 	if n := min(xingReadLen, end-xingOffset); n >= 8 {
-		buf := make([]byte, n)
-		if err := sr.ReadAt(buf, xingOffset, "VBR header"); err == nil {
+		if buf := bytesAt(xingOffset, int(n), "VBR header"); buf != nil {
 			switch string(buf[:4]) {
 			case "Xing":
 				return parseXing(vbrXing, buf)
@@ -286,8 +301,7 @@ func parseVBRHeader(sr *binutil.SafeReader, frameOffset int64, header uint32, en
 		}
 	}
 	// VBRI is always 32 bytes after the 4-byte header, regardless of channel mode.
-	var vbri [18]byte
-	if err := sr.ReadAt(vbri[:], frameOffset+36, "VBRI header"); err == nil && string(vbri[:4]) == "VBRI" {
+	if vbri := bytesAt(frameOffset+36, 18, "VBRI header"); vbri != nil && string(vbri[:4]) == "VBRI" {
 		return vbrHeader{
 			kind:   vbrVBRI,
 			bytes:  binary.BigEndian.Uint32(vbri[10:14]),

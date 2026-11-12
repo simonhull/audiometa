@@ -335,6 +335,37 @@ func TestRead_ZeroAllocsAfterWarmup(t *testing.T) {
 	}
 }
 
+func TestPrefetched(t *testing.T) {
+	data := seqData(100)
+	cr := &countingReader{data: data}
+	p := &Prefetched{R: cr, Buf: data[:40]}
+	tests := []struct {
+		name      string
+		off       int64
+		n         int
+		wantCalls int
+	}{
+		{"inside", 5, 10, 0},
+		{"whole region", 0, 40, 0},
+		{"straddling", 35, 10, 1},
+		{"outside", 60, 10, 1},
+	}
+	for _, tt := range tests {
+		before := cr.calls
+		buf := make([]byte, tt.n)
+		n, err := p.ReadAt(buf, tt.off)
+		if err != nil || n != tt.n {
+			t.Fatalf("%s: ReadAt = %d, %v", tt.name, n, err)
+		}
+		if string(buf) != string(data[tt.off:tt.off+int64(tt.n)]) {
+			t.Errorf("%s: wrong bytes", tt.name)
+		}
+		if got := cr.calls - before; got != tt.wantCalls {
+			t.Errorf("%s: underlying calls = %d, want %d", tt.name, got, tt.wantCalls)
+		}
+	}
+}
+
 func TestSafeReader_ReadAt_ReturnsOutOfBoundsError(t *testing.T) {
 	sr := NewSafeReader(&mockReader{data: seqData(10)}, 10, "p.bin")
 	tests := []struct {

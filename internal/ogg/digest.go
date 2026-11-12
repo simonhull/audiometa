@@ -34,7 +34,7 @@ func (digester) AudioDigest(ctx context.Context, src io.ReaderAt, size int64) ([
 	if size <= 0 {
 		return nil, &types.CorruptedFileError{Reason: "empty Ogg stream"}
 	}
-	sr := binary.NewSafeReader(src, size, "")
+	pages := newPageStream(src, size, "", true) // pages are hashed as they are read
 	h := sha256.New()
 	var serial uint32
 	var skip headerSkip
@@ -42,7 +42,7 @@ func (digester) AudioDigest(ctx context.Context, src io.ReaderAt, size int64) ([
 		if err := binary.Canceled(ctx, i); err != nil {
 			return nil, err
 		}
-		page, next, err := readPage(sr, off)
+		page, next, err := pages.next()
 		if err != nil {
 			if i > 0 && skip.remaining == 0 {
 				break // trailing data after the audio began

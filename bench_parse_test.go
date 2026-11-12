@@ -13,14 +13,19 @@ import (
 
 var update = flag.Bool("update", false, "rewrite golden files")
 
-// countingReaderAt counts ReadAt calls on the wrapped reader.
+// countingReaderAt counts ReadAt calls and bytes requested on the wrapped
+// reader. It records each call's offset in offs.
 type countingReaderAt struct {
 	r     io.ReaderAt
 	calls int
+	bytes int64
+	offs  []int64
 }
 
 func (c *countingReaderAt) ReadAt(p []byte, off int64) (int, error) {
 	c.calls++
+	c.bytes += int64(len(p))
+	c.offs = append(c.offs, off)
 	return c.r.ReadAt(p, off)
 }
 

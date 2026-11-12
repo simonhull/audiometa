@@ -9,7 +9,6 @@ import (
 	"io"
 	"strings"
 
-	binutil "github.com/simonhull/audiometa/internal/binary"
 	"github.com/simonhull/audiometa/internal/types"
 )
 
@@ -17,17 +16,31 @@ import (
 //
 // Ogg files can embed artwork via the METADATA_BLOCK_PICTURE Vorbis comment,
 // which contains a base64-encoded FLAC picture block.
+//
+// It reads only the header packets and decodes only the comment packet: the
+// duration, the technical headers and the rest of the file are left alone.
 func (p *parser) ExtractArtwork(ctx context.Context, r io.ReaderAt, size int64, path string) ([]types.Artwork, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
-	sr := binutil.NewSafeReader(r, size, path)
-
-	// Parse file to get Vorbis comments
-	file, err := p.Parse(ctx, r, size, path)
+	var file types.File // scratch: receives the comment header's tags
+	h, err := readHeaderPackets(ctx, r, size, path, &file, maxHeaderBytes)
 	if err != nil {
 		return nil, fmt.Errorf("parse file: %w", err)
+	}
+	if len(h.packets) < 2 {
+		return nil, fmt.Errorf("parse file: not enough packets found (need at least 2, got %d)", len(h.packets))
+	}
+	// A comment header that fails to decode keeps the tags read before the
+	// failure, as in Parse, where it is only a warning.
+	switch codec := detectOggCodec(h.packets[0]); codec {
+	case codecVorbis:
+		_ = parseVorbisComment(h.packets[1], &file)
+	case codecOpus:
+		_ = parseOpusTags(h.packets[1], &file)
+	default:
+		return nil, fmt.Errorf("parse file: unknown or unsupported Ogg codec: %q", codec)
 	}
 
 	var artwork []types.Artwork
@@ -47,10 +60,6 @@ func (p *parser) ExtractArtwork(ctx context.Context, r io.ReaderAt, size int64, 
 			artwork = append(artwork, pic)
 		}
 	}
-
-	// Also check raw comments in case they weren't parsed into Tags.raw
-	// (defensive - they should be there)
-	_ = sr // silence unused warning; sr could be used for direct parsing if needed
 
 	return artwork, nil
 }

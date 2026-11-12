@@ -19,7 +19,8 @@ type parser struct{}
 
 // detectM4Format classifies the file as M4A or M4B using the same ftyp brand
 // rules as types.DetectFormat, so Parse and the public Open path agree.
-// Files DetectFormat rejects (no ftyp, unknown brand) default to M4A.
+// Files DetectFormat rejects (no ftyp, unknown brand) default to M4A. Under
+// Open the head it reads is already in memory, so it costs no extra read.
 func detectM4Format(r io.ReaderAt, size int64, path string) types.Format {
 	if format, err := types.DetectFormat(r, size, path); err == nil && format == types.FormatM4B {
 		return types.FormatM4B

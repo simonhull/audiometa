@@ -376,16 +376,16 @@ programs:
 
 ## Performance
 
-Measured with `go test -run '^$' -bench 'BenchmarkParse|BenchmarkOpenFile' -benchmem -count 3 .`
+Measured with `go test -run '^$' -bench 'BenchmarkParse|BenchmarkOpenFile' -benchmem -count 6 .`
 on an AMD Ryzen 9 5950X (Linux, Go 1.27.3). The fixtures in `testdata/bench/` are
-10-second audiobook files with a full tag set and 50 chapters. Medians of three runs:
+10-second audiobook files with a full tag set and 50 chapters. Medians of six runs; the memory column is `Open` on a real file (`BenchmarkOpenFile`):
 
 | Fixture | `Open` (real file) | Parse only (in memory) | `ReadAt` calls | Memory / allocs per open |
 |---------|-------------------:|-----------------------:|---------------:|-------------------------:|
-| `book.flac` | 21 µs | 13 µs | 2 | 41 KB / 158 |
-| `book.m4b`  | 29 µs | 19 µs | 3 | 68 KB / 542 |
-| `book.mp3`  | 38 µs | 26 µs | 5 | 101 KB / 491 |
-| `book.opus` | 56 µs | 46 µs | 3 | 105 KB / 445 |
+| `book.flac` | 22 µs | 11 µs | 1 | 39 KiB / 109 |
+| `book.m4b`  | 27 µs | 21 µs | 1 | 44 KiB / 543 |
+| `book.mp3`  | 43 µs | 33 µs | 4 | 98 KiB / 440 |
+| `book.opus` | 58 µs | 49 µs | 1 | 85 KiB / 444 |
 
 Numbers depend on the machine and on the files, so treat them as an order of magnitude and
 run the benchmarks on your own hardware. Artwork is not included: it is read only by
