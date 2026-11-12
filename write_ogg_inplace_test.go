@@ -25,26 +25,12 @@ func TestWriteInPlaceOgg(t *testing.T) {
 			digest := func() [32]byte { return oggAudioDigest(t, readTestdata(t, path)) }
 			want := digest()
 
-			// Stat through an open handle: on Windows only a handle stat carries
-			// the file identity os.SameFile compares; a path stat loads it lazily.
-			stat := func() os.FileInfo {
-				h, err := os.Open(path)
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer h.Close()
-				st, err := h.Stat()
-				if err != nil {
-					t.Fatal(err)
-				}
-				return st
-			}
-			before := stat()
+			before := handleStat(t, path)
 			same := strings.Repeat("Q", len(title))
 			if err := audiometa.Write(path, func(f *audiometa.File) error { f.Tags.Title = same; return nil }, audiometa.WithInPlace()); err != nil {
 				t.Fatal(err)
 			}
-			after := stat()
+			after := handleStat(t, path)
 			if !os.SameFile(before, after) || after.Size() != before.Size() {
 				t.Error("an equal-length edit was not patched in place")
 			}
@@ -65,4 +51,20 @@ func TestWriteInPlaceOgg(t *testing.T) {
 			}
 		})
 	}
+}
+
+// handleStat stats path through an open handle: on Windows only a handle stat
+// carries the file identity os.SameFile compares; a path stat loads it lazily.
+func handleStat(t *testing.T, path string) os.FileInfo {
+	t.Helper()
+	h, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer h.Close()
+	st, err := h.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return st
 }
