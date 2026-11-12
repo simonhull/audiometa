@@ -278,3 +278,42 @@ func TestEndsWithID3v1(t *testing.T) {
 		})
 	}
 }
+
+func TestScan_NamesBlocksInFileOrder(t *testing.T) {
+	t.Parallel()
+	blocks := [][]byte{ape(40, true), lyrics3v2("IND0000210"), id3v2WithFooter(30), id3v1()}
+	kinds := []Kind{KindAPEv2, KindLyrics3, KindID3v2, KindID3v1}
+
+	for n := range len(blocks) + 1 {
+		data := slices.Concat(append([][]byte{audio}, blocks[:n]...)...)
+		end, got, err := Scan(t.Context(), sr(data), 0, int64(len(data)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if end != int64(len(audio)) {
+			t.Errorf("%d blocks: Scan end = %d, want %d", n, end, len(audio))
+		}
+		var want []Block
+		off := int64(len(audio))
+		for i, b := range blocks[:n] {
+			want = append(want, Block{Kind: kinds[i], Off: off, Size: int64(len(b))})
+			off += int64(len(b))
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("%d blocks: Scan blocks = %v, want %v", n, got, want)
+		}
+	}
+}
+
+func TestScan_AgreesWithStart(t *testing.T) {
+	t.Parallel()
+	data := slices.Concat(audio, id3v1(), ape(12, false))
+	want, err := Start(t.Context(), sr(data), 0, int64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _, err := Scan(t.Context(), sr(data), 0, int64(len(data)))
+	if err != nil || got != want {
+		t.Errorf("Scan end = %d, %v; Start = %d", got, err, want)
+	}
+}
