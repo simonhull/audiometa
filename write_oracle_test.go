@@ -57,7 +57,7 @@ func runOracle(t *testing.T, tool string, args ...string) []byte {
 	cmd := exec.CommandContext(ctx, tool, args...)
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil || stderr.Len() > 0 {
-		t.Fatalf("%s %s: %v\nstderr: %s", filepath.Base(tool), strings.Join(args, " "), err, stderr.String())
+		t.Fatalf("%s %s: %v\nstdout: %s\nstderr: %s", filepath.Base(tool), strings.Join(args, " "), err, stdout.String(), stderr.String())
 	}
 	return stdout.Bytes()
 }
