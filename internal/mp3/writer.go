@@ -94,9 +94,10 @@ func (w *writer) AudioDigest(ctx context.Context, src io.ReaderAt, size int64) (
 	return writeutil.DigestRange(ctx, src, start, end-start)
 }
 
-// PreservedDigest returns the SHA-256 of everything after the ID3v2 tag,
-// including any APEv2, Lyrics3 and ID3v1 tags: the bytes WriteFile copies
-// verbatim.
+// PreservedDigest returns the SHA-256 of everything after the ID3v2 tag up to
+// an ID3v1 trailer, including any APEv2 and Lyrics3 tags: the bytes WriteFile
+// always copies verbatim. The trailer is left out because a write may update
+// or remove it.
 func (w *writer) PreservedDigest(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error) {
 	ranges, err := w.PreservedRanges(ctx, src, size)
 	if err != nil {
@@ -105,16 +106,17 @@ func (w *writer) PreservedDigest(ctx context.Context, src io.ReaderAt, size int6
 	return writeutil.DigestRanges(ctx, src, ranges)
 }
 
-// PreservedRanges returns everything after the ID3v2 tag.
+// PreservedRanges returns everything after the ID3v2 tag up to an ID3v1
+// trailer.
 func (w *writer) PreservedRanges(ctx context.Context, src io.ReaderAt, size int64) ([]registry.Range, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	start, _, _, err := audioRange(binutil.NewSafeReader(src, size, ""), size)
+	start, end, _, err := audioRange(binutil.NewSafeReader(src, size, ""), size)
 	if err != nil {
 		return nil, err
 	}
-	return []registry.Range{{Off: start, End: size}}, nil
+	return []registry.Range{{Off: start, End: end}}, nil
 }
 
 // InPlacePatch returns the new tag to write at offset 0 when the file has an
