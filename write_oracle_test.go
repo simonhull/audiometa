@@ -3,7 +3,8 @@ package audiometa_test
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"maps"
 	"os"
@@ -70,7 +71,7 @@ type probeResult struct {
 		} `json:"disposition"`
 		Tags map[string]string `json:"tags"`
 	} `json:"streams"`
-	Chapters []json.RawMessage `json:"chapters"`
+	Chapters []jsontext.Value `json:"chapters"`
 	Format   struct {
 		Tags map[string]string `json:"tags"`
 	} `json:"format"`
@@ -106,7 +107,7 @@ func ffprobe(t *testing.T, tool, path string) probeResult {
 	t.Helper()
 	out := runOracle(t, tool, "-v", "error", "-show_format", "-show_streams", "-show_chapters", "-of", "json", path)
 	var res probeResult
-	if err := json.Unmarshal(out, &res); err != nil {
+	if err := json.Unmarshal(out, &res, jsontext.AllowDuplicateNames(true)); err != nil {
 		t.Fatalf("decode ffprobe output for %s: %v", path, err)
 	}
 	return res
