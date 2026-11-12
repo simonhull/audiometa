@@ -490,13 +490,22 @@ func writerFor(format Format) (registry.TagWriter, error) {
 	return tw, nil
 }
 
-// buildEdits re-parses the source and diffs it against f's current state.
-func (f *File) buildEdits(ctx context.Context) (*types.EditSet, error) {
+// reparse re-reads the source as the writers see it: tags bound to the format.
+func (f *File) reparse(ctx context.Context) (*types.File, error) {
 	orig, err := safely(f.src.path, func() (*types.File, error) { return f.parser.Parse(ctx, f.reader, f.src.size, f.src.path) })
 	if err != nil {
 		return nil, fmt.Errorf("re-read %s: %w", f.src.format, err)
 	}
 	types.BindFormat(&orig.Tags, f.src.format)
+	return orig, nil
+}
+
+// buildEdits re-parses the source and diffs it against f's current state.
+func (f *File) buildEdits(ctx context.Context) (*types.EditSet, error) {
+	orig, err := f.reparse(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	if !slices.EqualFunc(f.Chapters, orig.Chapters, chapterEqual) {
 		return nil, fmt.Errorf("%w: chapter editing is not supported", ErrUnsupportedWrite)

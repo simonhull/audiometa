@@ -24,6 +24,12 @@ type TagWriter interface {
 	// WriteFile streams a complete new file to w: src (size bytes) with edits applied.
 	// It never modifies src. It returns bytes written. Errors wrap the types.Err* sentinels
 	// where one applies; structural problems return *types.CorruptedFileError.
+	//
+	// WriteFile must validate the whole file before it writes its first byte
+	// to w: it refuses a file it cannot rewrite (DRM, fragmented layout, a
+	// damaged chunk chain) before any output. File.Writable relies on this: it
+	// calls WriteFile with a one-field edit and a w that fails at the first
+	// byte, and reports a failure of any other kind as the file's refusal.
 	WriteFile(ctx context.Context, w io.Writer, src io.ReaderAt, size int64, edits *types.EditSet) (int64, error)
 
 	// PreservedDigest returns the SHA-256 of every byte a metadata write must
