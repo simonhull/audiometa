@@ -233,6 +233,10 @@ linters:
       # directory-sync hook (atomicfile_test). The other tests in these files are parallel.
       - linters: [paralleltest]
         path: ^(file_boundary_test|digest_test|version_test|internal/atomicfile/atomicfile_test)\.go$
+      # These tests register and unregister formats in the process-wide parser, writer and
+      # digester registries; two of them running at once undo each other's registrations.
+      - linters: [paralleltest]
+        path: ^internal/registry/(registry|writer)_test\.go$
       # The subtests of these tests share one SafeReader, which is not safe for concurrent use.
       - linters: [paralleltest]
         path: ^internal/binary/(endian|reader)_test\.go$

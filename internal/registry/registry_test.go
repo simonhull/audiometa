@@ -18,7 +18,6 @@ func (m *mockParser) Parse(_ context.Context, _ io.ReaderAt, _ int64, _ string) 
 }
 
 func TestRegisterAndGet(t *testing.T) {
-	t.Parallel()
 	// Use a format that's unlikely to conflict with real registrations
 	format := types.Format(999)
 	parser := &mockParser{name: "test"}
@@ -41,7 +40,6 @@ func TestRegisterAndGet(t *testing.T) {
 }
 
 func TestGet_Unregistered(t *testing.T) {
-	t.Parallel()
 	// Use a format that's definitely not registered
 	format := types.Format(998)
 
@@ -52,7 +50,6 @@ func TestGet_Unregistered(t *testing.T) {
 }
 
 func TestRegister_Overwrites(t *testing.T) {
-	t.Parallel()
 	format := types.Format(997)
 	parser1 := &mockParser{name: "first"}
 	parser2 := &mockParser{name: "second"}
@@ -80,7 +77,6 @@ func (m *mockArtworkExtractor) ExtractArtwork(_ context.Context, _ io.ReaderAt, 
 }
 
 func TestArtworkExtractorInterface(t *testing.T) {
-	t.Parallel()
 	format := types.Format(996)
 	parser := &mockArtworkExtractor{name: "artwork"}
 
