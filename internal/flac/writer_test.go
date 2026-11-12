@@ -225,7 +225,7 @@ func pictureFLAC() []byte {
 func TestPicture_ReplaceFront(t *testing.T) {
 	t.Parallel()
 	src := pictureFLAC()
-	art := types.Artwork{MIMEType: "image/png", Description: "Cover ✓", Data: []byte("new front"), Type: types.ArtworkFrontCover, Width: 600, Height: 400}
+	art := types.Artwork{MIMEType: "image/png", Description: "Cover ✓", Data: onePixelPNG(t), Type: types.ArtworkFrontCover, Width: 1, Height: 1}
 	out := writeBytes(t, src, editsFor(t, src, nil,
 		types.ArtworkOp{Kind: types.ArtworkOpRemove, Type: types.ArtworkFrontCover},
 		types.ArtworkOp{Kind: types.ArtworkOpAdd, Art: art}))
@@ -234,7 +234,7 @@ func TestPicture_ReplaceFront(t *testing.T) {
 	if len(got) != 2 || got[0].Type != types.ArtworkBackCover || got[1].Type != types.ArtworkFrontCover {
 		t.Fatalf("artwork %v, want back then front", got)
 	}
-	if a := got[1]; !bytes.Equal(a.Data, art.Data) || a.MIMEType != art.MIMEType || a.Description != art.Description || a.Width != 600 || a.Height != 400 {
+	if a := got[1]; !bytes.Equal(a.Data, art.Data) || a.MIMEType != art.MIMEType || a.Description != art.Description || a.Width != 1 || a.Height != 1 {
 		t.Errorf("new front = %+v", a)
 	}
 	before := blocksOfType(metaOf(t, src).blocks, blockTypePicture)[1].payload

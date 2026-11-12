@@ -42,7 +42,13 @@ func trailerText(trailer []byte, from, to int) string {
 // audioDigestOf returns the audio digest of the file at path.
 func audioDigestOf(t *testing.T, path string) [32]byte {
 	t.Helper()
-	f := openFile(t, path)
+	// Close before returning: the tests write the file next, and Windows
+	// refuses to replace a file that is still open.
+	f, err := audiometa.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
 	sum, err := f.AudioDigest()
 	if err != nil {
 		t.Fatal(err)
