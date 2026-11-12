@@ -47,7 +47,7 @@ func TestWriteVorbisCarriesTheHeadersOpaquely(t *testing.T) {
 			}
 			// A header page carries granule position 0 when a packet ends on it and -1 otherwise,
 			// and the last one ends the setup packet.
-			hdr := mustPages(t, out)[1 : 1+after.headerPages]
+			hdr := mustPages(t, out)[1 : 1+len(after.pages)]
 			for i, p := range hdr {
 				want := int64(noGranule)
 				if packetEndsOn(p.page) {

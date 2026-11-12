@@ -17,7 +17,8 @@ import (
 // FuzzWriteOgg runs the registered writer over arbitrary bytes with an edit
 // that keeps the header page count and one that adds a page. A write that
 // succeeds must read back, keep the audio and the preserved bytes, land the
-// edit and be deterministic; one that fails must not have written anything.
+// edit and be deterministic, and an in-place patch must give the same bytes; one
+// that fails must not have written anything.
 func FuzzWriteOgg(f *testing.F) {
 	for _, name := range []string{"sample.ogg", "sample.opus", "sample_retagged.ogg", "sample_retagged.opus", "bench/book.opus"} {
 		if data, err := os.ReadFile(filepath.Join("..", "..", "testdata", name)); err == nil {
@@ -81,6 +82,18 @@ func checkFuzzOutput(t *testing.T, w *writer, data, out []byte, edits *types.Edi
 		b, errB := f(ctx, bytes.NewReader(out), int64(len(out)))
 		if errA != nil || errB != nil || !bytes.Equal(a, b) {
 			t.Fatalf("%s: %v, %v, equal %v", what, errA, errB, bytes.Equal(a, b))
+		}
+	}
+	if p, err := w.InPlacePatch(ctx, bytes.NewReader(data), int64(len(data)), edits); err != nil {
+		t.Fatalf("InPlacePatch failed after WriteFile succeeded: %v", err)
+	} else if p != nil {
+		if p.Off < 0 || p.Off+int64(len(p.Data)) > int64(len(data)) {
+			t.Fatalf("patch of %d bytes at %d does not fit in %d bytes", len(p.Data), p.Off, len(data))
+		}
+		patched := bytes.Clone(data)
+		copy(patched[p.Off:], p.Data)
+		if !bytes.Equal(patched, out) {
+			t.Fatal("patching in place differs from the full rewrite")
 		}
 	}
 	var again bytes.Buffer

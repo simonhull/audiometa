@@ -5,8 +5,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
+	"errors"
 	"fmt"
-	"hash"
 	"io"
 
 	ibinary "github.com/simonhull/audiometa/internal/binary"
@@ -17,27 +17,32 @@ import (
 )
 
 // writer rewrites the comment header of an Ogg Vorbis or Opus file. It
-// implements [registry.TagWriter].
+// implements [registry.TagWriter], [registry.InPlaceWriter] and
+// [registry.PreservedRanger].
 //
 // Only the comment packet changes: the identification page is copied as it is,
 // the comment packet (with the setup packet after it, for Vorbis) is laid out
-// on fresh pages, and every later page keeps its payload, granule position,
-// flags and serial number byte for byte. When the new header pages are as many
-// as the old ones, the later pages are copied untouched; otherwise their
-// sequence numbers and checksums are recomputed, nothing else. Bytes after the
-// last readable page are copied through.
+// on header pages, and every later page keeps its payload, granule position,
+// flags and serial number byte for byte. When the edited comment packet is as
+// long as the old one the header pages keep their layout, so only payload bytes
+// and checksums change; otherwise the packets are paginated afresh. When the
+// new header pages end at the sequence number the old ones did, the later pages
+// are copied untouched; otherwise their sequence numbers and checksums are
+// recomputed, nothing else. Bytes after the last whole page are copied through.
 //
-// The vendor string and any data after the comments are kept, so Opus padding
-// and binary data survive. The writer adds none: an edit that grows the
-// comment header grows the file. Chained and multiplexed files, which hold
-// more than one logical stream, are refused with [types.ErrUnsupportedWrite].
-// CHAPTERnnn keys are not editable, as for FLAC.
+// The vendor string and any data after the comments are kept. The writer adds
+// no padding: an edit that grows the comment header grows the file. An Opus
+// packet whose data after the comments is padding (RFC 7845 §5.2: it starts
+// with a byte whose lowest bit is 0) keeps its length when the edited comments
+// still fit in it, the padding absorbing the change; data with the lowest bit
+// set is binary data and is kept as it is. Chained and multiplexed files, which
+// hold more than one logical stream, are refused with
+// [types.ErrUnsupportedWrite]. CHAPTERnnn keys are not editable, as for FLAC.
 //
-// The writer does not implement [registry.PreservedRanger]. A rewrite that
-// changes the number of header pages renumbers every later page, so those
-// pages' sequence numbers and checksums, which sit between the bytes that must
-// be preserved, move. [writer.PreservedDigest] therefore hashes the logical
-// content (see there) rather than byte ranges of the file.
+// The preserved bytes are everything but the header pages and the sequence
+// numbers and checksums of the pages after them (see [writer.PreservedRanges]).
+// A Vorbis setup packet, which a rewrite moves, is not among them: the writer
+// never parses it and carries it from memory to its new pages.
 type writer struct {
 	digester
 	codec *codec
@@ -51,6 +56,9 @@ type rewrite struct {
 	// same is true when the edited comment packet equals the old one: the file
 	// is copied as it is, with whatever page layout its encoder chose.
 	same bool
+	// sameLayout is true when the edited comment packet is as long as the old
+	// one: pages holds the old header pages with new payload and checksums.
+	sameLayout bool
 	// keepsNumbers is true when the new header pages end at the sequence number
 	// the old ones did: every later page is copied untouched.
 	keepsNumbers bool
@@ -81,6 +89,10 @@ func (w *writer) plan(ctx context.Context, src io.ReaderAt, size int64, edits *t
 		return r, nil
 	}
 	packets := append([][]byte{comment}, l.packets[2:]...)
+	if len(comment) == len(l.packets[1]) {
+		r.pages, r.sameLayout, r.keepsNumbers = relayout(l, packets), true, true
+		return r, nil
+	}
 	r.pages = paginate(packets, l.serial, l.firstSeq+1, l.eos)
 	headerBytes := l.idEnd
 	for _, p := range r.pages {
@@ -89,7 +101,7 @@ func (w *writer) plan(ctx context.Context, src io.ReaderAt, size int64, edits *t
 	if headerBytes > maxHeaderBytes {
 		return nil, fmt.Errorf("%w: the comment header would take %d bytes of pages, more than the %d a reader accepts", types.ErrUnsupportedWrite, headerBytes, maxHeaderBytes)
 	}
-	r.keepsNumbers = len(r.pages) == l.headerPages && r.pages[len(r.pages)-1].SequenceNumber == l.lastSeq
+	r.keepsNumbers = len(r.pages) == len(l.pages) && r.pages[len(r.pages)-1].SequenceNumber == l.lastSeq
 	return r, nil
 }
 
@@ -120,7 +132,22 @@ func (w *writer) editedComment(ctx context.Context, l *layout, edits *types.Edit
 	if err := applyArtwork(v, edits.Artwork); err != nil {
 		return nil, err
 	}
+	out := append([]byte(magic), v.Encode()...)
+	if bytes.Equal(out, packet) || w.codec != opusCodec || len(c.Tail) == 0 || c.Tail[0]&1 != 0 {
+		return out, nil
+	}
+	// The data after the comments is padding: it absorbs the change in length.
+	core := vorbis.Comments{Vendor: v.Vendor, Entries: v.Entries}
+	v.Tail = opusPadding(len(packet) - len(magic) - len(core.Encode()))
 	return append([]byte(magic), v.Encode()...), nil
+}
+
+// opusPadding returns n zero bytes, or nil when n is not positive.
+func opusPadding(n int) []byte {
+	if n <= 0 {
+		return nil
+	}
+	return make([]byte, n)
 }
 
 // WriteFile streams src with edits applied to out. It validates src before it
@@ -191,16 +218,48 @@ func (r *rewrite) renumber(ctx context.Context, cw *writeutil.CountingWriter, sr
 	return err
 }
 
-// PreservedDigest returns the SHA-256 of what a rewrite must not change:
-// page 0 as stored; for Vorbis, the setup packet; then, for every page of the
-// stream after its header pages, its granule position, flags, serial number,
-// segment table and payload; then any bytes after the last readable page. It
-// leaves out the sequence numbers and checksums of the later pages, which a
-// rewrite changes when the header pages' count does, and the page layout of
-// the header packets, which a rewrite replaces.
+// Offsets in a page of the bytes that carry its sequence number and checksum:
+// the page header's fields before and after them are preserved.
+const (
+	pageHeaderTypeOffset = 5  // start of the header type, granule position and serial number
+	pageSerialEnd        = 18 // end of the serial number, where the sequence number starts
+	pageCRCEnd           = 26 // end of the checksum, where the segment count starts
+)
+
+// PreservedRanges returns what a rewrite must not change, in file order: page
+// 0 as stored; for every page after the header pages, its header type,
+// granule position and serial number, then its segment table and payload,
+// which leaves out the sequence number and the checksum; then any bytes after
+// the last whole page. A rewrite changes those two fields of every later page
+// when the header pages' count changes, and replaces the header pages.
 //
-// It returns an error wrapping [types.ErrUnsupportedWrite] when the file holds
-// a second logical stream.
+// It reads page headers only. It returns an error wrapping
+// [types.ErrUnsupportedWrite] when the file holds a second logical stream.
+func (w *writer) PreservedRanges(ctx context.Context, src io.ReaderAt, size int64) ([]registry.Range, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	l, err := readLayout(ctx, src, size, "")
+	if err != nil {
+		return nil, err
+	}
+	ranges := []registry.Range{{Off: 0, End: l.idEnd}}
+	end, err := walkPages(ctx, src, size, l.audioStart, l.serial, func(p pageSpan) {
+		ranges = append(ranges,
+			registry.Range{Off: p.start + pageHeaderTypeOffset, End: p.start + pageSerialEnd},
+			registry.Range{Off: p.start + pageCRCEnd, End: p.end})
+	})
+	if err != nil {
+		return nil, err
+	}
+	if end < size {
+		ranges = append(ranges, registry.Range{Off: end, End: size})
+	}
+	return ranges, nil
+}
+
+// PreservedDigest returns the SHA-256 of the bytes [writer.PreservedRanges]
+// lists, hashed as one stream. It reads the whole file in one pass.
 func (w *writer) PreservedDigest(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -212,9 +271,6 @@ func (w *writer) PreservedDigest(ctx context.Context, src io.ReaderAt, size int6
 	h := sha256.New()
 	if _, err := writeutil.CopyRange(ctx, h, src, 0, l.idEnd); err != nil {
 		return nil, err
-	}
-	for _, p := range l.packets[2:] {
-		writeLengthPrefixed(h, p)
 	}
 	s := newPageStreamAt(src, size, "", true, l.audioStart)
 	for i := 0; s.off < size; i++ {
@@ -229,29 +285,73 @@ func (w *writer) PreservedDigest(ctx context.Context, src io.ReaderAt, size int6
 			return nil, errMultiStream
 		}
 		var fixed [14]byte
-		binary.LittleEndian.PutUint64(fixed[:8], uint64(page.GranulePosition)) //nolint:gosec // G115: the granule position is a signed field; the cast is its bit pattern
-		fixed[8] = page.HeaderType
+		fixed[0] = page.HeaderType
+		binary.LittleEndian.PutUint64(fixed[1:9], uint64(page.GranulePosition)) //nolint:gosec // G115: the granule position is a signed field; the cast is its bit pattern
 		binary.LittleEndian.PutUint32(fixed[9:13], page.SerialNumber)
 		fixed[13] = byte(len(page.Lacing)) //nolint:gosec // G115: a page has at most 255 lacing values
 		h.Write(fixed[:])
 		h.Write(page.Lacing)
 		h.Write(page.Data)
 	}
-	h.Write([]byte{0xFF}) // end of pages
 	if _, err := writeutil.CopyRange(ctx, h, src, s.off, size-s.off); err != nil {
 		return nil, err
 	}
 	return h.Sum(nil), nil
 }
 
-// writeLengthPrefixed hashes b preceded by its length, so adjacent items
-// cannot be confused.
-func writeLengthPrefixed(h hash.Hash, b []byte) {
-	var n [8]byte
-	binary.LittleEndian.PutUint64(n[:], uint64(len(b)))
-	_, _ = h.Write(n[:])
-	_, _ = h.Write(b)
+// InPlacePatch returns the header pages to write over the old ones when the
+// edited comment packet is as long as the old one, so that the pages keep their
+// layout and only payload bytes and checksums change. The patch covers the
+// first to the last page that changes, and applying it gives what WriteFile
+// writes. It returns nil when the edits change the packet's length.
+func (w *writer) InPlacePatch(ctx context.Context, src io.ReaderAt, size int64, edits *types.EditSet) (*registry.Patch, error) {
+	r, err := w.plan(ctx, src, size, edits)
+	if err != nil {
+		return nil, err
+	}
+	l := r.l
+	switch {
+	case r.same:
+		return &registry.Patch{Off: l.idEnd}, nil // nothing changes
+	case !r.sameLayout:
+		return nil, nil
+	}
+	old := make([]byte, l.audioStart-l.idEnd)
+	if n, err := src.ReadAt(old, l.idEnd); n < len(old) {
+		if err == nil || errors.Is(err, io.EOF) {
+			err = io.ErrUnexpectedEOF
+		}
+		return nil, fmt.Errorf("read the header pages: %w", err)
+	}
+	var fresh []byte
+	for _, p := range r.pages {
+		fresh = appendPage(fresh, p)
+	}
+	if len(fresh) != len(old) {
+		return nil, nil // not reached: the pages keep their lacing
+	}
+	first, last := -1, -1
+	for i, hp := range l.pages {
+		a, b := hp.start-l.idEnd, hp.end-l.idEnd
+		if !bytes.Equal(old[a:b], fresh[a:b]) {
+			if first < 0 {
+				first = i
+			}
+			last = i
+		}
+	}
+	if first < 0 {
+		return &registry.Patch{Off: l.idEnd}, nil
+	}
+	a, b := l.pages[first].start-l.idEnd, l.pages[last].end-l.idEnd
+	return &registry.Patch{Off: l.pages[first].start, Data: fresh[a:b]}, nil
 }
+
+var (
+	_ registry.TagWriter       = (*writer)(nil)
+	_ registry.InPlaceWriter   = (*writer)(nil)
+	_ registry.PreservedRanger = (*writer)(nil)
+)
 
 func init() {
 	registry.RegisterWriter(types.FormatOgg, &writer{codec: vorbisCodec})

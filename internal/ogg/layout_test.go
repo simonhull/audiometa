@@ -36,8 +36,8 @@ func TestReadLayoutCorpus(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", tt.file, err)
 		}
-		if l.codec != tt.codec || l.headerPages != tt.headerPages || len(l.packets) != tt.packets {
-			t.Errorf("%s: codec %s, %d header pages, %d packets", tt.file, l.codec.idName, l.headerPages, len(l.packets))
+		if l.codec != tt.codec || len(l.pages) != tt.headerPages || len(l.packets) != tt.packets {
+			t.Errorf("%s: codec %s, %d header pages, %d packets", tt.file, l.codec.idName, len(l.pages), len(l.packets))
 		}
 		var file types.File
 		h, err := readHeaderPackets(t.Context(), bytes.NewReader(data), int64(len(data)), "x", &file, maxHeaderBytes)
@@ -72,7 +72,7 @@ func TestReadLayoutSpansPages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if l.headerPages != 2 || l.lastSeq != 2 || l.firstSeq != 0 || !bytes.Equal(l.packets[1], comment) {
+	if len(l.pages) != 2 || l.lastSeq != 2 || l.firstSeq != 0 || !bytes.Equal(l.packets[1], comment) {
 		t.Errorf("layout = %+v", l)
 	}
 }

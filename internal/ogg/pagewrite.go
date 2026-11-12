@@ -2,6 +2,7 @@ package ogg
 
 import (
 	ebinary "encoding/binary"
+	"slices"
 )
 
 // pageFixedHeader is the length of an Ogg page header before its segment table.
@@ -93,6 +94,28 @@ func paginate(packets [][]byte, serial, seq uint32, eos bool) []*oggPage {
 	}
 	if eos && len(pages) > 0 {
 		pages[len(pages)-1].HeaderType |= pageEOS
+	}
+	return pages
+}
+
+// relayout lays packets out on the header pages l has: every page keeps its
+// flags, granule position, sequence number and segment table, and takes the
+// payload bytes its segments describe. The packets must be as long in total as
+// the old ones, as they are when only the comment packet changes and keeps its
+// length. The pages' Data aliases one copy of the packets.
+func relayout(l *layout, packets [][]byte) []*oggPage {
+	data := slices.Concat(packets...)
+	pages := make([]*oggPage, len(l.pages))
+	for i, hp := range l.pages {
+		n := 0
+		for _, seg := range hp.lacing {
+			n += int(seg)
+		}
+		pages[i] = &oggPage{
+			HeaderType: hp.typ, GranulePosition: hp.granule, SerialNumber: l.serial, SequenceNumber: hp.seq,
+			Lacing: hp.lacing, Data: data[:n],
+		}
+		data = data[n:]
 	}
 	return pages
 }

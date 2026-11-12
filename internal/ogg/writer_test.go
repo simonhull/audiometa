@@ -228,8 +228,8 @@ func TestWriteCorpus(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%s: %v", label, err)
 			}
-			if l.headerPages != tc.headerWant {
-				t.Errorf("%s: %d header pages, want %d", label, l.headerPages, tc.headerWant)
+			if len(l.pages) != tc.headerWant {
+				t.Errorf("%s: %d header pages, want %d", label, len(l.pages), tc.headerWant)
 			}
 			// The audio pages are the source's: byte for byte when the header
 			// page count is unchanged, in every field but sequence and CRC otherwise.

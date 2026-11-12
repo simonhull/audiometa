@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 
 	"github.com/simonhull/audiometa/internal/binary"
 	"github.com/simonhull/audiometa/internal/types"
@@ -19,15 +20,25 @@ import (
 // pages that each end where a packet ends or continue it, the last header
 // packet finishes its page, and audio starts on a fresh page.
 type layout struct {
-	codec       *codec
-	serial      uint32
-	firstSeq    uint32 // sequence number of page 0
-	lastSeq     uint32 // sequence number of the last header page
-	idEnd       int64  // offset just after page 0
-	audioStart  int64  // offset of the first page after the header pages
-	headerPages int    // pages between idEnd and audioStart
-	eos         bool   // the last header page ends the stream
-	packets     [][]byte
+	codec      *codec
+	serial     uint32
+	firstSeq   uint32 // sequence number of page 0
+	lastSeq    uint32 // sequence number of the last header page
+	idEnd      int64  // offset just after page 0
+	audioStart int64  // offset of the first page after the header pages
+	eos        bool   // the last header page ends the stream
+	packets    [][]byte
+	pages      []headerPage // the pages between idEnd and audioStart
+}
+
+// headerPage is a header page of a stream as the file stores it, without its
+// payload.
+type headerPage struct {
+	start, end int64 // the page's bytes
+	typ        byte
+	granule    int64
+	seq        uint32
+	lacing     []byte
 }
 
 // corruptedAt returns a [*types.CorruptedFileError] for path at off.
@@ -108,7 +119,10 @@ func (lr *layoutReader) add(i int, off, next int64, page *oggPage) error {
 		lr.want = lr.codec.headerPackets
 		lr.idEnd = next
 	} else {
-		lr.headerPages++
+		lr.pages = append(lr.pages, headerPage{
+			start: off, end: next, typ: page.HeaderType, granule: page.GranulePosition,
+			seq: page.SequenceNumber, lacing: slices.Clone(page.Lacing),
+		})
 	}
 	lr.lastSeq, lr.eos, lr.audioStart = page.SequenceNumber, page.HeaderType&pageEOS != 0, next
 	if lr.eos && lr.complete < lr.want {
@@ -148,35 +162,56 @@ func (lr *layoutReader) setCodec() error {
 	return nil
 }
 
-// scanStreams walks the page headers of src from offset off to its end and
-// returns an error wrapping [types.ErrUnsupportedWrite] when any page belongs
-// to a stream other than serial: the file is chained or multiplexed. A page it
-// cannot read ends the walk without an error, as it ends the audio for
-// [digester.AudioDigest]. It reads each page's header and segment table only.
-func scanStreams(ctx context.Context, src io.ReaderAt, size, off int64, serial uint32) error {
+// pageSpan is where a page of the first stream lies in a file.
+type pageSpan struct{ start, end int64 }
+
+// walkPages walks the page headers of src from offset off, which must be a page
+// boundary, to its end, calling visit (when non-nil) with each page. It
+// returns an error wrapping [types.ErrUnsupportedWrite] when a page belongs to
+// a stream other than serial: the file is chained or multiplexed. A page that
+// is not whole in the file ends the walk without an error, as it ends the
+// audio for [digester.AudioDigest]; the walk returns the offset where it
+// stopped, where the trailing bytes begin. It reads each page's header and
+// segment table only.
+func walkPages(ctx context.Context, src io.ReaderAt, size, off int64, serial uint32, visit func(pageSpan)) (end int64, err error) {
 	var buf [pageFixedHeader + maxSegments]byte
 	for i := 0; off+pageFixedHeader <= size; i++ {
 		if err := binary.Canceled(ctx, i); err != nil {
-			return err
+			return off, err
 		}
 		n, err := src.ReadAt(buf[:min(int64(len(buf)), size-off)], off)
 		if n < pageFixedHeader {
 			if err != nil && !errors.Is(err, io.EOF) {
-				return fmt.Errorf("scan Ogg pages at offset %d: %w", off, err)
+				return off, fmt.Errorf("walk Ogg pages at offset %d: %w", off, err)
 			}
-			return nil
+			return off, nil
 		}
 		h := buf[:n]
 		if string(h[:4]) != capturePattern || h[4] != 0 || n < pageFixedHeader+int(h[26]) {
-			return nil
+			return off, nil
+		}
+		next := off + pageFixedHeader + int64(h[26])
+		for _, l := range h[pageFixedHeader : pageFixedHeader+int(h[26])] {
+			next += int64(l)
+		}
+		if next > size {
+			return off, nil
 		}
 		if ebinary.LittleEndian.Uint32(h[14:18]) != serial {
-			return errMultiStream
+			return off, errMultiStream
 		}
-		off += pageFixedHeader + int64(h[26])
-		for _, l := range h[pageFixedHeader : pageFixedHeader+int(h[26])] {
-			off += int64(l)
+		if visit != nil {
+			visit(pageSpan{off, next})
 		}
+		off = next
 	}
-	return nil
+	return off, nil
+}
+
+// scanStreams returns an error wrapping [types.ErrUnsupportedWrite] when a
+// page of src at or after off belongs to a stream other than serial; see
+// [walkPages].
+func scanStreams(ctx context.Context, src io.ReaderAt, size, off int64, serial uint32) error {
+	_, err := walkPages(ctx, src, size, off, serial, nil)
+	return err
 }
