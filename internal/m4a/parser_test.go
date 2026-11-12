@@ -328,3 +328,48 @@ func TestParse_ReplayGainFromFreeform(t *testing.T) {
 		t.Errorf("ReplayGain = %+v, want %+v", got, want)
 	}
 }
+
+func TestParse_ReleaseFields(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		items [][]byte
+		want  map[string]string
+	}{
+		{"Picard names", [][]byte{
+			ilstFreeform("MusicBrainz Track Id", "t"), ilstFreeform("MusicBrainz Album Id", "a"),
+			ilstFreeform("MusicBrainz Artist Id", "x", "y"), ilstFreeform("ISRC", "USRC17607839"),
+			ilstFreeform("BARCODE", "0123"), ilstFreeform("CATALOGNUMBER", "CAT-1"), ilstFreeform("LABEL", "Lbl"),
+			ilstText("cprt", "(c) 2001"),
+		}, map[string]string{
+			"MusicBrainzTrackID": "t", "MusicBrainzAlbumID": "a", "MusicBrainzArtistID": "x", "ISRC": "USRC17607839",
+			"Barcode": "0123", "CatalogNumber": "CAT-1", "Label": "Lbl", "Copyright": "(c) 2001",
+		}},
+		{"lower-case name", [][]byte{ilstFreeform("isrc", "USRC17607839")}, map[string]string{"ISRC": "USRC17607839"}},
+		{"repeated item first wins", [][]byte{ilstFreeform("BARCODE", "111"), ilstFreeform("BARCODE", "222")},
+			map[string]string{"Barcode": "111"}},
+		{"empty first value is skipped", [][]byte{ilstFreeform("LABEL", "", "Lbl")}, map[string]string{"Label": "Lbl"}},
+		{"no original date", [][]byte{ilstFreeform("ORIGINALDATE", "1999")}, map[string]string{}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			data := buildMP4(false, tc.items...)
+			f, err := (&parser{}).Parse(t.Context(), bytes.NewReader(data), int64(len(data)), "x.m4a")
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := map[string]string{
+				"MusicBrainzTrackID": f.Tags.MusicBrainzTrackID, "MusicBrainzAlbumID": f.Tags.MusicBrainzAlbumID,
+				"MusicBrainzArtistID": f.Tags.MusicBrainzArtistID, "ISRC": f.Tags.ISRC, "Barcode": f.Tags.Barcode,
+				"CatalogNumber": f.Tags.CatalogNumber, "Label": f.Tags.Label, "Copyright": f.Tags.Copyright,
+				"OriginalDate": f.Tags.OriginalDate,
+			}
+			for name, v := range got {
+				if v != tc.want[name] {
+					t.Errorf("%s = %q, want %q", name, v, tc.want[name])
+				}
+			}
+		})
+	}
+}

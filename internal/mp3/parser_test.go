@@ -342,3 +342,67 @@ func TestParse_TAGInsideAPEv2IsNotID3v1(t *testing.T) {
 		t.Errorf("tags = %+v, want none: \"TAG\" inside an APEv2 item is not ID3v1", f.Tags)
 	}
 }
+
+func TestParse_ReleaseFields(t *testing.T) {
+	const (
+		albumID  = "f3c0fd5e-ba3e-4a2c-8fd3-6e4a6f0c1b2d"
+		artistID = "5b11f4ce-a62d-471e-81fc-a69a8278c7da"
+	)
+	txt := func(version byte, id, v string) []byte { return id3Frame(version, id, latin1Text(v)) }
+	xxx := func(version byte, desc, v string) []byte {
+		return id3Frame(version, frameIDTXXX, txxxPayload(encUTF8, desc, v))
+	}
+	audio := audioBytes(417 * 4)
+
+	tests := []struct {
+		name string
+		tag  []byte
+		want types.Tags
+	}{
+		{"v2.4", id3Tag(4,
+			txt(4, "TSRC", "USRC17607839"), txt(4, "TCOP", "2001 Label"), txt(4, "TDOR", "1999-06-01"), txt(4, "TPUB", "The Publisher"),
+			xxx(4, "MusicBrainz Album Id", albumID), xxx(4, "MusicBrainz Artist Id", artistID+"\x00other"),
+			xxx(4, "BARCODE", "0123456789"), xxx(4, "CATALOGNUMBER", "CAT-1"),
+			id3Frame(4, frameIDUFID, ufidPayload(mbOwner, recordingID))),
+			types.Tags{ISRC: "USRC17607839", Copyright: "2001 Label", OriginalDate: "1999-06-01", Publisher: "The Publisher",
+				MusicBrainzAlbumID: albumID, MusicBrainzArtistID: artistID, Barcode: "0123456789", CatalogNumber: "CAT-1",
+				MusicBrainzTrackID: recordingID}},
+		{"v2.3 TORY is a year", id3Tag(3, txt(3, "TORY", "1999"), txt(3, "TSRC", "GBAYE0601498")),
+			types.Tags{OriginalDate: "1999", ISRC: "GBAYE0601498"}},
+		{"TDOR before TORY", id3Tag(4, txt(4, "TORY", "1998"), txt(4, "TDOR", "1999-06-01")),
+			types.Tags{OriginalDate: "1999-06-01"}},
+		{"v2.2 TRC TCR TOR TPB", id3Tag(2,
+			id3v22Frame("TRC", latin1Text("USRC17607839")), id3v22Frame("TCR", latin1Text("(c) 2001")),
+			id3v22Frame("TOR", latin1Text("1999")), id3v22Frame("TPB", latin1Text("Pub"))),
+			types.Tags{ISRC: "USRC17607839", Copyright: "(c) 2001", OriginalDate: "1999", Publisher: "Pub"}},
+		{"repeated TXXX first wins", id3Tag(4, xxx(4, "BARCODE", "111"), xxx(4, "BARCODE", "222")),
+			types.Tags{Barcode: "111"}},
+		{"TXXX description is case-insensitive", id3Tag(4, xxx(4, "musicbrainz album id", albumID)),
+			types.Tags{MusicBrainzAlbumID: albumID}},
+		{"TXXX PUBLISHER before TPUB", id3Tag(4, txt(4, "TPUB", "Frame"), xxx(4, "PUBLISHER", "Custom")),
+			types.Tags{Publisher: "Custom"}},
+		{"UFID of another owner", id3Tag(4, id3Frame(4, frameIDUFID, ufidPayload("http://example.com", "x"))),
+			types.Tags{}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := parseBytes(t, slices.Concat(tc.tag, audio)).Tags
+			for _, c := range []struct {
+				name      string
+				got, want string
+			}{
+				{"ISRC", got.ISRC, tc.want.ISRC}, {"Copyright", got.Copyright, tc.want.Copyright},
+				{"OriginalDate", got.OriginalDate, tc.want.OriginalDate}, {"Publisher", got.Publisher, tc.want.Publisher},
+				{"Label", got.Label, ""}, {"Barcode", got.Barcode, tc.want.Barcode},
+				{"CatalogNumber", got.CatalogNumber, tc.want.CatalogNumber},
+				{"MusicBrainzAlbumID", got.MusicBrainzAlbumID, tc.want.MusicBrainzAlbumID},
+				{"MusicBrainzArtistID", got.MusicBrainzArtistID, tc.want.MusicBrainzArtistID},
+				{"MusicBrainzTrackID", got.MusicBrainzTrackID, tc.want.MusicBrainzTrackID},
+			} {
+				if c.got != c.want {
+					t.Errorf("%s = %q, want %q", c.name, c.got, c.want)
+				}
+			}
+		})
+	}
+}

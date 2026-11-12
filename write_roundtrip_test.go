@@ -75,7 +75,8 @@ var longComment = strings.Repeat("0123456789abcdef", 256) // 4096 characters
 
 var roundTripEdits = []tagEdit{
 	{
-		name: "set MusicBrainz IDs as Picard names them",
+		name:   "set MusicBrainz IDs as Picard names them",
+		fields: []string{"MusicBrainzAlbumID", "MusicBrainzTrackID"},
 		apply: func(f *audiometa.File) error {
 			f.Tags.SetNamed("MusicBrainz Album Id", "f3c0fd5e-ba3e-4a2c-8fd3-6e4a6f0c1b2d")
 			if f.Format == audiometa.FormatM4A || f.Format == audiometa.FormatM4B {
@@ -102,6 +103,13 @@ var roundTripEdits = []tagEdit{
 			}
 			if got := f.Tags.GetFirst(recording); got != "8f3471b5-7e6a-48da-86a9-c1c07a0f47ae" {
 				t.Errorf("%s = %q", recording, got)
+			}
+			// The bindings make the typed fields follow the raw keys.
+			if got := f.Tags.MusicBrainzAlbumID; got != "f3c0fd5e-ba3e-4a2c-8fd3-6e4a6f0c1b2d" {
+				t.Errorf("MusicBrainzAlbumID = %q", got)
+			}
+			if got := f.Tags.MusicBrainzTrackID; got != "8f3471b5-7e6a-48da-86a9-c1c07a0f47ae" {
+				t.Errorf("MusicBrainzTrackID = %q", got)
 			}
 		},
 	},

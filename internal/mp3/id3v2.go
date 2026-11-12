@@ -265,6 +265,7 @@ var v22FrameIDs = map[string]string{
 	"TAL": "TALB", "TYE": "TYER", "TRK": "TRCK", "TPA": "TPOS", "TCO": "TCON",
 	"TCM": "TCOM", "COM": frameIDCOMM, "TXX": frameIDTXXX, "GP1": frameIDGRP1, "MVN": frameIDMVNM,
 	"MVI": frameIDMVIN, "PIC": frameIDAPIC, "ULT": frameIDUSLT, "UFI": frameIDUFID,
+	"TRC": "TSRC", "TCR": "TCOP", "TOR": "TORY", "TPB": "TPUB",
 }
 
 // readFrameHeader reads the frame header at offset for the tag's version and

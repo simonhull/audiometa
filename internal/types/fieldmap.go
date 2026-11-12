@@ -35,9 +35,13 @@ const (
 //
 //nolint:goconst // native tag keys are table data, not magic strings
 var (
-	// MP3 raw keys: ID3v2 frame IDs (v2.2 IDs are normalized to v2.3), and TXXX
-	// frames by their upper-cased description. COMM (Comment) is not in the raw
-	// map, so Comment has no binding.
+	// MP3 raw keys: ID3v2 frame IDs (v2.2 IDs are normalized to v2.3), TXXX
+	// frames by their upper-cased description, and UFID frames as "UFID:" and
+	// their owner. COMM (Comment) is not in the raw map, so Comment has no
+	// binding. The release fields follow the tags MusicBrainz Picard writes
+	// (https://picard-docs.musicbrainz.org/en/latest/appendices/tag_mapping.html);
+	// TPUB, which Picard fills with the label, is the ID3 "Publisher" frame and
+	// is bound to Publisher, so Label has no MP3 key.
 	mp3Bindings = []FieldBinding{
 		{FieldTitle, []string{"TIT2"}},
 		{FieldSubtitle, []string{"TIT3"}},
@@ -56,12 +60,20 @@ var (
 		{FieldNarrator, []string{"NARRATOR"}},
 		{FieldSeries, []string{"SERIES", "MVNM", "MOVEMENT NAME", "MOVEMENT"}},
 		{FieldSeriesPart, []string{"SERIES PART", "SERIESPART", "SERIES-PART", "SERIES POSITION", keyMVIN, "MOVEMENT NUMBER", "MOVEMENT INDEX"}},
-		{FieldPublisher, []string{"PUBLISHER"}},
+		{FieldPublisher, []string{"PUBLISHER", "TPUB"}},
 		{FieldISBN, []string{"ISBN"}},
 		{FieldASIN, []string{"ASIN", "AUDIBLE_ASIN"}},
 		{FieldLanguage, []string{"LANGUAGE", "LANG"}},
 		{FieldDescription, []string{"DESCRIPTION"}},
 		{FieldLyrics, []string{"USLT"}},
+		{FieldOriginalDate, []string{"TDOR", "TORY"}},
+		{FieldMusicBrainzTrackID, []string{"UFID:http://musicbrainz.org"}},
+		{FieldMusicBrainzAlbumID, []string{"MUSICBRAINZ ALBUM ID"}},
+		{FieldMusicBrainzArtistID, []string{"MUSICBRAINZ ARTIST ID"}},
+		{FieldISRC, []string{"TSRC"}},
+		{FieldBarcode, []string{"BARCODE"}},
+		{FieldCatalogNumber, []string{"CATALOGNUMBER"}},
+		{FieldCopyright, []string{"TCOP"}},
 	}
 
 	// Vorbis comment raw keys (FLAC, Ogg Vorbis, Opus): the upper-cased field
@@ -108,7 +120,9 @@ var (
 
 	// M4A/M4B raw keys: the 4-byte ilst atom type, or the upper-cased name of a
 	// freeform (----) atom. trkn and disk are binary and not in the raw map, so
-	// track and disc fields have no binding.
+	// track and disc fields have no binding. The release fields follow the
+	// freeform items MusicBrainz Picard writes
+	// (https://picard-docs.musicbrainz.org/en/latest/appendices/tag_mapping.html).
 	m4aBindings = []FieldBinding{
 		{FieldTitle, []string{"\xA9nam"}},
 		{FieldArtist, []string{"\xA9ART"}},
@@ -132,6 +146,13 @@ var (
 		{FieldISBN, []string{"ISBN"}},
 		{FieldASIN, []string{"ASIN", "AUDIBLE_ASIN"}},
 		{FieldLanguage, []string{"LANGUAGE", "LANG"}},
+		{FieldMusicBrainzTrackID, []string{"MUSICBRAINZ TRACK ID"}},
+		{FieldMusicBrainzAlbumID, []string{"MUSICBRAINZ ALBUM ID"}},
+		{FieldMusicBrainzArtistID, []string{"MUSICBRAINZ ARTIST ID"}},
+		{FieldISRC, []string{"ISRC"}},
+		{FieldBarcode, []string{"BARCODE"}},
+		{FieldCatalogNumber, []string{"CATALOGNUMBER"}},
+		{FieldLabel, []string{"LABEL"}},
 	}
 )
 
