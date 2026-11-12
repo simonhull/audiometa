@@ -46,13 +46,17 @@ var (
 
 // canonicalKeys is the raw key a field is written to when the source has
 // none of the field's keys, as a whitespace-separated "Field key" table
-// (keys with spaces use "_"). Year is handled apart by applyYear (TDRC or TYER by version).
+// (keys with spaces use "_"). Year and OriginalDate are handled apart by applyYear
+// and applyOriginalDate (TDRC or TYER, TDOR or TORY, by version).
 var canonicalKeys = func() map[types.Field]string {
 	byName := pairsOf(`
 		Title TIT2  Subtitle TIT3  Artist TPE1  Artists TPE1  Album TALB  AlbumArtist TPE2
 		Genres TCON  Composers TCOM  TrackNumber TRCK  TrackTotal TRCK  DiscNumber TPOS
 		DiscTotal TPOS  Grouping GRP1  Narrator NARRATOR  Series SERIES  SeriesPart SERIES_PART
-		Publisher PUBLISHER  ISBN ISBN  ASIN ASIN  Language LANGUAGE  Description DESCRIPTION`)
+		Publisher PUBLISHER  ISBN ISBN  ASIN ASIN  Language LANGUAGE  Description DESCRIPTION
+		ISRC TSRC  Copyright TCOP  Barcode BARCODE  CatalogNumber CATALOGNUMBER
+		MusicBrainzAlbumID MUSICBRAINZ_ALBUM_ID  MusicBrainzArtistID MUSICBRAINZ_ARTIST_ID
+		MusicBrainzTrackID UFID:http://musicbrainz.org`)
 	m := make(map[types.Field]string, len(byName))
 	for f := range types.AllFields() {
 		if key, ok := byName[f.String()]; ok {
@@ -62,10 +66,20 @@ var canonicalKeys = func() map[types.Field]string {
 	return m
 }()
 
+// picardNames is the name MusicBrainz Picard gives the TXXX frame of a raw key,
+// where it is not the key itself. A typed-field write that creates the frame
+// uses it, so that taggers matching names case-sensitively find the frame.
+var picardNames = map[string]string{
+	"MUSICBRAINZ ALBUM ID":  "MusicBrainz Album Id",
+	"MUSICBRAINZ ARTIST ID": "MusicBrainz Artist Id",
+}
+
 // Raw keys with special value encodings.
 const (
 	keyTDRC = "TDRC"
 	keyTYER = "TYER"
+	keyTDOR = "TDOR"
+	keyTORY = "TORY"
 )
 
 // setOf builds a set of the whitespace-separated words of s.
@@ -119,8 +133,11 @@ func (t *wtag) normalizeKey(key string) string {
 	if t.inVersion != 2 {
 		return key
 	}
-	if key == keyTYER {
+	switch key {
+	case keyTYER:
 		return keyTDRC
+	case keyTORY:
+		return keyTDOR
 	}
 	if id, ok := v22ToV24[key]; ok {
 		return id
@@ -131,6 +148,15 @@ func (t *wtag) normalizeKey(key string) string {
 // applyKeyEdit replaces every frame holding raw key with one frame holding
 // values, or removes them when values is empty.
 func (t *wtag) applyKeyEdit(key string, values []string) error {
+	return t.applyKeyNamed(key, values, "")
+}
+
+// applyKeyNamed is applyKeyEdit with a preferred description for a new TXXX
+// frame: the name the caller's tags give key if it is spelled differently, else
+// preferred, else key. It is empty for a raw key edit, which spells a new frame
+// as the key or as the caller named it, and holds a [picardNames] entry for a
+// typed-field edit.
+func (t *wtag) applyKeyNamed(key string, values []string, preferred string) error {
 	key = t.normalizeKey(key)
 	if key == "" {
 		return fmt.Errorf("%w: empty tag key", types.ErrUnsupportedWrite)
@@ -162,7 +188,7 @@ func (t *wtag) applyKeyEdit(key string, values []string) error {
 	if t.isFalseTXXX(key) {
 		return fmt.Errorf("%w: %q names an ID3v2 frame that is not a writable text frame", types.ErrUnsupportedWrite, key)
 	}
-	return t.setTXXX(key, values)
+	return t.setTXXX(key, values, preferred)
 }
 
 // isFalseTXXX reports whether writing key as a TXXX frame would only pretend
@@ -227,9 +253,9 @@ func (t *wtag) setTextFrame(id string, values []string) error {
 // keeps the first match's description as it is spelled, so frames whose
 // descriptions differ only in case become one, named as the first of them.
 // With no match it is new, and named as the caller's tags spell key
-// ([types.Tags.Name]).
-func (t *wtag) setTXXX(key string, values []string) error {
-	desc, found := t.newName(key), false
+// ([types.Tags.Name]), else preferred when that is set, else key.
+func (t *wtag) setTXXX(key string, values []string, preferred string) error {
+	desc, found := t.newName(key, preferred), false
 	var bodyErr error
 	at := t.remove(func(f wframe) (bool, error) {
 		if f.id != frameIDTXXX {
@@ -259,13 +285,16 @@ func (t *wtag) setTXXX(key string, values []string) error {
 }
 
 // newName returns the description of a new TXXX frame for key: the spelling
-// the caller's tags give it when that is key in another case, else key.
-func (t *wtag) newName(key string) string {
-	if t.final == nil {
-		return key
+// the caller's tags give it when that is key in another case, else preferred
+// when it is not empty, else key.
+func (t *wtag) newName(key, preferred string) string {
+	if t.final != nil {
+		if name := t.final.Name(key); name != key && strings.EqualFold(name, key) {
+			return name
+		}
 	}
-	if name := t.final.Name(key); strings.EqualFold(name, key) {
-		return name
+	if preferred != "" {
+		return preferred
 	}
 	return key
 }
@@ -398,12 +427,15 @@ func (t *wtag) applyFieldEdit(e types.FieldEdit, edits *types.EditSet) error {
 	if e.Field == types.FieldYear {
 		return t.applyYear(e, edits)
 	}
+	if e.Field == types.FieldOriginalDate {
+		return t.applyOriginalDate(e, edits)
+	}
 	targets, err := t.fieldTargetKeys(e, edits)
 	if err != nil {
 		return err
 	}
 	for _, key := range targets {
-		if err := t.applyKeyEdit(key, fieldKeyValues(e, key, edits)); err != nil {
+		if err := t.applyKeyNamed(key, fieldKeyValues(e, key, edits), picardNames[key]); err != nil {
 			return err
 		}
 	}
@@ -428,6 +460,44 @@ func (t *wtag) applyYear(e types.FieldEdit, edits *types.EditSet) error {
 		return err
 	}
 	return t.applyKeyEdit(own, fieldKeyValues(e, own, edits))
+}
+
+// applyOriginalDate writes OriginalDate to the tag version's own frame (TDOR in
+// ID3v2.4, TORY in ID3v2.3) and removes the other version's frame, which that
+// version cannot hold, as applyYear does for Year. Clearing removes both.
+// ID3v2.4 stores the value as it is, a timestamp; TORY holds only a year, so an
+// ID3v2.3 tag stores the value's leading four digits and refuses a value that
+// does not start with them.
+func (t *wtag) applyOriginalDate(e types.FieldEdit, edits *types.EditSet) error {
+	own, other := keyTDOR, keyTORY
+	if t.outVersion == 3 {
+		own, other = keyTORY, keyTDOR
+	}
+	values := fieldKeyValues(e, own, edits)
+	if t.outVersion == 3 && len(values) > 0 {
+		year, ok := leadingYear(values[0])
+		if !ok {
+			return fmt.Errorf("%w: OriginalDate %q has no four-digit year, which ID3v2.3 TORY holds", types.ErrUnsupportedWrite, values[0])
+		}
+		values = []string{year}
+	}
+	if err := t.applyKeyEdit(other, nil); err != nil {
+		return err
+	}
+	return t.applyKeyEdit(own, values)
+}
+
+// leadingYear returns the four ASCII digits s starts with.
+func leadingYear(s string) (string, bool) {
+	if len(s) < 4 {
+		return "", false
+	}
+	for _, c := range []byte(s[:4]) {
+		if c < '0' || c > '9' {
+			return "", false
+		}
+	}
+	return s[:4], true
 }
 
 // fieldTargetKeys returns the raw keys a field edit writes: when setting, the

@@ -55,8 +55,8 @@ func TestFieldBindings_KeysAreNonEmpty(t *testing.T) {
 // every MP3 key keeps its place, and the native key comes last.
 func TestFieldBindings_NativeTextAfterID3(t *testing.T) {
 	native := map[Format]map[Field]string{
-		FormatWAV:  {FieldTitle: "INAM", FieldArtist: "IART", FieldArtists: "IART", FieldAlbum: "IPRD", FieldGenres: "IGNR", FieldYear: "ICRD"},
-		FormatAIFF: {FieldTitle: "NAME", FieldArtist: "AUTH", FieldArtists: "AUTH"},
+		FormatWAV:  {FieldTitle: "INAM", FieldArtist: "IART", FieldArtists: "IART", FieldAlbum: "IPRD", FieldGenres: "IGNR", FieldYear: "ICRD", FieldCopyright: "ICOP"},
+		FormatAIFF: {FieldTitle: "NAME", FieldArtist: "AUTH", FieldArtists: "AUTH", FieldCopyright: "(c) "},
 	}
 	mp3 := FieldBindings(FormatMP3)
 	for format, want := range native {
@@ -210,8 +210,13 @@ func TestFieldBindings_ReleaseFields(t *testing.T) {
 	want := map[Format]map[Field][]string{
 		FormatMP3: id3, FormatWAV: id3, FormatAIFF: id3, FormatM4A: m4a, FormatM4B: m4a,
 	}
+	// The native copyright text follows the ID3 frame.
+	nativeCopyright := map[Format][]string{FormatWAV: {"TCOP", "ICOP"}, FormatAIFF: {"TCOP", "(c) "}}
 	for format, fields := range want {
 		for field, keys := range fields {
+			if native, ok := nativeCopyright[format]; ok && field == FieldCopyright {
+				keys = native
+			}
 			if got := keysOf(format, field); !slices.Equal(got, keys) {
 				t.Errorf("%s %s: keys %v, want %v", format, field, got, keys)
 			}

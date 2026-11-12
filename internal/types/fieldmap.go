@@ -171,11 +171,13 @@ var (
 		{FieldGenres, []string{"IGNR"}},
 		{FieldYear, []string{"ICRD"}},
 		{FieldTrackNumber, []string{"ITRK", "IPRT"}},
+		{FieldCopyright, []string{"ICOP"}},
 	}
 	aiffNative = []FieldBinding{
 		{FieldTitle, []string{"NAME"}},
 		{FieldArtist, []string{"AUTH"}},
 		{FieldArtists, []string{"AUTH"}},
+		{FieldCopyright, []string{"(c) "}},
 	}
 )
 

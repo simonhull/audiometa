@@ -72,6 +72,18 @@ var canonicalKeys = map[types.Field]string{
 	types.FieldDate: itemDay, types.FieldYear: itemDay, types.FieldSeries: "\xA9mvn",
 	types.FieldSubtitle: "SUBTITLE", types.FieldNarrator: "NARRATOR", types.FieldPublisher: "PUBLISHER",
 	types.FieldISBN: "ISBN", types.FieldASIN: "ASIN", types.FieldLanguage: "LANGUAGE",
+	types.FieldMusicBrainzTrackID: "MUSICBRAINZ TRACK ID", types.FieldMusicBrainzAlbumID: "MUSICBRAINZ ALBUM ID",
+	types.FieldMusicBrainzArtistID: "MUSICBRAINZ ARTIST ID", types.FieldISRC: "ISRC", types.FieldBarcode: "BARCODE",
+	types.FieldCatalogNumber: "CATALOGNUMBER", types.FieldLabel: "LABEL",
+}
+
+// picardNames is the name MusicBrainz Picard gives the freeform item of a raw
+// key, where it is not the key itself. A typed-field write that creates the
+// item uses it, so that taggers matching names case-sensitively find the item.
+var picardNames = map[string]string{
+	"MUSICBRAINZ TRACK ID":  "MusicBrainz Track Id",
+	"MUSICBRAINZ ALBUM ID":  "MusicBrainz Album Id",
+	"MUSICBRAINZ ARTIST ID": "MusicBrainz Artist Id",
 }
 
 // keySeriesPart is the freeform key for a non-integer SeriesPart.
@@ -165,6 +177,15 @@ func newContainer(typ string) *matom {
 // applyKey replaces every item holding raw key with one holding values, or
 // removes them when values is empty.
 func (e *ilstEditor) applyKey(key string, values []string) error {
+	return e.applyKeyNamed(key, values, "")
+}
+
+// applyKeyNamed is applyKey with a preferred name for a new freeform item: the
+// name the caller's tags give key if it is spelled differently, else preferred,
+// else key. It is empty for a raw key edit, which spells a new item as the key
+// or as the caller named it, and holds a [picardNames] entry for a typed-field
+// edit.
+func (e *ilstEditor) applyKeyNamed(key string, values []string, preferred string) error {
 	for _, v := range values {
 		if !utf8.ValidString(v) {
 			return fmt.Errorf("%w: value of %q is not valid UTF-8", types.ErrUnsupportedWrite, key)
@@ -182,7 +203,7 @@ func (e *ilstEditor) applyKey(key string, values []string) error {
 	case e.isItemKey(key):
 		return e.setItem(key, values)
 	default:
-		return e.setFreeform(key, values)
+		return e.setFreeform(key, values, preferred)
 	}
 }
 
@@ -336,12 +357,13 @@ func (e *ilstEditor) setGnre(values []string) error {
 // item keeps the first match's name as it is spelled, so items whose names
 // differ only in case become one, named as the first of them. With no match
 // it is new, and named as the caller's tags spell key ([types.Tags.Name]):
-// "MusicBrainz Album Id" for a key set with [types.Tags.SetNamed].
-func (e *ilstEditor) setFreeform(key string, values []string) error {
+// "MusicBrainz Album Id" for a key set with [types.Tags.SetNamed]; else as
+// preferred when that is set, else key.
+func (e *ilstEditor) setFreeform(key string, values []string, preferred string) error {
 	if !utf8.ValidString(key) || key == "" || key != strings.ToUpper(key) {
 		return fmt.Errorf("%w: %q is not an M4A item type or an upper-case freeform name", types.ErrUnsupportedWrite, key)
 	}
-	name, found := e.newName(key), false
+	name, found := e.newName(key, preferred), false
 	at := e.remove(func(it *matom) bool {
 		if it.typ != itemFreeform {
 			return false
@@ -370,13 +392,16 @@ func (e *ilstEditor) setFreeform(key string, values []string) error {
 }
 
 // newName returns the name of a new freeform item for key: the spelling the
-// caller's tags give it when that is key in another case, else key.
-func (e *ilstEditor) newName(key string) string {
-	if e.edits.Final == nil {
-		return key
+// caller's tags give it when that is key in another case, else preferred when
+// it is not empty, else key.
+func (e *ilstEditor) newName(key, preferred string) string {
+	if final := e.edits.Final; final != nil {
+		if name := final.Name(key); name != key && strings.EqualFold(name, key) {
+			return name
+		}
 	}
-	if name := e.edits.Final.Name(key); strings.EqualFold(name, key) {
-		return name
+	if preferred != "" {
+		return preferred
 	}
 	return key
 }
@@ -399,7 +424,7 @@ func (e *ilstEditor) applyField(f types.FieldEdit) error {
 		if f.Field == types.FieldSeriesPart && key == itemMvi && len(values) > 0 && !isMovementIndex(values[0]) {
 			return fmt.Errorf("%w: SeriesPart %q is not an integer from 1 to 32767, which \xA9mvi requires", types.ErrUnsupportedWrite, values[0])
 		}
-		if err := e.applyKey(key, values); err != nil {
+		if err := e.applyKeyNamed(key, values, picardNames[key]); err != nil {
 			return err
 		}
 	}

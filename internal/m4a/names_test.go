@@ -68,6 +68,43 @@ func TestIlst_FreeformSpelling(t *testing.T) {
 	}
 }
 
+// A typed-field write names a new MusicBrainz item as Picard does; a raw-key
+// write keeps the upper-case key unless the caller named it, and an existing
+// item always keeps its own spelling.
+func TestIlst_TypedFieldSpelling(t *testing.T) {
+	t.Parallel()
+	const (
+		picardTrackID  = "MusicBrainz Track Id"
+		picardArtistID = "MusicBrainz Artist Id"
+	)
+	tests := []struct {
+		name     string
+		existing string
+		set      func(*types.Tags)
+		want     string
+	}{
+		{"album ID", "", func(tg *types.Tags) { tg.MusicBrainzAlbumID = "new" }, picardAlbumID},
+		{"existing upper-case item", upperAlbumID, func(tg *types.Tags) { tg.MusicBrainzAlbumID = "new" }, upperAlbumID},
+		{"existing Picard item", picardAlbumID, func(tg *types.Tags) { tg.MusicBrainzAlbumID = "new" }, picardAlbumID},
+		{"track ID", "", func(tg *types.Tags) { tg.MusicBrainzTrackID = "new" }, picardTrackID},
+		{"artist ID", "", func(tg *types.Tags) { tg.MusicBrainzArtistID = "new" }, picardArtistID},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			items := [][]byte{ilstText("\xA9nam", "T")}
+			if tt.existing != "" {
+				items = append(items, ilstFreeform(tt.existing, "old"))
+			}
+			out := writeTags(t, buildMP4(false, items...), tt.set)
+			names := freeformNames(t, out)
+			if len(names) != 1 || names[0] != tt.want {
+				t.Errorf("freeform names = %q, want [%q]", names, tt.want)
+			}
+		})
+	}
+}
+
 // Items whose names differ only in case share one raw key: reading gives every
 // value and the first item's spelling, and writing the key makes them one item,
 // named and placed as the first was.

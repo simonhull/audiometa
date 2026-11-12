@@ -276,6 +276,7 @@ var roundTripIFFEdits = []tagEdit{
 	{
 		// A native key is written as native text, never as an ID3 TXXX frame.
 		name:    "set native copyright",
+		fields:  []string{"Copyright"},
 		apply:   func(f *audiometa.File) error { f.Tags.Set(nativeCopyright[f.Format], "(C) Example"); return nil },
 		formats: iffFormats,
 		check: func(t *testing.T, f *audiometa.File) {
@@ -342,6 +343,185 @@ var roundTripM4AEdits = []tagEdit{
 			}
 		},
 	},
+}
+
+// releaseField is a typed release field with its value and accessors.
+type releaseField struct {
+	name  string
+	value string
+	set   func(*audiometa.Tags, string)
+	get   func(*audiometa.Tags) string
+}
+
+var releaseFields = []releaseField{
+	{"MusicBrainzAlbumID", "f3c0fd5e-ba3e-4a2c-8fd3-6e4a6f0c1b2d",
+		func(t *audiometa.Tags, v string) { t.MusicBrainzAlbumID = v }, func(t *audiometa.Tags) string { return t.MusicBrainzAlbumID }},
+	{"MusicBrainzArtistID", "5b11f4ce-a62d-471e-81fc-a69a8278c7da",
+		func(t *audiometa.Tags, v string) { t.MusicBrainzArtistID = v }, func(t *audiometa.Tags) string { return t.MusicBrainzArtistID }},
+	{"MusicBrainzTrackID", "8f3471b5-7e6a-48da-86a9-c1c07a0f47ae",
+		func(t *audiometa.Tags, v string) { t.MusicBrainzTrackID = v }, func(t *audiometa.Tags) string { return t.MusicBrainzTrackID }},
+	{"ISRC", "USRC17607839",
+		func(t *audiometa.Tags, v string) { t.ISRC = v }, func(t *audiometa.Tags) string { return t.ISRC }},
+	{"Barcode", "0123456789012",
+		func(t *audiometa.Tags, v string) { t.Barcode = v }, func(t *audiometa.Tags) string { return t.Barcode }},
+	{"CatalogNumber", "CAT-001",
+		func(t *audiometa.Tags, v string) { t.CatalogNumber = v }, func(t *audiometa.Tags) string { return t.CatalogNumber }},
+	{"Copyright", "(C) 2001 Example",
+		func(t *audiometa.Tags, v string) { t.Copyright = v }, func(t *audiometa.Tags) string { return t.Copyright }},
+	{"Label", "Example Records",
+		func(t *audiometa.Tags, v string) { t.Label = v }, func(t *audiometa.Tags) string { return t.Label }},
+}
+
+// id3v23Paths are the corpus files whose ID3v2 tag is version 2.3.
+var id3v23Paths = []string{"testdata/sample.mp3", "testdata/bench/book.mp3", "testdata/sample_id3.wav"}
+
+// releaseEdits sets each release field through its typed field, and clears it
+// again. Label has no MP3, WAV or AIFF key (TPUB is Publisher).
+var roundTripReleaseEdits = func() []tagEdit {
+	var edits []tagEdit
+	for _, rf := range releaseFields {
+		var unsupported []audiometa.Format
+		if rf.name == "Label" {
+			unsupported = []audiometa.Format{audiometa.FormatMP3, audiometa.FormatWAV, audiometa.FormatAIFF}
+		}
+		edits = append(edits, tagEdit{
+			name:        "set " + rf.name,
+			fields:      []string{rf.name},
+			apply:       func(f *audiometa.File) error { rf.set(&f.Tags, rf.value); return nil },
+			formats:     []audiometa.Format{audiometa.FormatMP3, audiometa.FormatM4A, audiometa.FormatM4B, audiometa.FormatWAV, audiometa.FormatAIFF},
+			unsupported: unsupported,
+			check: func(t *testing.T, f *audiometa.File) {
+				if got := rf.get(&f.Tags); got != rf.value {
+					t.Errorf("%s = %q, want %q", rf.name, got, rf.value)
+				}
+			},
+		}, tagEdit{
+			name:    "clear " + rf.name,
+			fields:  []string{rf.name},
+			apply:   func(f *audiometa.File) error { rf.set(&f.Tags, ""); return nil },
+			formats: []audiometa.Format{audiometa.FormatMP3, audiometa.FormatM4A, audiometa.FormatM4B, audiometa.FormatWAV, audiometa.FormatAIFF},
+			check: func(t *testing.T, f *audiometa.File) {
+				if got := rf.get(&f.Tags); got != "" {
+					t.Errorf("%s = %q, want empty", rf.name, got)
+				}
+			},
+		})
+	}
+	id3 := []audiometa.Format{audiometa.FormatMP3, audiometa.FormatWAV, audiometa.FormatAIFF}
+	return append(edits,
+		tagEdit{
+			// The native copyright of a WAV or AIFF follows the ID3 copyright.
+			name:    "set Copyright mirrors native copyright",
+			fields:  []string{"Copyright"},
+			apply:   func(f *audiometa.File) error { f.Tags.Copyright = "(C) Mirrored"; return nil },
+			formats: iffFormats,
+			check: func(t *testing.T, f *audiometa.File) {
+				key := nativeCopyright[f.Format]
+				if !slices.Equal(f.Tags.Get("TCOP"), []string{"(C) Mirrored"}) || (f.Tags.Get(key) != nil && !slices.Equal(f.Tags.Get(key), []string{"(C) Mirrored"})) {
+					t.Errorf("TCOP %q, %q %q", f.Tags.Get("TCOP"), key, f.Tags.Get(key))
+				}
+			},
+		},
+		tagEdit{
+			// v2.4 files get TDOR verbatim, v2.3 files a year in TORY; the other frame is gone.
+			name:    "set OriginalDate",
+			fields:  []string{"OriginalDate"},
+			apply:   func(f *audiometa.File) error { f.Tags.OriginalDate = "2001-05-03"; return nil },
+			formats: id3,
+			check: func(t *testing.T, f *audiometa.File) {
+				tdor, tory := f.Tags.Get("TDOR"), f.Tags.Get("TORY")
+				switch {
+				case slices.Equal(tdor, []string{"2001-05-03"}) && tory == nil && f.Tags.OriginalDate == "2001-05-03":
+				case slices.Equal(tory, []string{"2001"}) && tdor == nil && f.Tags.OriginalDate == "2001":
+				default:
+					t.Errorf("OriginalDate %q, TDOR %q, TORY %q", f.Tags.OriginalDate, tdor, tory)
+				}
+			},
+		},
+		tagEdit{
+			name:    "set OriginalDate on ID3v2.3 keeps the year",
+			fields:  []string{"OriginalDate"},
+			apply:   func(f *audiometa.File) error { f.Tags.OriginalDate = "2001-05-03"; return nil },
+			formats: id3,
+			paths:   id3v23Paths,
+			check: func(t *testing.T, f *audiometa.File) {
+				if f.Tags.OriginalDate != "2001" || !slices.Equal(f.Tags.Get("TORY"), []string{"2001"}) || f.Tags.Get("TDOR") != nil {
+					t.Errorf("OriginalDate %q, TORY %q, TDOR %q", f.Tags.OriginalDate, f.Tags.Get("TORY"), f.Tags.Get("TDOR"))
+				}
+			},
+		},
+		tagEdit{
+			name:        "set OriginalDate without a year on ID3v2.3",
+			fields:      []string{"OriginalDate"},
+			apply:       func(f *audiometa.File) error { f.Tags.OriginalDate = "May 2001"; return nil },
+			formats:     id3,
+			paths:       id3v23Paths,
+			unsupported: id3,
+			check:       func(*testing.T, *audiometa.File) {},
+		},
+		tagEdit{
+			name:    "set Publisher writes TPUB when that is the key present",
+			fields:  []string{"Publisher"},
+			apply:   func(f *audiometa.File) error { f.Tags.Publisher = "New Publisher"; return nil },
+			formats: []audiometa.Format{audiometa.FormatMP3},
+			paths:   []string{"testdata/bench/book.mp3"},
+			check: func(t *testing.T, f *audiometa.File) {
+				if f.Tags.Publisher != "New Publisher" || !slices.Equal(f.Tags.Get("TPUB"), []string{"New Publisher"}) || f.Tags.Get("PUBLISHER") != nil {
+					t.Errorf("Publisher %q, TPUB %q, PUBLISHER %q", f.Tags.Publisher, f.Tags.Get("TPUB"), f.Tags.Get("PUBLISHER"))
+				}
+			},
+		},
+		tagEdit{
+			// The MusicBrainz raw keys keep their values; the typed fields follow them.
+			name:    "set MusicBrainz raw keys",
+			fields:  []string{"MusicBrainzAlbumID", "MusicBrainzArtistID", "MusicBrainzTrackID"},
+			formats: []audiometa.Format{audiometa.FormatMP3, audiometa.FormatM4A},
+			paths:   []string{"testdata/sample_v24.mp3", "testdata/sample.m4a"},
+			apply: func(f *audiometa.File) error {
+				f.Tags.Set("MUSICBRAINZ ALBUM ID", "album")
+				f.Tags.Set("MUSICBRAINZ ARTIST ID", "artist1", "artist2")
+				f.Tags.Set("MUSICBRAINZ ALBUM ARTIST ID", "albumartist")
+				f.Tags.Set("MUSICBRAINZ TRACK ID", "track")
+				return nil
+			},
+			check: func(t *testing.T, f *audiometa.File) {
+				for key, want := range map[string][]string{
+					"MUSICBRAINZ ALBUM ID": {"album"}, "MUSICBRAINZ ARTIST ID": {"artist1", "artist2"},
+					"MUSICBRAINZ ALBUM ARTIST ID": {"albumartist"}, "MUSICBRAINZ TRACK ID": {"track"},
+				} {
+					if got := f.Tags.Get(key); !slices.Equal(got, want) {
+						t.Errorf("Get(%q) = %q, want %q", key, got, want)
+					}
+				}
+				if f.Tags.MusicBrainzAlbumID != "album" || f.Tags.MusicBrainzArtistID != "artist1" {
+					t.Errorf("typed IDs %q, %q", f.Tags.MusicBrainzAlbumID, f.Tags.MusicBrainzArtistID)
+				}
+			},
+		},
+		tagEdit{
+			name:        "set a UFID identifier over 64 bytes",
+			apply:       func(f *audiometa.File) error { f.Tags.MusicBrainzTrackID = strings.Repeat("a", 65); return nil },
+			formats:     id3,
+			unsupported: id3,
+			check:       func(*testing.T, *audiometa.File) {},
+		},
+	)
+}()
+
+// Editing a release field and its own raw key in one save is a conflict, as
+// for every other bound field.
+func TestWriteRoundTrip_ReleaseFieldAndKeyConflict(t *testing.T) {
+	for _, tc := range []struct{ path, key string }{
+		{"testdata/sample_v24.mp3", "TSRC"},
+		{"testdata/sample.m4a", "ISRC"},
+	} {
+		f := openFile(t, tc.path)
+		f.Tags.Set(tc.key, "GBAYE0601498")
+		f.Tags.ISRC = "USRC17607839"
+		if _, err := f.WriteTo(io.Discard); !errors.Is(err, audiometa.ErrConflictingEdits) {
+			t.Errorf("%s: err = %v, want ErrConflictingEdits", tc.path, err)
+		}
+	}
 }
 
 var roundTripArtworkEdits = []tagEdit{
@@ -450,7 +630,7 @@ func TestWriteRoundTrip_Corpus(t *testing.T) {
 				t.Error("no-edit WriteTo is not byte-identical to the source")
 			}
 
-			for _, e := range slices.Concat(roundTripEdits, roundTripMP3Edits, roundTripIFFEdits, roundTripFLACEdits, roundTripM4AEdits, roundTripArtworkEdits) {
+			for _, e := range slices.Concat(roundTripEdits, roundTripMP3Edits, roundTripIFFEdits, roundTripFLACEdits, roundTripM4AEdits, roundTripReleaseEdits, roundTripArtworkEdits) {
 				t.Run(e.name, func(t *testing.T) { runRoundTrip(t, tc.path, src, e) })
 			}
 			t.Run("delete keys", func(t *testing.T) { runDeleteRoundTrip(t, tc.path, src) })
