@@ -417,7 +417,7 @@ func TestSafely(t *testing.T) {
 	}
 }
 
-func TestArtworkEdits(t *testing.T) {
+func TestArtworkEdits(t *testing.T) { //nolint:cyclop,gocyclo // one setup shared by many short scenarios; splitting would repeat the setup
 	fw := &fakeWriter{}
 	useWriter(t, fw)
 	f := openSample(t, sampleFLAC)
@@ -638,7 +638,7 @@ func TestWrite_FollowsSymlink(t *testing.T) {
 	}
 }
 
-func TestWrite_InPlace(t *testing.T) {
+func TestWrite_InPlace(t *testing.T) { //nolint:cyclop,gocognit,gocyclo // one setup shared by many short scenarios; splitting would repeat the setup
 	edit := func(f *File) error { f.Tags.Title = "New"; return nil }
 
 	t.Run("patch applied", func(t *testing.T) {
@@ -784,7 +784,7 @@ func (w *rangedFake) PreservedDigest(ctx context.Context, src io.ReaderAt, size 
 
 // TestWrite_InPlaceRanges covers verifying an in-place patch
 // by its preserved ranges instead of by digests.
-func TestWrite_InPlaceRanges(t *testing.T) {
+func TestWrite_InPlaceRanges(t *testing.T) { //nolint:cyclop,gocognit,gocyclo // one setup shared by many short scenarios; splitting would repeat the setup
 	edit := func(f *File) error { f.Tags.Title = "New"; return nil }
 	mtime := time.Date(2001, 2, 3, 4, 5, 6, 0, time.UTC)
 	outside := func(off int64, n, size int) []registry.Range {

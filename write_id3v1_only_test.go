@@ -34,7 +34,7 @@ func id3v1OnlyMP3(t *testing.T) string {
 	return p
 }
 
-func TestWriteID3v1_OnlyTrailerModes(t *testing.T) {
+func TestWriteID3v1_OnlyTrailerModes(t *testing.T) { //nolint:cyclop,gocyclo // one scenario table with a check per mode
 	t.Parallel()
 	noEdit := func(*audiometa.File) error { return nil }
 	checkValues := func(t *testing.T, p, title string) {

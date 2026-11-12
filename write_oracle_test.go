@@ -116,7 +116,7 @@ func ffprobe(t *testing.T, tool, path string) probeResult {
 // TestWriteOracle hands edited files to ffprobe, ffmpeg and flac, which share
 // no code with audiometa: the container must parse cleanly, keep its streams
 // and chapters, and decode end to end.
-func TestWriteOracle(t *testing.T) {
+func TestWriteOracle(t *testing.T) { //nolint:cyclop,gocognit,gocyclo // one walk over each oracle: the checks follow the oracle output in order
 	t.Parallel()
 	ffprobeTool := oracleTool(t, "ffprobe")
 	ffmpegTool := oracleTool(t, "ffmpeg")

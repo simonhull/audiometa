@@ -135,7 +135,7 @@ func applyFuzzOps(f *File, ops []byte, png []byte) {
 // The per-format fuzz targets (FuzzWriteFLAC in internal/flac) drive one
 // writer directly with a fixed edit set; this one covers the dispatch, edit
 // building and every format with variable edits.
-func FuzzWriteRoundTrip(f *testing.F) {
+func FuzzWriteRoundTrip(f *testing.F) { //nolint:cyclop,gocyclo // the fuzz body is one linear sequence of invariants
 	for _, path := range fuzzWritablePaths {
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -285,7 +285,7 @@ func checkInPlace(ctx context.Context, t *testing.T, tw registry.TagWriter, file
 // key edit and field edit must read back exactly, and every raw key that no
 // edit touches and no field binds must keep its values. Edits whose values a
 // format cannot hold exactly (see representable) skip the check.
-func checkLanded(t *testing.T, format Format, data []byte, orig, final *Tags, edits *types.EditSet) {
+func checkLanded(t *testing.T, format Format, data []byte, orig, final *Tags, edits *types.EditSet) { //nolint:cyclop,gocyclo // the fuzz body is one linear sequence of invariants
 	t.Helper()
 	for _, e := range edits.Keys {
 		if !representable(e.Values) {

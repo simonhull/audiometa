@@ -812,7 +812,7 @@ func writeAndReopen(t *testing.T, path string, data []byte) *audiometa.File {
 // TPE1), because writing one necessarily rewrites the other. No field is
 // excluded on any other ground: a change elsewhere would mean the writer
 // inferred one field from another.
-func assertPreserved(t *testing.T, orig, edited, reopened *audiometa.File, src, written []byte, fields []string, touchedKeys ...string) {
+func assertPreserved(t *testing.T, orig, edited, reopened *audiometa.File, src, written []byte, fields []string, touchedKeys ...string) { //nolint:cyclop,gocyclo // one linear sequence of per-format assertions
 	t.Helper()
 	format := orig.Format
 	if audioDigest(t, format, src) != audioDigest(t, format, written) {
@@ -1291,7 +1291,7 @@ func fieldString(tags *audiometa.Tags, name string) string {
 // multi-key field in REVERSE precedence order (lowest first, so it precedes
 // the higher keys in the file) and checks the parsed field equals the highest
 // precedence key's value, whatever the tag order.
-func TestReadPrecedence_MatchesBindings(t *testing.T) {
+func TestReadPrecedence_MatchesBindings(t *testing.T) { //nolint:gocognit // one linear sequence of per-format assertions
 	t.Parallel()
 	for _, path := range []string{
 		"testdata/sample.flac", "testdata/sample_upper.flac",

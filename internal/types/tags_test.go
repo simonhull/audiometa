@@ -769,30 +769,38 @@ func TestMerge_NeverConflicts(t *testing.T) {
 			for _, key := range b.Keys {
 				t.Run(format.String()+"/"+b.Field.String()+"/"+key, func(t *testing.T) {
 					t.Parallel()
-					for _, held := range []bool{false, true} {
-						tags := boundTags(format)
-						if held {
-							tags.Set(b.Keys[0], mergeValue(b.Field, 1))
-						}
-						orig := tags.Clone()
-						other := &Tags{}
-						other.Set(key, mergeValue(b.Field, 2))
-
-						tags.Merge(other)
-
-						if _, _, err := Diff(orig, tags, format); err != nil {
-							t.Fatalf("held=%v: Diff after Merge: %v", held, err)
-						}
-						want := orig.Clone()
-						if !held {
-							want.Set(key, mergeValue(b.Field, 2))
-						}
-						if got, w := valuesOf(tags, b.Field), valuesOf(want, b.Field); !slices.Equal(got, w) {
-							t.Errorf("held=%v: %s = %q, want %q", held, b.Field, got, w)
-						}
-					}
+					checkMergeNeverConflicts(t, format, b, key)
 				})
 			}
+		}
+	}
+}
+
+// checkMergeNeverConflicts merges a value under key into tags that do and do not hold the
+// field already, and checks that the merge keeps what is held, adds what is not, and leaves
+// tags that Diff can still turn into edits.
+func checkMergeNeverConflicts(t *testing.T, format Format, b FieldBinding, key string) {
+	t.Helper()
+	for _, held := range []bool{false, true} {
+		tags := boundTags(format)
+		if held {
+			tags.Set(b.Keys[0], mergeValue(b.Field, 1))
+		}
+		orig := tags.Clone()
+		other := &Tags{}
+		other.Set(key, mergeValue(b.Field, 2))
+
+		tags.Merge(other)
+
+		if _, _, err := Diff(orig, tags, format); err != nil {
+			t.Fatalf("held=%v: Diff after Merge: %v", held, err)
+		}
+		want := orig.Clone()
+		if !held {
+			want.Set(key, mergeValue(b.Field, 2))
+		}
+		if got, w := valuesOf(tags, b.Field), valuesOf(want, b.Field); !slices.Equal(got, w) {
+			t.Errorf("held=%v: %s = %q, want %q", held, b.Field, got, w)
 		}
 	}
 }

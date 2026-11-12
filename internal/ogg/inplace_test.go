@@ -166,15 +166,7 @@ func smallPages(packet []byte, serial uint32) []pageSpec {
 // is kept as it is.
 func TestOpusPaddingAbsorbsTheChange(t *testing.T) {
 	t.Parallel()
-	build := func(tail []byte) []byte {
-		body := append(commentPacket("OpusTags", false, "TITLE=Old title"), tail...)
-		return withCRCs(buildOgg(
-			pageSpec{headerType: 0x02, serial: 5, lacing: lacingFor(len(opusHeadPacket())), data: opusHeadPacket()},
-			pageSpec{serial: 5, lacing: lacingFor(len(body)), data: body},
-			pageSpec{headerType: pageEOS, serial: 5, granule: 960, lacing: lacingFor(100), data: make([]byte, 100)},
-		))
-	}
-	padded := build(make([]byte, 64))
+	padded := opusWithTail(make([]byte, 64))
 	oldLen := func(b []byte) int {
 		l, err := layoutOf(t, b)
 		if err != nil {
@@ -202,8 +194,23 @@ func TestOpusPaddingAbsorbsTheChange(t *testing.T) {
 		}
 		checkStructure(t, label, out)
 	}
+}
 
-	// Growing past the padding changes the length: no patch, and the rewrite drops what is left of it.
+// opusWithTail is an Opus file whose comment packet is followed by tail.
+func opusWithTail(tail []byte) []byte {
+	body := append(commentPacket("OpusTags", false, "TITLE=Old title"), tail...)
+	return withCRCs(buildOgg(
+		pageSpec{headerType: 0x02, serial: 5, lacing: lacingFor(len(opusHeadPacket())), data: opusHeadPacket()},
+		pageSpec{serial: 5, lacing: lacingFor(len(body)), data: body},
+		pageSpec{headerType: pageEOS, serial: 5, granule: 960, lacing: lacingFor(100), data: make([]byte, 100)},
+	))
+}
+
+// TestOpusPaddingGrowthBeyondIt: growing past the padding changes the length, so there is no
+// patch, and the rewrite drops what is left of the padding.
+func TestOpusPaddingGrowthBeyondIt(t *testing.T) {
+	t.Parallel()
+	padded := opusWithTail(make([]byte, 64))
 	grown := keyEdit("BIG", strings.Repeat("g", 200))
 	if p, err := tryPatch(t, padded, grown); err != nil || p != nil {
 		t.Errorf("growth beyond the padding: patch %v, err %v", p, err)
@@ -212,16 +219,20 @@ func TestOpusPaddingAbsorbsTheChange(t *testing.T) {
 	if l, err := layoutOf(t, out); err != nil || bytes.HasSuffix(l.packets[1], []byte{0}) {
 		t.Errorf("rewrite beyond the padding: err %v, padding left: %v", err, err == nil)
 	}
+}
 
-	// Binary data (lowest bit of its first byte set) is kept, so only an equal-length edit patches.
-	binary := build([]byte{0x01, 0xAA, 0xBB})
+// TestOpusPaddingKeepsBinaryData: data whose first byte has its lowest bit set is binary and
+// is kept, so only an equal-length edit patches.
+func TestOpusPaddingKeepsBinaryData(t *testing.T) {
+	t.Parallel()
+	binary := opusWithTail([]byte{0x01, 0xAA, 0xBB})
 	if p, err := tryPatch(t, binary, keyEdit("TITLE", "New")); err != nil || p != nil {
 		t.Errorf("shrinking next to binary data: patch %v, err %v", p, err)
 	}
 	if p, err := tryPatch(t, binary, keyEdit("TITLE", "Old Title")); err != nil || p == nil {
 		t.Errorf("equal-length edit next to binary data: patch %v, err %v", p, err)
 	}
-	out = writeBytes(t, binary, keyEdit("TITLE", "New"))
+	out := writeBytes(t, binary, keyEdit("TITLE", "New"))
 	if l, err := layoutOf(t, out); err != nil || !bytes.HasSuffix(l.packets[1], []byte{0x01, 0xAA, 0xBB}) {
 		t.Errorf("binary data after the comments lost: %v", err)
 	}
@@ -240,42 +251,52 @@ func TestPreservedRanges(t *testing.T) {
 		files[name] = readCorpus(t, name)
 	}
 	for name, src := range files {
-		w := writerFor(t, src)
-		r := bytes.NewReader(src)
-		ranges, err := w.PreservedRanges(t.Context(), r, int64(len(src)))
-		if err != nil {
-			t.Fatalf("%s: %v", name, err)
+		checkPreservedRanges(t, name, src)
+	}
+}
+
+// checkPreservedRanges checks the PreservedRanger contract on one file: the digest is the hash
+// of the ranges, and the ranges are ordered, skip the header pages and cover trailing bytes.
+func checkPreservedRanges(t *testing.T, name string, src []byte) {
+	t.Helper()
+	w := writerFor(t, src)
+	r := bytes.NewReader(src)
+	ranges, err := w.PreservedRanges(t.Context(), r, int64(len(src)))
+	if err != nil {
+		t.Fatalf("%s: %v", name, err)
+	}
+	want, err := writeutil.DigestRanges(t.Context(), r, ranges)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := w.PreservedDigest(t.Context(), r, int64(len(src)))
+	if err != nil || !bytes.Equal(got, want) {
+		t.Errorf("%s: PreservedDigest is not the hash of PreservedRanges (err %v)", name, err)
+	}
+	l, err := layoutOf(t, src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, rg := range ranges {
+		if rg.Off >= rg.End || (i > 0 && rg.Off < ranges[i-1].End) {
+			t.Errorf("%s: range %d %v is empty or out of order", name, i, rg)
 		}
-		want, err := writeutil.DigestRanges(t.Context(), r, ranges)
-		if err != nil {
-			t.Fatal(err)
-		}
-		got, err := w.PreservedDigest(t.Context(), r, int64(len(src)))
-		if err != nil || !bytes.Equal(got, want) {
-			t.Errorf("%s: PreservedDigest is not the hash of PreservedRanges (err %v)", name, err)
-		}
-		l, err := layoutOf(t, src)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for i, rg := range ranges {
-			if rg.Off >= rg.End || (i > 0 && rg.Off < ranges[i-1].End) {
-				t.Errorf("%s: range %d %v is empty or out of order", name, i, rg)
-			}
-			if rg.Off > 0 && rg.Off < l.audioStart {
-				t.Errorf("%s: range %v starts in the header pages", name, rg)
-			}
-		}
-		if ranges[0] != (registry.Range{Off: 0, End: l.idEnd}) {
-			t.Errorf("%s: first range %v, want page 0", name, ranges[0])
-		}
-		if bytes.HasSuffix(src, []byte("a tag after the last page")) && ranges[len(ranges)-1].End != int64(len(src)) {
-			t.Errorf("%s: the trailing bytes are not covered", name)
+		if rg.Off > 0 && rg.Off < l.audioStart {
+			t.Errorf("%s: range %v starts in the header pages", name, rg)
 		}
 	}
+	if ranges[0] != (registry.Range{Off: 0, End: l.idEnd}) {
+		t.Errorf("%s: first range %v, want page 0", name, ranges[0])
+	}
+	if bytes.HasSuffix(src, []byte("a tag after the last page")) && ranges[len(ranges)-1].End != int64(len(src)) {
+		t.Errorf("%s: the trailing bytes are not covered", name)
+	}
+}
 
-	// An in-place patch and a rewrite that adds a page both leave the digest alone;
-	// the patch leaves the ranges themselves where they were.
+// TestPreservedRangesSurvivePatchAndRewrite: an in-place patch and a rewrite that adds a page
+// both leave the digest alone; the patch leaves the ranges themselves where they were.
+func TestPreservedRangesSurvivePatchAndRewrite(t *testing.T) {
+	t.Parallel()
 	src := readCorpus(t, "bench/book.opus")
 	w := writerFor(t, src)
 	r0, err := w.PreservedRanges(t.Context(), bytes.NewReader(src), int64(len(src)))

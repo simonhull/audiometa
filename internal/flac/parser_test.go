@@ -142,47 +142,25 @@ func TestParse_Success(t *testing.T) {
 		t.Fatal("expected file, got nil")
 	}
 
-	// Check format
-	if file.Format != types.FormatFLAC {
-		t.Errorf("expected format FLAC, got %v", file.Format)
+	checks := []struct {
+		name      string
+		got, want any
+	}{
+		{"file.Format", file.Format, types.FormatFLAC},
+		{"file.Tags.Title", file.Tags.Title, "Test Song"},
+		{"file.Tags.Artist", file.Tags.Artist, "Test Artist"},
+		{"file.Tags.Album", file.Tags.Album, "Test Album"},
+		{"file.Audio.Codec", file.Audio.Codec, "FLAC"},
+		{"file.Audio.Container", file.Audio.Container, "FLAC"},
+		{"file.Audio.Lossless", file.Audio.Lossless, true},
+		{"file.Audio.SampleRate", file.Audio.SampleRate, 44100},
+		{"file.Audio.Channels", file.Audio.Channels, 2},
+		{"file.Audio.BitDepth", file.Audio.BitDepth, 16},
 	}
-
-	// Check tags
-	if file.Tags.Title != "Test Song" {
-		t.Errorf("expected title 'Test Song', got '%s'", file.Tags.Title)
-	}
-
-	if file.Tags.Artist != "Test Artist" {
-		t.Errorf("expected artist 'Test Artist', got '%s'", file.Tags.Artist)
-	}
-
-	if file.Tags.Album != "Test Album" {
-		t.Errorf("expected album 'Test Album', got '%s'", file.Tags.Album)
-	}
-
-	// Check audio info
-	if file.Audio.Codec != "FLAC" {
-		t.Errorf("expected codec 'FLAC', got '%s'", file.Audio.Codec)
-	}
-
-	if file.Audio.Container != "FLAC" {
-		t.Errorf("expected container 'FLAC', got '%s'", file.Audio.Container)
-	}
-
-	if !file.Audio.Lossless {
-		t.Error("expected lossless to be true")
-	}
-
-	if file.Audio.SampleRate != 44100 {
-		t.Errorf("expected sample rate 44100, got %d", file.Audio.SampleRate)
-	}
-
-	if file.Audio.Channels != 2 {
-		t.Errorf("expected 2 channels, got %d", file.Audio.Channels)
-	}
-
-	if file.Audio.BitDepth != 16 {
-		t.Errorf("expected 16-bit depth, got %d", file.Audio.BitDepth)
+	for _, c := range checks {
+		if c.got != c.want {
+			t.Errorf("%s = %v, want %v", c.name, c.got, c.want)
+		}
 	}
 
 	// Duration should be ~1 second (44100 samples at 44100 Hz)

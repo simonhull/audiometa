@@ -274,51 +274,26 @@ func TestParse_Success(t *testing.T) {
 		t.Fatal("expected file, got nil")
 	}
 
-	// Check format
-	if file.Format != types.FormatOgg {
-		t.Errorf("expected format Ogg, got %v", file.Format)
+	checks := []struct {
+		name      string
+		got, want any
+	}{
+		{"file.Format", file.Format, types.FormatOgg},
+		{"file.Tags.Title", file.Tags.Title, "Test Song"},
+		{"file.Tags.Artist", file.Tags.Artist, "Test Artist"},
+		{"file.Tags.Album", file.Tags.Album, "Test Album"},
+		{"file.Audio.Codec", file.Audio.Codec, "Vorbis"},
+		{"file.Audio.Container", file.Audio.Container, "Ogg"},
+		{"file.Audio.Lossless", file.Audio.Lossless, false},
+		{"file.Audio.VBR", file.Audio.VBR, true},
+		{"file.Audio.SampleRate", file.Audio.SampleRate, 44100},
+		{"file.Audio.Channels", file.Audio.Channels, 2},
+		{"file.Audio.Bitrate", file.Audio.Bitrate, 128000},
 	}
-
-	// Check tags
-	if file.Tags.Title != "Test Song" {
-		t.Errorf("expected title 'Test Song', got '%s'", file.Tags.Title)
-	}
-
-	if file.Tags.Artist != "Test Artist" {
-		t.Errorf("expected artist 'Test Artist', got '%s'", file.Tags.Artist)
-	}
-
-	if file.Tags.Album != "Test Album" {
-		t.Errorf("expected album 'Test Album', got '%s'", file.Tags.Album)
-	}
-
-	// Check audio info
-	if file.Audio.Codec != "Vorbis" {
-		t.Errorf("expected codec 'Vorbis', got '%s'", file.Audio.Codec)
-	}
-
-	if file.Audio.Container != "Ogg" {
-		t.Errorf("expected container 'Ogg', got '%s'", file.Audio.Container)
-	}
-
-	if file.Audio.Lossless {
-		t.Error("expected lossless to be false")
-	}
-
-	if !file.Audio.VBR {
-		t.Error("expected VBR to be true")
-	}
-
-	if file.Audio.SampleRate != 44100 {
-		t.Errorf("expected sample rate 44100, got %d", file.Audio.SampleRate)
-	}
-
-	if file.Audio.Channels != 2 {
-		t.Errorf("expected 2 channels, got %d", file.Audio.Channels)
-	}
-
-	if file.Audio.Bitrate != 128000 {
-		t.Errorf("expected bitrate 128000, got %d", file.Audio.Bitrate)
+	for _, c := range checks {
+		if c.got != c.want {
+			t.Errorf("%s = %v, want %v", c.name, c.got, c.want)
+		}
 	}
 
 	// Duration should be ~1 second (44100 samples at 44100 Hz)
@@ -457,48 +432,25 @@ func TestParseOpus_Success(t *testing.T) {
 		t.Fatal("expected file, got nil")
 	}
 
-	// Check format
-	if file.Format != types.FormatOpus {
-		t.Errorf("expected format Opus, got %v", file.Format)
+	checks := []struct {
+		name      string
+		got, want any
+	}{
+		{"file.Format", file.Format, types.FormatOpus},
+		{"file.Tags.Title", file.Tags.Title, "Opus Song"},
+		{"file.Tags.Artist", file.Tags.Artist, "Opus Artist"},
+		{"file.Tags.Album", file.Tags.Album, "Opus Album"},
+		{"file.Audio.Codec", file.Audio.Codec, "Opus"},
+		{"file.Audio.Container", file.Audio.Container, "Ogg"},
+		{"file.Audio.Lossless", file.Audio.Lossless, false},
+		{"file.Audio.VBR", file.Audio.VBR, true},
+		{"file.Audio.SampleRate", file.Audio.SampleRate, 48000},
+		{"file.Audio.Channels", file.Audio.Channels, 2},
 	}
-
-	// Check tags
-	if file.Tags.Title != "Opus Song" {
-		t.Errorf("expected title 'Opus Song', got '%s'", file.Tags.Title)
-	}
-
-	if file.Tags.Artist != "Opus Artist" {
-		t.Errorf("expected artist 'Opus Artist', got '%s'", file.Tags.Artist)
-	}
-
-	if file.Tags.Album != "Opus Album" {
-		t.Errorf("expected album 'Opus Album', got '%s'", file.Tags.Album)
-	}
-
-	// Check audio info
-	if file.Audio.Codec != "Opus" {
-		t.Errorf("expected codec 'Opus', got '%s'", file.Audio.Codec)
-	}
-
-	if file.Audio.Container != "Ogg" {
-		t.Errorf("expected container 'Ogg', got '%s'", file.Audio.Container)
-	}
-
-	if file.Audio.Lossless {
-		t.Error("expected lossless to be false")
-	}
-
-	if !file.Audio.VBR {
-		t.Error("expected VBR to be true")
-	}
-
-	// Opus always outputs at 48kHz
-	if file.Audio.SampleRate != 48000 {
-		t.Errorf("expected sample rate 48000 (Opus output rate), got %d", file.Audio.SampleRate)
-	}
-
-	if file.Audio.Channels != 2 {
-		t.Errorf("expected 2 channels, got %d", file.Audio.Channels)
+	for _, c := range checks {
+		if c.got != c.want {
+			t.Errorf("%s = %v, want %v", c.name, c.got, c.want)
+		}
 	}
 
 	// Duration should be ~1 second (48000 samples at 48kHz)
@@ -575,59 +527,52 @@ func TestOggParser_BothCodecs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			// Write to temp file
-			tmpFile, err := os.CreateTemp(t.TempDir(), "test*.ogg")
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			if _, err := tmpFile.Write(tt.data); err != nil {
-				t.Fatal(err)
-			}
-			tmpFile.Close()
-
-			// Open file for parsing
-			f, err := os.Open(tmpFile.Name())
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer f.Close()
-
-			stat, err := f.Stat()
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			// Parse the file
-			p := &parser{}
-			file, err := p.Parse(context.Background(), f, stat.Size(), tmpFile.Name())
-			if err != nil {
-				t.Fatalf("Parse failed: %v", err)
-			}
-
-			// Check codec
-			if file.Audio.Codec != tt.expectedCodec {
-				t.Errorf("expected codec '%s', got '%s'", tt.expectedCodec, file.Audio.Codec)
-			}
-
-			// Check sample rate
-			if file.Audio.SampleRate != tt.expectedSampleRate {
-				t.Errorf("expected sample rate %d, got %d", tt.expectedSampleRate, file.Audio.SampleRate)
-			}
-
-			// Both should be Ogg container
-			if file.Audio.Container != "Ogg" {
-				t.Errorf("expected container 'Ogg', got '%s'", file.Audio.Container)
-			}
-
-			// Both should be lossy VBR
-			if file.Audio.Lossless {
-				t.Error("expected lossless to be false")
-			}
-			if !file.Audio.VBR {
-				t.Error("expected VBR to be true")
-			}
+			checkCodec(t, tt.data, tt.expectedCodec, tt.expectedSampleRate)
 		})
+	}
+}
+
+// checkCodec parses data from a file and checks the codec, the sample rate and what every Ogg
+// codec shares: the Ogg container and lossy variable-bitrate audio.
+func checkCodec(t *testing.T, data []byte, codec string, sampleRate int) {
+	t.Helper()
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test*.ogg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tmpFile.Write(data); err != nil {
+		t.Fatal(err)
+	}
+	tmpFile.Close()
+
+	f, err := os.Open(tmpFile.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	stat, err := f.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	file, err := (&parser{}).Parse(context.Background(), f, stat.Size(), tmpFile.Name())
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	if file.Audio.Codec != codec {
+		t.Errorf("expected codec '%s', got '%s'", codec, file.Audio.Codec)
+	}
+	if file.Audio.SampleRate != sampleRate {
+		t.Errorf("expected sample rate %d, got %d", sampleRate, file.Audio.SampleRate)
+	}
+	if file.Audio.Container != "Ogg" {
+		t.Errorf("expected container 'Ogg', got '%s'", file.Audio.Container)
+	}
+	if file.Audio.Lossless {
+		t.Error("expected lossless to be false")
+	}
+	if !file.Audio.VBR {
+		t.Error("expected VBR to be true")
 	}
 }
 
