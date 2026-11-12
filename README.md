@@ -308,6 +308,7 @@ done they stop and return an error wrapping `ctx.Err()`, and the original file i
 | Option | Effect |
 |--------|--------|
 | `WithInPlace()` | overwrite the metadata region of the file when the edit fits the space already reserved for it (for example ID3v2 or FLAC padding), instead of rewriting the whole file; a hint that falls back to the atomic rewrite when the edit does not fit, the format cannot patch in place, or the file is read-only; not crash-atomic (the audio is never touched), and a failed verification restores the overwritten bytes and the modification time |
+| `WithID3v1(mode)` | what to do with an MP3's ID3v1 trailer: `ID3v1Keep` (the default) copies it, `ID3v1Update` rewrites an existing trailer from the edited tags, `ID3v1Remove` drops it; a trailer is never added; a write that only changes the trailer still happens, and `WithInPlace` falls back to the atomic rewrite for it; other formats ignore it |
 | `WithPreserveModTime()` | keep the file's modification time instead of setting the time of the write |
 
 ### Write errors
@@ -340,8 +341,11 @@ Match these with `errors.Is`; they are always wrapped with detail.
   targets chapter data returns `ErrUnsupportedWrite`.
 - **ID3.** A `Year` outside 1900-2100 is refused with `ErrUnsupportedWrite` (an ID3 tag cannot
   hold it, and it would read back as 0). v2.3 stays v2.3, v2.4 stays v2.4, and v2.2 or untagged files get v2.4. An existing
-  ID3v1 trailer is copied verbatim: it is never updated, added or removed. After deleting
-  `TIT2`, a reader that falls back to ID3v1 can show the stale ID3v1 title. v2.3 accepts the
+  ID3v1 trailer is copied verbatim by default. `WithID3v1(ID3v1Update)` rewrites it from the edited
+  tags (30-byte Latin-1 fields; the genre is kept) and `WithID3v1(ID3v1Remove)` drops it; a trailer is
+  never added. A file whose tags come from ID3v1 gets the ID3v1 title, artist, album, comment, year
+  and track copied into its ID3v2 tag (a new ID3v2.4 tag when it had none), so no field disappears.
+  v2.3 accepts the
   sort frames `TSOT`, `TSOA` and `TSOP`, as iTunes writes them; other v2.4-only frames are
   refused there.
 - **Editing.** Change `f.Tags` fields directly, or use `Tags.Set` and `Tags.Delete` with

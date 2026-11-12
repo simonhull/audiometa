@@ -152,6 +152,33 @@ func ExampleTags_SetNamed() {
 	// 8f3471b5-7e6a-48da-86a9-c1c07a0f47ae
 }
 
+// ExampleWithID3v1 removes an MP3's ID3v1 trailer while editing its title.
+// Without the option the trailer is copied unchanged; ID3v1Update rewrites it
+// from the edited tags instead.
+func ExampleWithID3v1() {
+	path := copyToTemp("testdata/sample_v24.mp3")
+	defer os.RemoveAll(filepath.Dir(path))
+	before, err := os.Stat(path)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = audiometa.Write(path, func(f *audiometa.File) error {
+		f.Tags.Title = "New Title"
+		return nil
+	}, audiometa.WithID3v1(audiometa.ID3v1Remove))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	after, err := os.Stat(path)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(before.Size() - after.Size())
+	// Output: 128
+}
+
 // ExampleWriteContext bounds the write with a timeout. A write that is
 // canceled leaves the original file untouched.
 func ExampleWriteContext() {

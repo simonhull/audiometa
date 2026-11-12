@@ -4,8 +4,13 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### Added
+
+- MP3: `WithID3v1` chooses what `Write` does with an ID3v1 trailer: `ID3v1Keep` (the default) copies it, `ID3v1Update` rewrites it from the edited tags, and `ID3v1Remove` drops it. A trailer is never added. `File.WriteTo` always keeps it.
+
 ### Changed
 
+- MP3: write verification no longer covers the ID3v1 trailer; the audio and any APEv2 or Lyrics3 tags are still checked.
 - FLAC, Ogg Vorbis and Opus decode Vorbis comments with one decoder. A comment header that runs past its block or packet adds one `StageMetadata` warning whose `Err` wraps the same error in all three formats (Ogg and Opus warnings had no `Err` and per-format texts), and Ogg and Opus comment lists are now checked for cancellation.
 - Fewer and smaller reads, with unchanged results. `Open` reads the start of the file once instead of two or three times (the fixtures in `testdata/bench` went from 3, 2, 3 and 6 reads to 1, 1, 1 and 4 for M4B, FLAC, Opus and MP3), and `DetectFormat` reads at most 1 KiB (24 B and 1 allocation per call instead of 16 KiB and 7). Ogg `AudioDigest` reads each byte once through one sequential stream: a 4 MB Opus file took 480 reads and 8 MB requested, and now takes 251 reads and 4 MB, with 50 KiB of allocations instead of 4.4 MiB. Ogg `ExtractArtwork` reads only the header packets instead of parsing the whole file, and no longer reads the file's tail. Opus files with a large embedded picture allocate about half as much on `Open`, because each header packet is assembled with one allocation. The MP3 Xing/VBRI header is taken from the frame window already in memory, and the buffer behind every `WriteTo`, `Write` and digest copy is reused across calls.
 - `AudioInfo.Container` is now set for M4A/M4B (`"MP4"`) and MP3 (`"MP3"`), as it already was for FLAC, Ogg, WAV and AIFF.
