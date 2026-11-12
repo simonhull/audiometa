@@ -64,8 +64,17 @@ const pageStreamBuffer = 16 << 10
 // shared is true, the page next returns and its Data and Lacing are only valid
 // until the following call.
 func newPageStream(r io.ReaderAt, size int64, path string, shared bool) *pageStream {
+	return newPageStreamAt(r, size, path, shared, 0)
+}
+
+// newPageStreamAt is like [newPageStream] for the pages that start at offset
+// off, which must be a page boundary. Offsets in errors and in the stream's
+// own position stay file offsets.
+func newPageStreamAt(r io.ReaderAt, size int64, path string, shared bool, off int64) *pageStream {
+	off = min(max(off, 0), size)
 	return &pageStream{
-		br:     bufio.NewReaderSize(io.NewSectionReader(r, 0, size), pageStreamBuffer),
+		br:     bufio.NewReaderSize(io.NewSectionReader(r, off, size-off), pageStreamBuffer),
+		off:    off,
 		size:   size,
 		path:   path,
 		shared: shared,

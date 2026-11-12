@@ -22,7 +22,7 @@ func TestCanWrite(t *testing.T) {
 		{audiometa.FormatM4A, true},
 		{audiometa.FormatM4B, true},
 		{audiometa.FormatOgg, false},
-		{audiometa.FormatOpus, false},
+		{audiometa.FormatOpus, true},
 		{audiometa.FormatWAV, true},
 		{audiometa.FormatAIFF, true},
 		{audiometa.Format(250), false},
@@ -97,7 +97,6 @@ func TestWritable_RefusalsOfTheFile(t *testing.T) {
 		{"DRM-protected M4A", tempFileOf(t, "drm.m4a", wantDRM), audiometa.ErrDRMProtected},
 		{"fragmented MP4", tempFileOf(t, "fragmented.m4a", fragmented), audiometa.ErrUnsupportedWrite},
 		{"Ogg Vorbis has no writer", "testdata/sample.ogg", audiometa.ErrUnsupportedWrite},
-		{"Opus has no writer", "testdata/sample.opus", audiometa.ErrUnsupportedWrite},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -510,7 +510,7 @@ func ExampleCanWrite() {
 	fmt.Println(audiometa.CanWrite(audiometa.FormatOpus))
 	// Output:
 	// true
-	// false
+	// true
 }
 
 // Ask whether Write would accept this file, before the user has edited it.

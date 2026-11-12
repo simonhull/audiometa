@@ -47,9 +47,9 @@ var roundTripCorpus = []roundTripCase{
 	{"testdata/sample_rf64.wav", true},
 	{"testdata/sample.aiff", true}, // NAME, (c), ANNO and an ID3v2.4 chunk with a cover
 	{"testdata/sample.aifc", true},
-	{"testdata/bench/book.opus", false}, // deferred format: stays false
-	{"testdata/sample.ogg", false},      // deferred format: stays false
-	{"testdata/sample.opus", false},     // deferred format: stays false
+	{"testdata/bench/book.opus", true},
+	{"testdata/sample.ogg", false}, // deferred format: stays false
+	{"testdata/sample.opus", true},
 }
 
 // tagEdit is one format-agnostic edit; unsupported lists formats where it must
@@ -61,6 +61,7 @@ type tagEdit struct {
 	apply       func(f *audiometa.File) error
 	check       func(t *testing.T, f *audiometa.File) // asserts on the re-opened file
 	unsupported []audiometa.Format
+	rawKeys     []string // raw keys the edit changes without naming them: artwork stored as a comment
 	formats     []audiometa.Format
 	paths       []string
 }
@@ -524,9 +525,14 @@ func TestWriteRoundTrip_ReleaseFieldAndKeyConflict(t *testing.T) {
 	}
 }
 
+// ogvPicture is the comment Ogg Vorbis and Opus store pictures in; the reader
+// lists it among the raw keys.
+var ogvPicture = []string{"METADATA_BLOCK_PICTURE"}
+
 var roundTripArtworkEdits = []tagEdit{
 	{
-		name: "replace front cover",
+		name:    "replace front cover",
+		rawKeys: ogvPicture,
 		apply: func(f *audiometa.File) error {
 			return f.ReplaceArtwork(audiometa.Artwork{Data: onePixelPNG(), Type: audiometa.ArtworkFrontCover})
 		},
@@ -547,8 +553,9 @@ var roundTripArtworkEdits = []tagEdit{
 		},
 	},
 	{
-		name:  "remove all artwork",
-		apply: func(f *audiometa.File) error { f.RemoveAllArtwork(); return nil },
+		name:    "remove all artwork",
+		rawKeys: ogvPicture,
+		apply:   func(f *audiometa.File) error { f.RemoveAllArtwork(); return nil },
 		check: func(t *testing.T, f *audiometa.File) {
 			if art := extract(t, f); len(art) != 0 {
 				t.Errorf("%d images left, want 0", len(art))
@@ -556,7 +563,8 @@ var roundTripArtworkEdits = []tagEdit{
 		},
 	},
 	{
-		name: "add back cover",
+		name:    "add back cover",
+		rawKeys: ogvPicture,
 		apply: func(f *audiometa.File) error {
 			return f.AddArtwork(audiometa.Artwork{Data: onePixelPNG(), Type: audiometa.ArtworkBackCover})
 		},
@@ -663,7 +671,7 @@ func runRoundTrip(t *testing.T, path string, src []byte, e tagEdit) {
 
 	reopened := writeAndReopen(t, path, out.Bytes())
 	e.check(t, reopened)
-	assertPreserved(t, orig, f, reopened, src, out.Bytes(), e.fields)
+	assertPreserved(t, orig, f, reopened, src, out.Bytes(), e.fields, e.rawKeys...)
 
 	var again bytes.Buffer
 	if _, err := f.WriteTo(&again); err != nil {
@@ -682,6 +690,7 @@ var customKeys = map[audiometa.Format]string{
 	audiometa.FormatM4B:  "AUDIOMETA_TEST",
 	audiometa.FormatWAV:  "AUDIOMETA_TEST", // TXXX description in the ID3 chunk
 	audiometa.FormatAIFF: "AUDIOMETA_TEST",
+	audiometa.FormatOpus: "AUDIOMETA_TEST", // Vorbis comment
 }
 
 // titleKeys is the raw key Title is read from, per format family.
@@ -692,6 +701,7 @@ var titleKeys = map[audiometa.Format]string{
 	audiometa.FormatM4B:  "\xA9nam",
 	audiometa.FormatWAV:  "TIT2",
 	audiometa.FormatAIFF: "TIT2",
+	audiometa.FormatOpus: "TITLE",
 }
 
 // runDeleteRoundTrip injects a key with no typed field, then deletes it and the
@@ -746,7 +756,7 @@ func writeAndReopen(t *testing.T, path string, data []byte) *audiometa.File {
 // TPE1), because writing one necessarily rewrites the other. No field is
 // excluded on any other ground: a change elsewhere would mean the writer
 // inferred one field from another.
-func assertPreserved(t *testing.T, orig, edited, reopened *audiometa.File, src, written []byte, fields []string) {
+func assertPreserved(t *testing.T, orig, edited, reopened *audiometa.File, src, written []byte, fields []string, touchedKeys ...string) {
 	t.Helper()
 	format := orig.Format
 	if audioDigest(t, format, src) != audioDigest(t, format, written) {
@@ -760,6 +770,9 @@ func assertPreserved(t *testing.T, orig, edited, reopened *audiometa.File, src, 
 			t.Errorf("top-level atoms = %v, want %v", got, want)
 		}
 	}
+	if format == audiometa.FormatOgg || format == audiometa.FormatOpus {
+		checkOggPages(t, written)
+	}
 	if format == audiometa.FormatWAV || format == audiometa.FormatAIFF {
 		if got, want := iffChunkIDs(t, written), iffChunkIDs(t, src); !slices.Equal(got, want) {
 			t.Errorf("chunks = %v, want %v", got, want)
@@ -767,6 +780,9 @@ func assertPreserved(t *testing.T, orig, edited, reopened *audiometa.File, src, 
 	}
 
 	changedFields, changedKeys := editScope(format, fields)
+	for _, k := range touchedKeys {
+		changedKeys[k] = true
+	}
 	for k, v := range edited.Tags.All() { // keys edited through Set/Delete
 		if !slices.Equal(v, orig.Tags.Get(k)) {
 			changedKeys[k] = true

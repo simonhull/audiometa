@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,6 +26,23 @@ func oracleTool(t *testing.T, name string) string {
 			t.Fatalf("oracle %s is required but not on PATH: %v", name, err)
 		}
 		t.Skipf("oracle %s not on PATH", name)
+	}
+	return path
+}
+
+// optionalOggOracle returns the path of name (opusinfo from opus-tools or
+// ogginfo from vorbis-tools), or "" when it is not installed. They check page
+// sequence numbers and checksums in a way ffmpeg does not, so CI installs them
+// and sets AUDIOMETA_REQUIRE_OGG_ORACLES=1, which turns a missing tool into a
+// failure; a developer machine without them skips the check.
+func optionalOggOracle(t *testing.T, name string) string {
+	t.Helper()
+	path, err := exec.LookPath(name)
+	if err != nil {
+		if os.Getenv("AUDIOMETA_REQUIRE_OGG_ORACLES") == "1" {
+			t.Fatalf("oracle %s is required but not on PATH: %v", name, err)
+		}
+		return ""
 	}
 	return path
 }
@@ -50,11 +68,25 @@ type probeResult struct {
 		Disposition struct {
 			AttachedPic int `json:"attached_pic"`
 		} `json:"disposition"`
+		Tags map[string]string `json:"tags"`
 	} `json:"streams"`
 	Chapters []json.RawMessage `json:"chapters"`
 	Format   struct {
 		Tags map[string]string `json:"tags"`
 	} `json:"format"`
+}
+
+// tags returns the container's tags and those of the audio stream: ffprobe
+// reports the comments of an Ogg stream on the stream, not the container.
+func (p probeResult) tags() map[string]string {
+	all := map[string]string{}
+	for _, s := range p.Streams {
+		if s.Disposition.AttachedPic == 0 {
+			maps.Copy(all, s.Tags)
+		}
+	}
+	maps.Copy(all, p.Format.Tags)
+	return all
 }
 
 // counts returns the number of ffprobe streams that are not cover images and
@@ -151,7 +183,7 @@ func TestWriteOracle(t *testing.T) {
 					}
 					if e.title {
 						found := false
-						for k, v := range got.Format.Tags {
+						for k, v := range got.tags() {
 							if strings.EqualFold(k, "title") {
 								found = true
 								if v != title {
@@ -160,13 +192,23 @@ func TestWriteOracle(t *testing.T) {
 							}
 						}
 						if !found {
-							t.Errorf("ffprobe reports no title tag: %v", got.Format.Tags)
+							t.Errorf("ffprobe reports no title tag: %v", got.tags())
 						}
 					}
 
 					runOracle(t, ffmpegTool, "-v", "error", "-i", out, "-f", "null", "-")
 					if f.Format == audiometa.FormatFLAC {
 						runOracle(t, flacTool, "-t", "-s", out)
+					}
+					if f.Format == audiometa.FormatOpus {
+						if tool := optionalOggOracle(t, "opusinfo"); tool != "" {
+							runOracle(t, tool, out)
+						}
+					}
+					if f.Format == audiometa.FormatOgg {
+						if tool := optionalOggOracle(t, "ogginfo"); tool != "" {
+							runOracle(t, tool, out)
+						}
 					}
 				})
 			}
