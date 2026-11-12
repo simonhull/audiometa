@@ -180,27 +180,6 @@ func TestParseYear(t *testing.T) {
 	}
 }
 
-func TestParseTrackNumber(t *testing.T) {
-	tests := []struct {
-		input         string
-		expectedNum   int
-		expectedTotal int
-	}{
-		{"5", 5, 0},
-		{"5/12", 5, 12},
-		{"1/1", 1, 1},
-		{"invalid", 0, 0},
-	}
-
-	for _, tt := range tests {
-		num, total := parseTrackNumber(tt.input)
-		if num != tt.expectedNum || total != tt.expectedTotal {
-			t.Errorf("parseTrackNumber(%q) = (%d, %d), expected (%d, %d)",
-				tt.input, num, total, tt.expectedNum, tt.expectedTotal)
-		}
-	}
-}
-
 func TestParseTextFrame(t *testing.T) {
 	file := &types.File{
 		Tags: types.Tags{},
@@ -212,6 +191,7 @@ func TestParseTextFrame(t *testing.T) {
 		Data: []byte{0x00, 'T', 'e', 's', 't'}, // ISO-8859-1 encoding + "Test"
 	}
 	parseTextFrame(frame, file)
+	types.DeriveFields(&file.Tags, types.FormatMP3)
 
 	if file.Tags.Title != "Test" {
 		t.Errorf("expected title 'Test', got '%s'", file.Tags.Title)
@@ -223,6 +203,7 @@ func TestParseTextFrame(t *testing.T) {
 		Data: []byte{0x00, 'A', 'r', 't', 'i', 's', 't'},
 	}
 	parseTextFrame(frame, file)
+	types.DeriveFields(&file.Tags, types.FormatMP3)
 
 	if file.Tags.Artist != "Artist" {
 		t.Errorf("expected artist 'Artist', got '%s'", file.Tags.Artist)
@@ -234,6 +215,7 @@ func TestParseTextFrame(t *testing.T) {
 		Data: []byte{0x00, '5', '/', '1', '2'},
 	}
 	parseTextFrame(frame, file)
+	types.DeriveFields(&file.Tags, types.FormatMP3)
 
 	if file.Tags.TrackNumber != 5 || file.Tags.TrackTotal != 12 {
 		t.Errorf("expected track 5/12, got %d/%d", file.Tags.TrackNumber, file.Tags.TrackTotal)
@@ -256,6 +238,7 @@ func TestParseTXXXFrame(t *testing.T) {
 		},
 	}
 	parseTXXXFrame(frame, file)
+	types.DeriveFields(&file.Tags, types.FormatMP3)
 
 	if file.Tags.Narrator != "John Doe" {
 		t.Errorf("expected narrator 'John Doe', got '%s'", file.Tags.Narrator)
@@ -271,6 +254,7 @@ func TestParseTXXXFrame(t *testing.T) {
 		},
 	}
 	parseTXXXFrame(frame, file)
+	types.DeriveFields(&file.Tags, types.FormatMP3)
 
 	if file.Tags.Series != "Harry Potter" {
 		t.Errorf("expected series 'Harry Potter', got '%s'", file.Tags.Series)

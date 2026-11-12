@@ -59,6 +59,9 @@ func parseID3v2(ctx context.Context, sr *binutil.SafeReader, file *types.File) (
 	if err != nil {
 		return tag.size, err
 	}
+	// The frames record raw tags only; the typed fields follow from them, also
+	// when a damaged frame ends the scan early.
+	defer types.DeriveFields(&file.Tags, types.FormatMP3)
 	st := &frameState{}
 	for frame, err := range tag.frames(ctx, isMetadataFrame, warn) {
 		if err != nil {
@@ -357,80 +360,16 @@ func decodeSynchsafe(b []byte) uint32 {
 		uint32(b[3]&0x7F)
 }
 
-// parseTextFrame parses standard text frames (TIT2, TPE1, TALB, etc.)
-func parseTextFrame(frame id3v2Frame, file *types.File) { //nolint:gocyclo // Complexity from many simple cases - intentionally kept together
+// parseTextFrame records the values of a text frame (TIT2, TPE1, TALB, ...) in the
+// raw tags under its frame ID. Typed fields are derived from them once the whole
+// tag is read.
+func parseTextFrame(frame id3v2Frame, file *types.File) {
 	if len(frame.Data) < 1 {
 		return
 	}
-
 	encoding := frame.Data[0]
-	values := takeTextValues(file, decodeText(frame.Data[1:], encoding))
-	var text string
-	if len(values) > 0 {
-		text = values[0]
-	}
-
-	for _, v := range values {
+	for _, v := range takeTextValues(file, decodeText(frame.Data[1:], encoding)) {
 		file.Tags.AddRaw(frame.ID, v)
-	}
-
-	switch frame.ID {
-	case frameIDTIT2: // Title
-		if file.Tags.Title == "" {
-			file.Tags.Title = text
-		}
-	case "TIT3": // Subtitle/Description refinement
-		if file.Tags.Subtitle == "" {
-			file.Tags.Subtitle = text
-		}
-	case "TPE1": // Artist
-		if file.Tags.Artist == "" {
-			file.Tags.Artist = text
-		}
-		file.Tags.Artists = append(file.Tags.Artists, values...)
-	case "TALB": // Album
-		if file.Tags.Album == "" {
-			file.Tags.Album = text
-		}
-	case "TCON": // Genre
-		file.Tags.Genres = append(file.Tags.Genres, values...)
-	case "TYER": // Year (ID3v2.3)
-		if year := parseYear(text); year > 0 {
-			file.Tags.Year = year
-		}
-	case "TDRC": // Recording time (ID3v2.4)
-		if year := parseYear(text); year > 0 {
-			file.Tags.Year = year
-		}
-	case "TCOM": // Composer
-		file.Tags.Composers = append(file.Tags.Composers, values...)
-	case "TRCK": // Track number/total
-		if file.Tags.TrackNumber == 0 && file.Tags.TrackTotal == 0 {
-			file.Tags.TrackNumber, file.Tags.TrackTotal = parseTrackNumber(text)
-		}
-	case "TPOS": // Disc number/total
-		if file.Tags.DiscNumber == 0 && file.Tags.DiscTotal == 0 {
-			file.Tags.DiscNumber, file.Tags.DiscTotal = parseTrackNumber(text)
-		}
-	case "TPE2": // Album artist
-		if file.Tags.AlbumArtist == "" {
-			file.Tags.AlbumArtist = text
-		}
-	case "GRP1": // Grouping (iTunes)
-		file.Tags.Grouping = text
-	case "TIT1": // Content group description (alternative grouping)
-		if file.Tags.Grouping == "" {
-			file.Tags.Grouping = text
-		}
-	case "MVNM": // Movement name (series name in ID3v2.4)
-		if file.Tags.Series == "" {
-			file.Tags.Series = text
-		}
-	case "MVIN": // Movement number "N" or "N/count" (series position)
-		if file.Tags.SeriesPart == "" {
-			part, _, _ := strings.Cut(text, "/")
-			file.Tags.SeriesPart = strings.TrimSpace(part)
-		}
 	}
 }
 
@@ -446,43 +385,10 @@ func applyMediaMarkers(f *types.File, value string) {
 	}
 }
 
-// txxxFieldHandlers maps TXXX description (lowercased) → handler that writes
-// the value into the corresponding tag, optionally with a "first wins" rule.
-var txxxFieldHandlers = map[string]func(*types.File, string){
-	mediaMarkersDescription: applyMediaMarkers,
-	"narrator":              func(f *types.File, v string) { f.Tags.Narrator = v },
-	"series":                func(f *types.File, v string) { f.Tags.Series = v },
-	"series part":           func(f *types.File, v string) { f.Tags.SeriesPart = v },
-	"seriespart":            func(f *types.File, v string) { f.Tags.SeriesPart = v },
-	"series-part":           func(f *types.File, v string) { f.Tags.SeriesPart = v },
-	"series position":       func(f *types.File, v string) { f.Tags.SeriesPart = v },
-	"publisher":             func(f *types.File, v string) { f.Tags.Publisher = v },
-	"isbn":                  func(f *types.File, v string) { f.Tags.ISBN = v },
-	"asin":                  func(f *types.File, v string) { f.Tags.ASIN = v },
-	"audible_asin":          func(f *types.File, v string) { f.Tags.ASIN = v },
-	"language":              func(f *types.File, v string) { f.Tags.Language = v },
-	"lang":                  func(f *types.File, v string) { f.Tags.Language = v },
-	"description":           setIfEmpty(func(t *types.Tags) *string { return &t.Description }),
-	"mvnm":                  setIfEmpty(func(t *types.Tags) *string { return &t.Series }),
-	"movement name":         setIfEmpty(func(t *types.Tags) *string { return &t.Series }),
-	"movement":              setIfEmpty(func(t *types.Tags) *string { return &t.Series }),
-	"mvin":                  setIfEmpty(func(t *types.Tags) *string { return &t.SeriesPart }),
-	"movement number":       setIfEmpty(func(t *types.Tags) *string { return &t.SeriesPart }),
-	"movement index":        setIfEmpty(func(t *types.Tags) *string { return &t.SeriesPart }),
-	"grouping":              setIfEmpty(func(t *types.Tags) *string { return &t.Grouping }),
-}
-
-func setIfEmpty(field func(*types.Tags) *string) func(*types.File, string) {
-	return func(f *types.File, v string) {
-		if p := field(&f.Tags); *p == "" {
-			*p = v
-		}
-	}
-}
-
 // parseTXXXFrame handles TXXX: [encoding][description\0][value{\0value}]. Every
-// value goes to the raw tags, and the first fills the typed field, if any. A
-// frame with no value keeps its raw key, holding "", so it can still be deleted.
+// value goes to the raw tags; the typed fields come from them later. A frame
+// with no value keeps its raw key, holding "", so it can still be deleted. The
+// OverDrive MediaMarkers frame also becomes chapters.
 func parseTXXXFrame(frame id3v2Frame, file *types.File) {
 	if len(frame.Data) < 2 {
 		return
@@ -514,8 +420,8 @@ func parseTXXXFrame(frame id3v2Frame, file *types.File) {
 		}
 	}
 
-	if handler, ok := txxxFieldHandlers[strings.ToLower(description)]; ok {
-		handler(file, values[0])
+	if strings.EqualFold(description, mediaMarkersDescription) {
+		applyMediaMarkers(file, values[0])
 	}
 }
 
@@ -568,16 +474,13 @@ func parseCommentFrame(frame id3v2Frame, file *types.File, st *frameState) {
 
 // parseLyricsFrame handles USLT, which has the layout of COMM. Every non-empty
 // text is recorded under the raw key USLT; the first one, whatever its
-// language or description, fills Lyrics.
+// language or description, becomes Lyrics.
 func parseLyricsFrame(frame id3v2Frame, file *types.File) {
 	c, ok := parseLangText(frame.Data)
 	if !ok || c.text == "" || !types.TakeValue(file) {
 		return
 	}
 	file.Tags.AddRaw(frameIDUSLT, c.text)
-	if file.Tags.Lyrics == "" {
-		file.Tags.Lyrics = c.text
-	}
 }
 
 // langText is the content of a COMM or USLT frame. lang is the three stored
@@ -862,16 +765,4 @@ func parseYear(text string) int {
 		}
 	}
 	return 0
-}
-
-// parseTrackNumber parses "N" or "N/Total" format.
-func parseTrackNumber(text string) (number, total int) {
-	parts := strings.Split(text, "/")
-	if len(parts) >= 1 {
-		_, _ = fmt.Sscanf(parts[0], "%d", &number)
-	}
-	if len(parts) >= 2 {
-		_, _ = fmt.Sscanf(parts[1], "%d", &total)
-	}
-	return
 }
