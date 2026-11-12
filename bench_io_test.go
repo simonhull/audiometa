@@ -109,6 +109,7 @@ func ioRun(b *testing.B, fx ioFixture, step func(f *File)) (calls int, bytesRead
 }
 
 func benchIO(b *testing.B, step func(b *testing.B, f *File)) {
+	b.Helper()
 	for _, fx := range ioFixtures(b) {
 		b.Run(fx.name, func(b *testing.B) {
 			b.ReportAllocs()
@@ -158,6 +159,7 @@ func BenchmarkIOOpen(b *testing.B) { benchIO(b, nil) }
 // after an open.
 func BenchmarkIOArtwork(b *testing.B) {
 	benchIO(b, func(b *testing.B, f *File) {
+		b.Helper()
 		if _, err := f.ExtractArtwork(); err != nil {
 			b.Fatal(err)
 		}
@@ -168,6 +170,7 @@ func BenchmarkIOArtwork(b *testing.B) {
 // an open.
 func BenchmarkIODigest(b *testing.B) {
 	benchIO(b, func(b *testing.B, f *File) {
+		b.Helper()
 		if _, err := f.AudioDigest(); err != nil {
 			b.Fatal(err)
 		}

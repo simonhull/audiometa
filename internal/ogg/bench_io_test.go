@@ -68,6 +68,7 @@ func ioInputs() []ioInput {
 }
 
 func benchIO(b *testing.B, run func(b *testing.B, r io.ReaderAt, size int64)) {
+	b.Helper()
 	for _, in := range ioInputs() {
 		b.Run(in.name, func(b *testing.B) {
 			br := bytes.NewReader(in.data)
@@ -86,6 +87,7 @@ func benchIO(b *testing.B, run func(b *testing.B, r io.ReaderAt, size int64)) {
 // BenchmarkIOParse reports the reads and bytes requested by Parse.
 func BenchmarkIOParse(b *testing.B) {
 	benchIO(b, func(b *testing.B, r io.ReaderAt, size int64) {
+		b.Helper()
 		if _, err := (&parser{}).Parse(context.Background(), r, size, "x.opus"); err != nil {
 			b.Fatal(err)
 		}
@@ -95,6 +97,7 @@ func BenchmarkIOParse(b *testing.B) {
 // BenchmarkIOExtractArtwork reports the reads and bytes requested by ExtractArtwork.
 func BenchmarkIOExtractArtwork(b *testing.B) {
 	benchIO(b, func(b *testing.B, r io.ReaderAt, size int64) {
+		b.Helper()
 		if _, err := (&parser{}).ExtractArtwork(context.Background(), r, size, "x.opus"); err != nil {
 			b.Fatal(err)
 		}
@@ -104,6 +107,7 @@ func BenchmarkIOExtractArtwork(b *testing.B) {
 // BenchmarkIODigest reports the reads and bytes requested by AudioDigest.
 func BenchmarkIODigest(b *testing.B) {
 	benchIO(b, func(b *testing.B, r io.ReaderAt, size int64) {
+		b.Helper()
 		if _, err := (digester{}).AudioDigest(context.Background(), r, size); err != nil {
 			b.Fatal(err)
 		}

@@ -243,14 +243,14 @@ func TestPageStreamReadError(t *testing.T) {
 }
 
 // pagesOf reads every page of an Ogg file built by buildOgg.
-func pagesOf(t testing.TB, data []byte) []*oggPage {
-	t.Helper()
+func pagesOf(tb testing.TB, data []byte) []*oggPage {
+	tb.Helper()
 	sr := binutil.NewSafeReader(bytes.NewReader(data), int64(len(data)), "x")
 	var pages []*oggPage
 	for off := int64(0); off < int64(len(data)); {
 		page, next, err := readPage(sr, off)
 		if err != nil {
-			t.Fatal(err)
+			tb.Fatal(err)
 		}
 		pages = append(pages, page)
 		off = next

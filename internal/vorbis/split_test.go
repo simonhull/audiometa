@@ -112,6 +112,7 @@ func TestSplitCanceled(t *testing.T) {
 func TestSplitAllocationBound(t *testing.T) {
 	p := append(append(le32(0), le32(1_000_000)...), 1, 2)
 	r := testing.Benchmark(func(b *testing.B) {
+		b.Helper()
 		b.ReportAllocs()
 		for b.Loop() {
 			if _, err := Split(context.Background(), p); err == nil {

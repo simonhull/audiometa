@@ -10,9 +10,9 @@ import (
 	"github.com/simonhull/audiometa/internal/types"
 )
 
-func layoutOf(t testing.TB, data []byte) (*layout, error) {
-	t.Helper()
-	return readLayout(t.Context(), bytes.NewReader(data), int64(len(data)), "x")
+func layoutOf(tb testing.TB, data []byte) (*layout, error) {
+	tb.Helper()
+	return readLayout(tb.Context(), bytes.NewReader(data), int64(len(data)), "x")
 }
 
 // TestReadLayoutCorpus checks the layout of each corpus file against what the

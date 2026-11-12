@@ -11,9 +11,9 @@ import (
 	"github.com/simonhull/audiometa/internal/writeutil"
 )
 
-func tryPatch(t testing.TB, src []byte, edits *types.EditSet) (*registry.Patch, error) {
-	t.Helper()
-	return writerFor(t, src).InPlacePatch(t.Context(), bytes.NewReader(src), int64(len(src)), edits)
+func tryPatch(tb testing.TB, src []byte, edits *types.EditSet) (*registry.Patch, error) {
+	tb.Helper()
+	return writerFor(tb, src).InPlacePatch(tb.Context(), bytes.NewReader(src), int64(len(src)), edits)
 }
 
 // applied returns src with p written over it.

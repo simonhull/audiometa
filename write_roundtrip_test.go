@@ -89,6 +89,7 @@ var roundTripEdits = []tagEdit{
 		},
 		formats: []audiometa.Format{audiometa.FormatMP3, audiometa.FormatM4A, audiometa.FormatM4B, audiometa.FormatWAV, audiometa.FormatAIFF},
 		check: func(t *testing.T, f *audiometa.File) {
+			t.Helper()
 			if got := f.Tags.GetFirst("MUSICBRAINZ ALBUM ID"); got != "f3c0fd5e-ba3e-4a2c-8fd3-6e4a6f0c1b2d" {
 				t.Errorf("album ID = %q", got)
 			}
@@ -119,6 +120,7 @@ var roundTripEdits = []tagEdit{
 		apply:   func(f *audiometa.File) error { f.Tags.Set("REPLAYGAIN_TRACK_GAIN", "-6.00 dB"); return nil },
 		formats: []audiometa.Format{audiometa.FormatMP3, audiometa.FormatFLAC, audiometa.FormatM4A, audiometa.FormatM4B, audiometa.FormatWAV, audiometa.FormatAIFF},
 		check: func(t *testing.T, f *audiometa.File) {
+			t.Helper()
 			if rg := f.Audio.ReplayGain; rg == nil || rg.TrackGain != -6.0 {
 				t.Errorf("ReplayGain = %+v, want TrackGain -6", rg)
 			}
@@ -129,6 +131,7 @@ var roundTripEdits = []tagEdit{
 		fields: []string{"Title"},
 		apply:  func(f *audiometa.File) error { f.Tags.Title = "Nouveau titre ✓ 日本語"; return nil },
 		check: func(t *testing.T, f *audiometa.File) {
+			t.Helper()
 			if f.Tags.Title != "Nouveau titre ✓ 日本語" {
 				t.Errorf("Title = %q", f.Tags.Title)
 			}
@@ -139,6 +142,7 @@ var roundTripEdits = []tagEdit{
 		fields: []string{"Album"},
 		apply:  func(f *audiometa.File) error { f.Tags.Album = ""; return nil },
 		check: func(t *testing.T, f *audiometa.File) {
+			t.Helper()
 			if f.Tags.Album != "" {
 				t.Errorf("Album = %q, want cleared", f.Tags.Album)
 			}
@@ -153,6 +157,7 @@ var roundTripEdits = []tagEdit{
 			return nil
 		},
 		check: func(t *testing.T, f *audiometa.File) {
+			t.Helper()
 			if f.Tags.Artist != "A" || !slices.Equal(f.Tags.Artists, []string{"A", "B"}) {
 				t.Errorf("Artist = %q, Artists = %q", f.Tags.Artist, f.Tags.Artists)
 			}
@@ -163,6 +168,7 @@ var roundTripEdits = []tagEdit{
 		fields: []string{"Comment"},
 		apply:  func(f *audiometa.File) error { f.Tags.Comment = longComment; return nil },
 		check: func(t *testing.T, f *audiometa.File) {
+			t.Helper()
 			if f.Tags.Comment != longComment {
 				t.Errorf("Comment has %d characters, want %d", len(f.Tags.Comment), len(longComment))
 			}
@@ -173,6 +179,7 @@ var roundTripEdits = []tagEdit{
 		fields: []string{"Year"},
 		apply:  func(f *audiometa.File) error { f.Tags.Year = 1999; return nil },
 		check: func(t *testing.T, f *audiometa.File) {
+			t.Helper()
 			if f.Tags.Year != 1999 {
 				t.Errorf("Year = %d, want 1999", f.Tags.Year)
 			}
@@ -188,6 +195,7 @@ var roundTripMP3Edits = []tagEdit{
 		apply:   func(f *audiometa.File) error { f.Tags.Lyrics = "sing song"; return nil },
 		formats: []audiometa.Format{audiometa.FormatMP3},
 		check: func(t *testing.T, f *audiometa.File) {
+			t.Helper()
 			if f.Tags.Lyrics != "sing song" {
 				t.Errorf("Lyrics = %q, want sing song", f.Tags.Lyrics)
 			}
@@ -199,6 +207,7 @@ var roundTripMP3Edits = []tagEdit{
 		apply:   func(f *audiometa.File) error { f.Tags.Set("NARRATOR", "Reader"); return nil },
 		formats: []audiometa.Format{audiometa.FormatMP3},
 		check: func(t *testing.T, f *audiometa.File) {
+			t.Helper()
 			if f.Tags.Narrator != "Reader" {
 				t.Errorf("Narrator = %q, want Reader", f.Tags.Narrator)
 			}
@@ -212,6 +221,7 @@ var roundTripMP3Edits = []tagEdit{
 		formats: []audiometa.Format{audiometa.FormatMP3},
 		paths:   []string{"testdata/sample.mp3"},
 		check: func(t *testing.T, f *audiometa.File) {
+			t.Helper()
 			if f.Tags.Title != "" {
 				t.Errorf("Title = %q, want empty", f.Tags.Title)
 			}
@@ -234,6 +244,7 @@ var roundTripIFFEdits = []tagEdit{
 		apply:   func(f *audiometa.File) error { f.Tags.Lyrics = "sing song"; return nil },
 		formats: iffFormats,
 		check: func(t *testing.T, f *audiometa.File) {
+			t.Helper()
 			if f.Tags.Lyrics != "sing song" {
 				t.Errorf("Lyrics = %q, want sing song", f.Tags.Lyrics)
 			}
@@ -245,6 +256,7 @@ var roundTripIFFEdits = []tagEdit{
 		apply:   func(f *audiometa.File) error { f.Tags.Set("NARRATOR", "Reader"); return nil },
 		formats: iffFormats,
 		check: func(t *testing.T, f *audiometa.File) {
+			t.Helper()
 			if f.Tags.Narrator != "Reader" || f.Tags.GetFirst("NARRATOR") != "Reader" {
 				t.Errorf("Narrator = %q, want Reader", f.Tags.Narrator)
 			}
@@ -256,6 +268,7 @@ var roundTripIFFEdits = []tagEdit{
 		apply:   func(f *audiometa.File) error { f.Tags.TrackNumber, f.Tags.TrackTotal = 3, 12; return nil },
 		formats: iffFormats,
 		check: func(t *testing.T, f *audiometa.File) {
+			t.Helper()
 			if f.Tags.TrackNumber != 3 || f.Tags.TrackTotal != 12 || f.Tags.GetFirst("TRCK") != "3/12" {
 				t.Errorf("track %d/%d, TRCK %q", f.Tags.TrackNumber, f.Tags.TrackTotal, f.Tags.GetFirst("TRCK"))
 			}
@@ -268,6 +281,7 @@ var roundTripIFFEdits = []tagEdit{
 		apply:   func(f *audiometa.File) error { f.Tags.Title = "Mirrored"; return nil },
 		formats: iffFormats,
 		check: func(t *testing.T, f *audiometa.File) {
+			t.Helper()
 			native := f.Tags.Get(nativeTitle[f.Format])
 			if f.Tags.GetFirst("TIT2") != "Mirrored" || (native != nil && !slices.Equal(native, []string{"Mirrored"})) {
 				t.Errorf("TIT2 %q, %s %q", f.Tags.Get("TIT2"), nativeTitle[f.Format], native)
@@ -281,6 +295,7 @@ var roundTripIFFEdits = []tagEdit{
 		apply:   func(f *audiometa.File) error { f.Tags.Set(nativeCopyright[f.Format], "(C) Example"); return nil },
 		formats: iffFormats,
 		check: func(t *testing.T, f *audiometa.File) {
+			t.Helper()
 			key := nativeCopyright[f.Format]
 			if !slices.Equal(f.Tags.Get(key), []string{"(C) Example"}) {
 				t.Errorf("%q = %q", key, f.Tags.Get(key))
@@ -294,6 +309,7 @@ var roundTripIFFEdits = []tagEdit{
 		apply:   func(f *audiometa.File) error { f.Tags.Delete("TIT2"); return nil },
 		formats: iffFormats,
 		check: func(t *testing.T, f *audiometa.File) {
+			t.Helper()
 			if f.Tags.Get("TIT2") != nil || f.Tags.Title != f.Tags.GetFirst(nativeTitle[f.Format]) {
 				t.Errorf("TIT2 %q, Title %q", f.Tags.Get("TIT2"), f.Tags.Title)
 			}
@@ -313,6 +329,7 @@ var roundTripFLACEdits = []tagEdit{
 		apply:   func(f *audiometa.File) error { f.Tags.Lyrics = "sing song"; return nil },
 		formats: []audiometa.Format{audiometa.FormatFLAC},
 		check: func(t *testing.T, f *audiometa.File) {
+			t.Helper()
 			if f.Tags.Lyrics != "sing song" {
 				t.Errorf("Lyrics = %q, want sing song", f.Tags.Lyrics)
 			}
@@ -328,6 +345,7 @@ var roundTripM4AEdits = []tagEdit{
 		apply:   func(f *audiometa.File) error { f.Tags.Set("NARRATOR", "Reader"); return nil },
 		formats: []audiometa.Format{audiometa.FormatM4A, audiometa.FormatM4B},
 		check: func(t *testing.T, f *audiometa.File) {
+			t.Helper()
 			if f.Tags.Narrator != "Reader" {
 				t.Errorf("Narrator = %q, want Reader", f.Tags.Narrator)
 			}
@@ -339,6 +357,7 @@ var roundTripM4AEdits = []tagEdit{
 		apply:   func(f *audiometa.File) error { f.Tags.TrackNumber, f.Tags.TrackTotal = 3, 12; return nil },
 		formats: []audiometa.Format{audiometa.FormatM4A, audiometa.FormatM4B},
 		check: func(t *testing.T, f *audiometa.File) {
+			t.Helper()
 			if f.Tags.TrackNumber != 3 || f.Tags.TrackTotal != 12 {
 				t.Errorf("track = %d/%d, want 3/12", f.Tags.TrackNumber, f.Tags.TrackTotal)
 			}
@@ -408,6 +427,7 @@ var roundTripReleaseEdits = func() []tagEdit {
 			formats:     []audiometa.Format{audiometa.FormatMP3, audiometa.FormatM4A, audiometa.FormatM4B, audiometa.FormatWAV, audiometa.FormatAIFF},
 			unsupported: unsupported,
 			check: func(t *testing.T, f *audiometa.File) {
+				t.Helper()
 				if got := rf.get(&f.Tags); got != rf.value {
 					t.Errorf("%s = %q, want %q", rf.name, got, rf.value)
 				}
@@ -418,6 +438,7 @@ var roundTripReleaseEdits = func() []tagEdit {
 			apply:   func(f *audiometa.File) error { rf.set(&f.Tags, ""); return nil },
 			formats: []audiometa.Format{audiometa.FormatMP3, audiometa.FormatM4A, audiometa.FormatM4B, audiometa.FormatWAV, audiometa.FormatAIFF},
 			check: func(t *testing.T, f *audiometa.File) {
+				t.Helper()
 				if got := rf.get(&f.Tags); got != "" {
 					t.Errorf("%s = %q, want empty", rf.name, got)
 				}
@@ -433,6 +454,7 @@ var roundTripReleaseEdits = func() []tagEdit {
 			apply:   func(f *audiometa.File) error { f.Tags.Copyright = "(C) Mirrored"; return nil },
 			formats: iffFormats,
 			check: func(t *testing.T, f *audiometa.File) {
+				t.Helper()
 				key := nativeCopyright[f.Format]
 				if !slices.Equal(f.Tags.Get("TCOP"), []string{"(C) Mirrored"}) || (f.Tags.Get(key) != nil && !slices.Equal(f.Tags.Get(key), []string{"(C) Mirrored"})) {
 					t.Errorf("TCOP %q, %q %q", f.Tags.Get("TCOP"), key, f.Tags.Get(key))
@@ -446,6 +468,7 @@ var roundTripReleaseEdits = func() []tagEdit {
 			apply:   func(f *audiometa.File) error { f.Tags.OriginalDate = "2001-05-03"; return nil },
 			formats: id3,
 			check: func(t *testing.T, f *audiometa.File) {
+				t.Helper()
 				tdor, tory := f.Tags.Get("TDOR"), f.Tags.Get("TORY")
 				switch {
 				case slices.Equal(tdor, []string{"2001-05-03"}) && tory == nil && f.Tags.OriginalDate == "2001-05-03":
@@ -462,6 +485,7 @@ var roundTripReleaseEdits = func() []tagEdit {
 			formats: id3,
 			paths:   id3v23Paths,
 			check: func(t *testing.T, f *audiometa.File) {
+				t.Helper()
 				if f.Tags.OriginalDate != "2001" || !slices.Equal(f.Tags.Get("TORY"), []string{"2001"}) || f.Tags.Get("TDOR") != nil {
 					t.Errorf("OriginalDate %q, TORY %q, TDOR %q", f.Tags.OriginalDate, f.Tags.Get("TORY"), f.Tags.Get("TDOR"))
 				}
@@ -483,6 +507,7 @@ var roundTripReleaseEdits = func() []tagEdit {
 			formats: []audiometa.Format{audiometa.FormatMP3},
 			paths:   []string{"testdata/bench/book.mp3"},
 			check: func(t *testing.T, f *audiometa.File) {
+				t.Helper()
 				if f.Tags.Publisher != "New Publisher" || !slices.Equal(f.Tags.Get("TPUB"), []string{"New Publisher"}) || f.Tags.Get("PUBLISHER") != nil {
 					t.Errorf("Publisher %q, TPUB %q, PUBLISHER %q", f.Tags.Publisher, f.Tags.Get("TPUB"), f.Tags.Get("PUBLISHER"))
 				}
@@ -502,6 +527,7 @@ var roundTripReleaseEdits = func() []tagEdit {
 				return nil
 			},
 			check: func(t *testing.T, f *audiometa.File) {
+				t.Helper()
 				for key, want := range map[string][]string{
 					"MUSICBRAINZ ALBUM ID": {"album"}, "MUSICBRAINZ ARTIST ID": {"artist1", "artist2"},
 					"MUSICBRAINZ ALBUM ARTIST ID": {"albumartist"}, "MUSICBRAINZ TRACK ID": {"track"},
@@ -553,6 +579,7 @@ var roundTripArtworkEdits = []tagEdit{
 			return f.ReplaceArtwork(audiometa.Artwork{Data: onePixelPNG(), Type: audiometa.ArtworkFrontCover})
 		},
 		check: func(t *testing.T, f *audiometa.File) {
+			t.Helper()
 			art := extract(t, f)
 			fronts := 0
 			for _, a := range art {
@@ -573,6 +600,7 @@ var roundTripArtworkEdits = []tagEdit{
 		rawKeys: ogvPicture,
 		apply:   func(f *audiometa.File) error { f.RemoveAllArtwork(); return nil },
 		check: func(t *testing.T, f *audiometa.File) {
+			t.Helper()
 			if art := extract(t, f); len(art) != 0 {
 				t.Errorf("%d images left, want 0", len(art))
 			}
@@ -585,6 +613,7 @@ var roundTripArtworkEdits = []tagEdit{
 			return f.AddArtwork(audiometa.Artwork{Data: onePixelPNG(), Type: audiometa.ArtworkBackCover})
 		},
 		check: func(t *testing.T, f *audiometa.File) {
+			t.Helper()
 			art := extract(t, f)
 			if len(art) == 0 || art[len(art)-1].Type != audiometa.ArtworkBackCover || !bytes.Equal(art[len(art)-1].Data, onePixelPNG()) {
 				t.Error("back cover not appended")

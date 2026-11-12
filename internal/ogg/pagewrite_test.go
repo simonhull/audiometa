@@ -16,11 +16,11 @@ var corpusFiles = []string{
 	"sample.ogg", "sample_retagged.ogg", "sample.opus", "sample_retagged.opus", "bench/book.opus",
 }
 
-func readCorpus(t testing.TB, name string) []byte {
-	t.Helper()
+func readCorpus(tb testing.TB, name string) []byte {
+	tb.Helper()
 	data, err := os.ReadFile(filepath.Join("..", "..", "testdata", filepath.FromSlash(name)))
 	if err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
 	return data
 }
@@ -34,14 +34,14 @@ type rawPage struct {
 }
 
 // rawPagesOf splits data, which must be whole pages, into rawPages.
-func rawPagesOf(t testing.TB, data []byte) []rawPage {
-	t.Helper()
+func rawPagesOf(tb testing.TB, data []byte) []rawPage {
+	tb.Helper()
 	s := newPageStream(bytes.NewReader(data), int64(len(data)), "x", false)
 	var out []rawPage
 	for off := int64(0); off < int64(len(data)); {
 		page, next, err := s.next()
 		if err != nil {
-			t.Fatalf("page at %d: %v", off, err)
+			tb.Fatalf("page at %d: %v", off, err)
 		}
 		raw := data[off:next]
 		out = append(out, rawPage{raw, page, ebinary.LittleEndian.Uint32(raw[pageCRCOffset:])})
@@ -219,12 +219,12 @@ func TestPaginateAtTheSegmentLimit(t *testing.T) {
 // assembled returns the corpus file name with its header packets replaced by
 // the pages paginate makes of newPackets and every audio page renumbered and
 // re-checksummed: a file built only from this package's page encoder.
-func assembled(t testing.TB, name string, comment []byte) []byte {
-	t.Helper()
-	data := readCorpus(t, name)
-	l, err := readLayout(t.Context(), bytes.NewReader(data), int64(len(data)), name)
+func assembled(tb testing.TB, name string, comment []byte) []byte {
+	tb.Helper()
+	data := readCorpus(tb, name)
+	l, err := readLayout(tb.Context(), bytes.NewReader(data), int64(len(data)), name)
 	if err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
 	packets := slices.Clone(l.packets)
 	packets[1] = comment
@@ -234,7 +234,7 @@ func assembled(t testing.TB, name string, comment []byte) []byte {
 		out = appendPage(out, p)
 	}
 	seq := hdr[len(hdr)-1].SequenceNumber
-	rest := rawPagesOf(t, data[l.audioStart:])
+	rest := rawPagesOf(tb, data[l.audioStart:])
 	for _, p := range rest {
 		seq++
 		p.page.SequenceNumber = seq
