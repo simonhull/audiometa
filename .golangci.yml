@@ -55,6 +55,9 @@ linters:
           deny:
             - pkg: log$
               desc: libraries do not log; return errors or warnings
+    cyclop:
+      # The same bound as gocyclo below, so the two cannot disagree.
+      max-complexity: 15
     errcheck:
       check-type-assertions: true
       check-blank: false
@@ -62,6 +65,11 @@ linters:
         - (io.Closer).Close
         - (*os.File).Close
         - (*github.com/simonhull/audiometa.File).Close
+    funlen:
+      # Binary-format parsers read many fields in sequence; the defaults (60 lines, 40
+      # statements) split them into fragments that read worse than the sequence.
+      lines: 80
+      statements: 50
     gocritic:
       disabled-checks:
         - hugeParam
@@ -82,10 +90,36 @@ linters:
         - fieldalignment
     misspell:
       locale: US
+    ireturn:
+      # Seams return io.ReaderAt, io.Reader and friends on purpose; errors and the standard
+      # library's interfaces are fine to return.
+      allow:
+        - error
+        - stdlib
+        - empty
+        - anon
+        - generic
+    mnd:
+      # Binary-format parsers are sequences of field offsets, sizes and masks that the format
+      # specifications name; a constant per number reads worse than the spec table beside it.
+      ignored-files:
+        - internal/(flac|m4a|mp3|ogg|iff|vorbis|imagemeta|picture|trailer)/
     nakedret:
       max-func-lines: 30
     nestif:
       min-complexity: 5
+    wrapcheck:
+      # Errors from this module's own packages already carry their context, and a context
+      # error must reach the caller as ctx.Err() so errors.Is(err, context.Canceled) holds.
+      ignore-package-globs:
+        - github.com/simonhull/audiometa/*
+      ignore-sigs:
+        - .Errorf(
+        - errors.New(
+        - errors.Unwrap(
+        - errors.Join(
+        - (context.Context).Err()
+        - .Err()
     revive:
       enable-all-rules: false
       rules:
@@ -164,6 +198,18 @@ linters:
       # an upper bound, not a length guarantee.
       - linters: [makezero]
         path: _test\.go
+      # The CLI's JSON field names are its output format: renaming them to satisfy a case
+      # convention would change what scripts parse.
+      - linters: [tagliatelle]
+        path: ^cmd/audiometa/
+      # Formats register themselves with the registry in init(); that is the design (a blank
+      # import of a format package is what enables it).
+      - linters: [gochecknoinits]
+        path: ^internal/(flac|m4a|mp3|ogg|iff)/
+        source: '^func init\(\)'
+      # The examples are linear demos read top to bottom; splitting main hides the walkthrough.
+      - linters: [funlen, gocognit]
+        path: ^examples/
       # The examples are CLI demos whose output is fmt.Print*.
       - linters: [forbidigo]
         path: ^examples/
@@ -180,7 +226,7 @@ linters:
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
-  uniq-by-line: true
+  uniq-by-line: false # every linter reports its own finding on a shared line
   new: false
 
 formatters:

@@ -112,6 +112,25 @@ func parseCueSheet(sr *binary.SafeReader, offset, length int64, file *types.File
 	return nil
 }
 
+// parseCueIndices parses count index points starting at offset and returns them with the
+// offset after the last one.
+func parseCueIndices(sr *binary.SafeReader, offset int64, count int, maxOffset int64) ([]CueIndex, int64, error) {
+	indices := make([]CueIndex, 0, count)
+	for j := range count {
+		if offset+12 > maxOffset {
+			return nil, 0, errors.New("index data exceeds block bounds")
+		}
+
+		index, nextOffset, err := parseCueIndex(sr, offset)
+		if err != nil {
+			return nil, 0, fmt.Errorf("parse index %d: %w", j, err)
+		}
+		indices = append(indices, *index)
+		offset = nextOffset
+	}
+	return indices, offset, nil
+}
+
 // parseCueTrack parses a single track from CUESHEET.
 func parseCueTrack(sr *binary.SafeReader, offset, maxOffset int64) (*CueTrack, int64, error) {
 	if offset+36 > maxOffset {
@@ -159,19 +178,9 @@ func parseCueTrack(sr *binary.SafeReader, offset, maxOffset int64) (*CueTrack, i
 	}
 	offset++
 
-	// Parse indices
-	indices := make([]CueIndex, 0, indexCount)
-	for j := range indexCount {
-		if offset+12 > maxOffset {
-			return nil, 0, errors.New("index data exceeds block bounds")
-		}
-
-		index, nextOffset, err := parseCueIndex(sr, offset)
-		if err != nil {
-			return nil, 0, fmt.Errorf("parse index %d: %w", j, err)
-		}
-		indices = append(indices, *index)
-		offset = nextOffset
+	indices, offset, err := parseCueIndices(sr, offset, int(indexCount), maxOffset)
+	if err != nil {
+		return nil, 0, err
 	}
 
 	track := &CueTrack{
