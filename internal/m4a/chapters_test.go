@@ -455,6 +455,18 @@ func TestQTChapters_TimingsBoundedByTheSamplesTheFileHolds(t *testing.T) {
 	}
 }
 
+func TestQTChapters_TimingsWithoutStszBoundedByFileSize(t *testing.T) {
+	// No stsz, so no sample can be read and the file's size is the only bound.
+	data, moovOff := buildQTChapterFile(textSample("Only"),
+		sttsAtom([2]uint32{1 << 20, 1000}), stscAtom([3]uint32{1, 1, 1}), stcoAtom(8))
+	alloc := testbudget.Allocated(func() {
+		parseQTChapters(t, data, moovOff, time.Hour)
+	})
+	if alloc > 1<<20 {
+		t.Errorf("allocated %d bytes for a %d-byte file, want under 1 MiB", alloc, len(data))
+	}
+}
+
 func TestParseChapterTimings_CapsAccumulation(t *testing.T) {
 	t.Parallel()
 	stts := sttsAtom([2]uint32{0xFFFFFFFF, 1})

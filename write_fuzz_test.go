@@ -151,6 +151,8 @@ func FuzzWriteRoundTrip(f *testing.F) { //nolint:cyclop,gocyclo // the fuzz body
 	f.Add([]byte("ID3\x0200\x00\x00\x00\x00"), []byte("0000"))
 	// A raw TORY edit on an ID3v2.2 tag lands in TDOR (plan 077).
 	f.Add([]byte("ID3\x0200\x00\x00\x00\x000"), []byte("0X00"))
+	// A raw ©mvi of "00", which would read back as "0".
+	f.Add([]byte("\x00\x00\x00\x1cftypM4A 0000000000000000\x00\x00\x00\rmoov00000"), []byte("0\x9d000"))
 	// An empty text chunk last in the file (plan 058).
 	f.Add([]byte("FORM0000AIFFCOMM\x00\x00\x00\x12000000000000000000"), []byte("00"))
 
