@@ -286,16 +286,11 @@ func decodeField(t *Tags, format Format, f Field, key string, values []string) b
 		return decodeSeriesPart(t, format, key, first)
 	}
 	if p := intField(t, f); p != nil { // track and disc number/total
-		number, total, hasTotal := splitNumberTotal(key, first)
-		if f == FieldTrackTotal || f == FieldDiscTotal {
-			if !hasTotal {
-				return false
-			}
-			*p = total
-			return true
+		n, ok := scanNumber(key, first, f == FieldTrackTotal || f == FieldDiscTotal)
+		if ok {
+			*p = n
 		}
-		*p = number
-		return true
+		return ok
 	}
 	setFieldValues(t, f, values)
 	return true
@@ -363,18 +358,23 @@ func isNumberKey(key string) bool {
 	return key == keyTRCK || key == keyTPOS || key == keyTRACKNUMBER || key == keyDISCNUMBER
 }
 
-// splitNumberTotal decodes a track or disc value. A number key yields its "N"
-// and, when present, its "/Total" (hasTotal reports which); any other key
-// (TRACKTOTAL, TOTALTRACKS, ...) holds one number, returned as both results.
-func splitNumberTotal(key, value string) (number, total int, hasTotal bool) {
-	if !isNumberKey(key) {
-		_, _ = fmt.Sscanf(value, "%d", &number)
-		return number, number, true
+// scanNumber decodes the number or, when total is set, the total of a track or
+// disc value. A number key holds "N" or "N/Total" and has no total when the
+// value carries no "/"; any other key (TRACKTOTAL, TOTALTRACKS, ...) holds one
+// number, which is both. Scanning only the part asked for keeps the many reads
+// of one open cheap.
+func scanNumber(key, value string, total bool) (n int, ok bool) {
+	if isNumberKey(key) {
+		num, tot, hasTotal := strings.Cut(value, "/")
+		switch {
+		case !total:
+			value = num
+		case hasTotal:
+			value = tot
+		default:
+			return 0, false
+		}
 	}
-	num, tot, ok := strings.Cut(value, "/")
-	_, _ = fmt.Sscanf(num, "%d", &number)
-	if ok {
-		_, _ = fmt.Sscanf(tot, "%d", &total)
-	}
-	return number, total, ok
+	_, _ = fmt.Sscanf(value, "%d", &n)
+	return n, true
 }
