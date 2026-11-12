@@ -6,12 +6,14 @@ import (
 )
 
 func TestFillChapterEndTimes(t *testing.T) {
+	t.Parallel()
 	sec := func(n int) time.Duration { return time.Duration(n) * time.Second }
 	mk := func() []Chapter {
 		return []Chapter{{Index: 1, StartTime: 0, Source: ChapterSourceNero}, {Index: 2, StartTime: sec(10), Source: ChapterSourceNero}, {Index: 3, StartTime: sec(25), Source: ChapterSourceNero}}
 	}
 
 	t.Run("known duration", func(t *testing.T) {
+		t.Parallel()
 		ch := mk()
 		FillChapterEndTimes(ch, sec(60))
 		if ch[0].EndTime != sec(10) || ch[1].EndTime != sec(25) || ch[2].EndTime != sec(60) {
@@ -22,6 +24,7 @@ func TestFillChapterEndTimes(t *testing.T) {
 		}
 	})
 	t.Run("unknown duration leaves last at zero", func(t *testing.T) {
+		t.Parallel()
 		ch := mk()
 		FillChapterEndTimes(ch, 0)
 		if ch[1].EndTime != sec(25) || ch[2].EndTime != 0 {
@@ -29,11 +32,15 @@ func TestFillChapterEndTimes(t *testing.T) {
 		}
 	})
 	t.Run("single chapter", func(t *testing.T) {
+		t.Parallel()
 		ch := mk()[:1]
 		FillChapterEndTimes(ch, sec(5))
 		if ch[0].EndTime != sec(5) {
 			t.Errorf("end = %v", ch[0].EndTime)
 		}
 	})
-	t.Run("empty", func(*testing.T) { FillChapterEndTimes(nil, sec(5)) })
+	t.Run("empty", func(t *testing.T) {
+		t.Parallel()
+		FillChapterEndTimes(nil, sec(5))
+	})
 }

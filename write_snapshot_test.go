@@ -25,9 +25,11 @@ var fieldMutations = []struct {
 }
 
 func TestWrite_IgnoresMutatedFileFields(t *testing.T) {
+	t.Parallel()
 	for _, inPlace := range []bool{false, true} {
 		for _, m := range fieldMutations {
 			t.Run(fmt.Sprintf("%s/inPlace=%v", m.name, inPlace), func(t *testing.T) {
+				t.Parallel()
 				path, _ := copySample(t, sampleMP3)
 				want := digestFile(t, path)
 				var opts []WriteOption
@@ -54,8 +56,10 @@ func TestWrite_IgnoresMutatedFileFields(t *testing.T) {
 }
 
 func TestWriteTo_IgnoresMutatedFileFields(t *testing.T) {
+	t.Parallel()
 	for _, m := range fieldMutations {
 		t.Run(m.name, func(t *testing.T) {
+			t.Parallel()
 			path, src := copySample(t, sampleMP3)
 			want := digestFile(t, path)
 
@@ -86,8 +90,10 @@ func TestWriteTo_IgnoresMutatedFileFields(t *testing.T) {
 }
 
 func TestReads_IgnoreMutatedFileFields(t *testing.T) {
+	t.Parallel()
 	for _, m := range fieldMutations {
 		t.Run(m.name, func(t *testing.T) {
+			t.Parallel()
 			path, _ := copySample(t, sampleMP3)
 			want := digestFile(t, path)
 			f := openSample(t, path)

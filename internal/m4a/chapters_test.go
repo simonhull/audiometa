@@ -57,6 +57,7 @@ func createChplAtomVersion(version byte, chapters []struct {
 }
 
 func TestParseChapters_Success(t *testing.T) {
+	t.Parallel()
 	// Create chapters with start times and titles
 	chapterData := []struct {
 		time  int64
@@ -124,6 +125,7 @@ func TestParseChapters_Success(t *testing.T) {
 }
 
 func TestParseChapters_EmptyTitles(t *testing.T) {
+	t.Parallel()
 	chapterData := []struct {
 		time  int64
 		title string
@@ -155,6 +157,7 @@ func TestParseChapters_EmptyTitles(t *testing.T) {
 }
 
 func TestParseChapters_SingleChapter(t *testing.T) {
+	t.Parallel()
 	chapterData := []struct {
 		time  int64
 		title string
@@ -188,6 +191,7 @@ func TestParseChapters_SingleChapter(t *testing.T) {
 }
 
 func TestParseChapters_NoChpl(t *testing.T) {
+	t.Parallel()
 	// moov with udta but no chpl
 	udta := createMockAtom("udta", []byte{})
 	moov := createMockAtom("moov", udta)
@@ -207,6 +211,7 @@ func TestParseChapters_NoChpl(t *testing.T) {
 }
 
 func TestParseChapters_NoUdta(t *testing.T) {
+	t.Parallel()
 	// moov without udta
 	moov := createMockAtom("moov", []byte{})
 
@@ -315,6 +320,7 @@ func checkChapters(t *testing.T, got []types.Chapter, titles []string, starts []
 }
 
 func TestQTChapters_OneSamplePerChunk(t *testing.T) {
+	t.Parallel()
 	payload := slices.Concat(textSample("Intro"), textSample("Middle"), textSample("End"))
 	data, moovOff := buildQTChapterFile(payload,
 		sttsAtom([2]uint32{3, 1000}),
@@ -333,6 +339,7 @@ func TestQTChapters_OneSamplePerChunk(t *testing.T) {
 }
 
 func TestQTChapters_StszDefaultSize(t *testing.T) {
+	t.Parallel()
 	payload := slices.Concat(textSample("Ch 1"), textSample("Ch 2"), textSample("Ch 3"))
 	data, moovOff := buildQTChapterFile(payload,
 		sttsAtom([2]uint32{3, 1000}),
@@ -345,6 +352,7 @@ func TestQTChapters_StszDefaultSize(t *testing.T) {
 }
 
 func TestQTChapters_MultipleSamplesPerChunk(t *testing.T) {
+	t.Parallel()
 	payload := slices.Concat(textSample("A"), textSample("Bb"), make([]byte, 9), textSample("Ccc"), textSample("Dddd"))
 	data, moovOff := buildQTChapterFile(payload,
 		sttsAtom([2]uint32{4, 1000}),
@@ -358,6 +366,7 @@ func TestQTChapters_MultipleSamplesPerChunk(t *testing.T) {
 }
 
 func TestComputeSampleOffsets(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		sizes  []uint32
@@ -375,6 +384,7 @@ func TestComputeSampleOffsets(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := computeSampleOffsets(tt.sizes, tt.chunks, tt.stsc); !slices.Equal(got, tt.want) {
 				t.Errorf("computeSampleOffsets() = %v, want %v", got, tt.want)
 			}
@@ -383,6 +393,7 @@ func TestComputeSampleOffsets(t *testing.T) {
 }
 
 func TestParseChapters_ChplVersion0(t *testing.T) {
+	t.Parallel()
 	chpl := createChplAtomVersion(0, []struct {
 		time  int64
 		title string
@@ -393,6 +404,7 @@ func TestParseChapters_ChplVersion0(t *testing.T) {
 }
 
 func TestQTChapters_HugeSttsCountIsBounded(t *testing.T) {
+	t.Parallel()
 	data, moovOff := buildQTChapterFile(textSample("Only"),
 		sttsAtom([2]uint32{0xFFFFFFFF, 1000}),
 		stszAtom(0, 1, 6),
@@ -444,6 +456,7 @@ func TestQTChapters_TimingsBoundedByTheSamplesTheFileHolds(t *testing.T) {
 }
 
 func TestParseChapterTimings_CapsAccumulation(t *testing.T) {
+	t.Parallel()
 	stts := sttsAtom([2]uint32{0xFFFFFFFF, 1})
 	stbl := createMockAtom("stbl", stts)
 	sr := audiobinary.NewSafeReader(bytes.NewReader(stbl), int64(len(stbl)), "t.m4b")
@@ -461,6 +474,7 @@ func TestParseChapterTimings_CapsAccumulation(t *testing.T) {
 }
 
 func TestParseChunkOffsets_CountPastFile(t *testing.T) {
+	t.Parallel()
 	for _, typ := range []string{"stco", "co64"} {
 		stbl := createMockAtom("stbl", fullAtom(typ, u32be(0xFFFFFFFF)))
 		sr := audiobinary.NewSafeReader(bytes.NewReader(stbl), int64(len(stbl)), "t.m4b")
@@ -475,6 +489,7 @@ func TestParseChunkOffsets_CountPastFile(t *testing.T) {
 }
 
 func TestParseChapters_ChplHostileStartTime(t *testing.T) {
+	t.Parallel()
 	chpl := createChplAtom([]struct {
 		time  int64
 		title string
@@ -492,6 +507,7 @@ func TestParseChapters_ChplHostileStartTime(t *testing.T) {
 }
 
 func TestParseChapterTimings_HugeAccumulationDoesNotWrap(t *testing.T) {
+	t.Parallel()
 	stts := sttsAtom([2]uint32{3, 0xFFFFFFFF})
 	stbl := createMockAtom("stbl", stts)
 	sr := audiobinary.NewSafeReader(bytes.NewReader(stbl), int64(len(stbl)), "t.m4b")
@@ -511,6 +527,7 @@ func TestParseChapterTimings_HugeAccumulationDoesNotWrap(t *testing.T) {
 }
 
 func TestQTChapters_UTF16Titles(t *testing.T) {
+	t.Parallel()
 	be := textSample(string([]byte{0xFE, 0xFF, 0x00, 'C', 0x00, 'h', 0x00, 0xE9}))
 	le := textSample(string([]byte{0xFF, 0xFE, 'C', 0x00, 'h', 0x00}))
 	data, moovOff := buildQTChapterFile(slices.Concat(be, le),
@@ -524,6 +541,7 @@ func TestQTChapters_UTF16Titles(t *testing.T) {
 }
 
 func TestQTChapters_IndexesStayConsecutive(t *testing.T) {
+	t.Parallel()
 	payload := slices.Concat(textSample("Intro"), textSample("End"))
 	data, moovOff := buildQTChapterFile(payload,
 		sttsAtom([2]uint32{3, 1000}),

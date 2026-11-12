@@ -8,6 +8,7 @@ import (
 )
 
 func TestIlstItemRecordsRawAndArtists(t *testing.T) {
+	t.Parallel()
 	f := runIlst(t, ilstText("\xA9ART", "Someone"))
 	types.DeriveFields(&f.Tags, types.FormatM4A)
 	if got := f.Tags.Get("\xA9ART"); !slices.Equal(got, []string{"Someone"}) {
@@ -19,6 +20,7 @@ func TestIlstItemRecordsRawAndArtists(t *testing.T) {
 }
 
 func TestFreeformReadsEveryValue(t *testing.T) {
+	t.Parallel()
 	src := buildMP4(false, ilstFreeform("Label", "A", "", "B", "C"))
 	if got := parseBytes(t, src).Tags.Get("LABEL"); !slices.Equal(got, []string{"A", "B", "C"}) {
 		t.Errorf("LABEL = %q", got)
@@ -26,6 +28,7 @@ func TestFreeformReadsEveryValue(t *testing.T) {
 }
 
 func TestFreeformFirstValueFillsTheField(t *testing.T) {
+	t.Parallel()
 	tags := parseBytes(t, buildMP4(false, ilstFreeform("Narrator", "A", "B"))).Tags
 	if tags.Narrator != "A" {
 		t.Errorf("Narrator = %q, want A", tags.Narrator)
@@ -36,6 +39,7 @@ func TestFreeformFirstValueFillsTheField(t *testing.T) {
 }
 
 func TestFreeformRepeatedItemsAndValuesAccumulate(t *testing.T) {
+	t.Parallel()
 	src := buildMP4(false, ilstFreeform("Label", "A", "B"), ilstFreeform("label", "C"))
 	if got := parseBytes(t, src).Tags.Get("LABEL"); !slices.Equal(got, []string{"A", "B", "C"}) {
 		t.Errorf("LABEL = %q", got)
@@ -43,6 +47,7 @@ func TestFreeformRepeatedItemsAndValuesAccumulate(t *testing.T) {
 }
 
 func TestFreeformMultiValueWriteRoundTrip(t *testing.T) {
+	t.Parallel()
 	src := buildMP4(false, ilstText("\xA9nam", "T"), ilstFreeform("Label", "A", "B"))
 
 	out := writeTags(t, src, func(tg *types.Tags) { tg.Title = "New" })

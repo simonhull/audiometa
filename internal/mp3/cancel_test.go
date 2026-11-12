@@ -11,6 +11,7 @@ import (
 )
 
 func TestParse_CancelInsideLoops(t *testing.T) {
+	t.Parallel()
 	data, err := os.ReadFile("../../testdata/sample.mp3")
 	if err != nil {
 		t.Fatal(err)

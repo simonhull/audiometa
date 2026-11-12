@@ -6,6 +6,7 @@ import (
 )
 
 func TestGetVersion(t *testing.T) {
+	t.Parallel()
 	v := GetVersion()
 	if v == "" {
 		t.Fatal("GetVersion() returned an empty string")
@@ -26,12 +27,14 @@ func TestGetVersionLdflagsOverride(t *testing.T) {
 }
 
 func TestGetVersionInfoMatchesGetVersion(t *testing.T) {
+	t.Parallel()
 	if got, want := GetVersionInfo().Version, GetVersion(); got != want {
 		t.Errorf("GetVersionInfo().Version = %q, want %q", got, want)
 	}
 }
 
 func TestModuleVersion(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		bi   *debug.BuildInfo
@@ -87,6 +90,7 @@ func TestModuleVersion(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := moduleVersion(tt.bi); got != tt.want {
 				t.Errorf("moduleVersion() = %q, want %q", got, tt.want)
 			}

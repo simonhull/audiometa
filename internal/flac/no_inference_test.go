@@ -9,6 +9,7 @@ import (
 // TestParse_NoInference verifies tags are reported exactly as stored: Series,
 // SeriesPart and Narrator are never derived from Grouping, Composer or the path.
 func TestParse_NoInference(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name         string
 		comments     []string
@@ -27,6 +28,7 @@ func TestParse_NoInference(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			data := buildFLAC(
 				flacBlock(false, 0, streamInfoPayload(44100*10)),
 				flacBlock(true, 4, vorbisCommentPayload(tc.comments...)),

@@ -37,6 +37,7 @@ func sameLength(t *testing.T, src []byte) *types.EditSet {
 // that keeps the comment packet's length patches only header pages and that
 // the patched file is what a full rewrite writes.
 func TestInPlacePatchEqualsRewrite(t *testing.T) {
+	t.Parallel()
 	for _, name := range corpusFiles {
 		src := readCorpus(t, name)
 		l, err := layoutOf(t, src)
@@ -67,6 +68,7 @@ func TestInPlacePatchEqualsRewrite(t *testing.T) {
 }
 
 func TestInPlacePatchDeclinesAChangeOfLength(t *testing.T) {
+	t.Parallel()
 	for _, name := range corpusFiles {
 		src := readCorpus(t, name)
 		for label, edits := range map[string]*types.EditSet{
@@ -83,6 +85,7 @@ func TestInPlacePatchDeclinesAChangeOfLength(t *testing.T) {
 }
 
 func TestInPlacePatchOfNoChange(t *testing.T) {
+	t.Parallel()
 	src := readCorpus(t, "sample.opus")
 	p, err := tryPatch(t, src, keyEdit("NO_SUCH_KEY"))
 	if err != nil || p == nil || len(p.Data) != 0 {
@@ -93,6 +96,7 @@ func TestInPlacePatchOfNoChange(t *testing.T) {
 // TestInPlacePatchCoversOnlyChangedPages builds a comment header on four small
 // pages and edits bytes on the third page only.
 func TestInPlacePatchCoversOnlyChangedPages(t *testing.T) {
+	t.Parallel()
 	filler := strings.Repeat("f", 1000)
 	specs := slices.Concat(
 		[]pageSpec{{headerType: 0x02, serial: 5, lacing: lacingFor(len(opusHeadPacket())), data: opusHeadPacket()}},
@@ -161,6 +165,7 @@ func smallPages(packet []byte, serial uint32) []pageSpec {
 // padding keeps the packet's length while the comments fit in it, binary data
 // is kept as it is.
 func TestOpusPaddingAbsorbsTheChange(t *testing.T) {
+	t.Parallel()
 	build := func(tail []byte) []byte {
 		body := append(commentPacket("OpusTags", false, "TITLE=Old title"), tail...)
 		return withCRCs(buildOgg(
@@ -227,6 +232,7 @@ func TestOpusPaddingAbsorbsTheChange(t *testing.T) {
 // the sequence numbers and checksums after them, and a rewrite or an in-place
 // patch moves nothing the ranges cover.
 func TestPreservedRanges(t *testing.T) {
+	t.Parallel()
 	trailing := append(readCorpus(t, "sample.opus"), "a tag after the last page"...)
 	files := map[string][]byte{"trailing bytes": trailing, "truncated page": readCorpus(t, "sample.ogg")}
 	files["truncated page"] = files["truncated page"][:len(files["truncated page"])-9]

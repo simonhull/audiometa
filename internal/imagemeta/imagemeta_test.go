@@ -4,6 +4,7 @@ import "testing"
 
 // TestDimensions covers JPEG SOF and PNG IHDR parsing, shared by the MP3 and M4A parsers.
 func TestDimensions(t *testing.T) {
+	t.Parallel()
 	jpeg := func(marker byte) []byte {
 		return []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x04, 0x00, 0x00, 0xFF, marker, 0x00, 0x11, 0x08, 0x01, 0x2C, 0x02, 0x58, 0x03, 0x00, 0x00}
 	}
@@ -27,6 +28,7 @@ func TestDimensions(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			w, h := Dimensions(tc.data, tc.mime)
 			if w != tc.wantW || h != tc.wantH {
 				t.Errorf("dimensions = %dx%d, want %dx%d", w, h, tc.wantW, tc.wantH)
@@ -36,6 +38,7 @@ func TestDimensions(t *testing.T) {
 }
 
 func TestMIMEType(t *testing.T) {
+	t.Parallel()
 	tests := map[string][]byte{
 		"image/jpeg": {0xFF, 0xD8, 0xFF, 0xE0},
 		"image/png":  {0x89, 0x50, 0x4E, 0x47, 0x0D},

@@ -30,6 +30,7 @@ func createMockAtom(atomType string, data []byte) []byte {
 }
 
 func TestReadAtomHeader_Success(t *testing.T) {
+	t.Parallel()
 	data := createMockAtom("moov", []byte{0x01, 0x02, 0x03, 0x04})
 
 	sr := audiobinary.NewSafeReader(bytes.NewReader(data), int64(len(data)), "test.m4b")
@@ -61,6 +62,7 @@ func TestReadAtomHeader_Success(t *testing.T) {
 }
 
 func TestReadAtomHeader_Extended(t *testing.T) {
+	t.Parallel()
 	buf := &bytes.Buffer{}
 
 	// Extended size atom: size=1, then 64-bit size
@@ -91,6 +93,7 @@ func TestReadAtomHeader_Extended(t *testing.T) {
 }
 
 func TestReadAtomHeader_TooSmall(t *testing.T) {
+	t.Parallel()
 	// File too small to contain atom header
 	data := []byte{0x00, 0x00, 0x00}
 
@@ -103,6 +106,7 @@ func TestReadAtomHeader_TooSmall(t *testing.T) {
 }
 
 func TestReadAtomHeader_InvalidSize(t *testing.T) {
+	t.Parallel()
 	buf := &bytes.Buffer{}
 
 	// Size too small (less than 8)
@@ -119,6 +123,7 @@ func TestReadAtomHeader_InvalidSize(t *testing.T) {
 }
 
 func TestFindAtom_Found(t *testing.T) {
+	t.Parallel()
 	// Create a container with multiple atoms
 	atom1 := createMockAtom("free", []byte{0x00, 0x00})
 	atom2 := createMockAtom("moov", []byte{0x01, 0x02, 0x03})
@@ -144,6 +149,7 @@ func TestFindAtom_Found(t *testing.T) {
 }
 
 func TestFindAtom_NotFound(t *testing.T) {
+	t.Parallel()
 	atom1 := createMockAtom("free", []byte{0x00})
 	atom2 := createMockAtom("mdat", []byte{0x01})
 
@@ -158,6 +164,7 @@ func TestFindAtom_NotFound(t *testing.T) {
 }
 
 func TestFindAtom_Nested(t *testing.T) {
+	t.Parallel()
 	// Create nested structure: udta contains meta
 	metaAtom := createMockAtom("meta", []byte{0x01, 0x02})
 	udtaData := createMockAtom("udta", metaAtom)
@@ -186,6 +193,7 @@ func TestFindAtom_Nested(t *testing.T) {
 }
 
 func TestReadAtomHeader_ExceedsParent(t *testing.T) {
+	t.Parallel()
 	ext := func(size uint64) []byte {
 		buf := &bytes.Buffer{}
 		binary.Write(buf, binary.BigEndian, uint32(1))
@@ -206,6 +214,7 @@ func TestReadAtomHeader_ExceedsParent(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			data := append(make([]byte, tt.offset), tt.data...)
 			sr := audiobinary.NewSafeReader(bytes.NewReader(data), int64(len(data)), "test.m4b")
 			if _, err := readAtomHeader(sr, tt.offset, tt.parentEnd); err == nil {
@@ -216,6 +225,7 @@ func TestReadAtomHeader_ExceedsParent(t *testing.T) {
 }
 
 func TestReadAtomHeader_ExtendedSizeBeyondInt64(t *testing.T) {
+	t.Parallel()
 	for _, size := range []uint64{1 << 63, ^uint64(0)} {
 		buf := &bytes.Buffer{}
 		binary.Write(buf, binary.BigEndian, uint32(1))
@@ -232,6 +242,7 @@ func TestReadAtomHeader_ExtendedSizeBeyondInt64(t *testing.T) {
 }
 
 func TestDecodeAtomHeader(t *testing.T) {
+	t.Parallel()
 	ext := func(size uint64) []byte { return binary.BigEndian.AppendUint64(append(u32be(1), "free"...), size) }
 	tests := []struct {
 		name     string
@@ -254,6 +265,7 @@ func TestDecodeAtomHeader(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			h, err := DecodeAtomHeader(tt.b, tt.room, tt.zero)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
@@ -268,6 +280,7 @@ func TestDecodeAtomHeader(t *testing.T) {
 	}
 
 	t.Run("size errors carry the declared size", func(t *testing.T) {
+		t.Parallel()
 		for _, tc := range []struct {
 			b    []byte
 			want uint64
@@ -283,6 +296,7 @@ func TestDecodeAtomHeader(t *testing.T) {
 		}
 	})
 	t.Run("short input is errAtomHeaderTruncated", func(t *testing.T) {
+		t.Parallel()
 		if _, err := DecodeAtomHeader([]byte{0, 0, 0}, 100, SizeZeroInvalid); !errors.Is(err, errAtomHeaderTruncated) {
 			t.Errorf("err = %v, want errAtomHeaderTruncated", err)
 		}
@@ -290,6 +304,7 @@ func TestDecodeAtomHeader(t *testing.T) {
 }
 
 func TestParse_TopLevelMoovWithSizeZeroRunsToEnd(t *testing.T) {
+	t.Parallel()
 	moov := createMockAtom("moov", createMvhdAtom(1000, 10000))
 	copy(moov, u32be(0)) // the size field of the last top-level atom, as the format allows
 
@@ -304,6 +319,7 @@ func TestParse_TopLevelMoovWithSizeZeroRunsToEnd(t *testing.T) {
 }
 
 func TestAtomChildAndPath(t *testing.T) {
+	t.Parallel()
 	ilst := createMockAtom("ilst", createMockAtom("\xa9nam", nil))
 	meta := fullAtom("meta", ilst) // full atom: 4 bytes of version/flags before its children
 	moov := createMockAtom("moov", createMockAtom("udta", meta))

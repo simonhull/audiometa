@@ -40,6 +40,7 @@ func noHang(t *testing.T, fifo string, fn func() error) error {
 }
 
 func TestOpen_RefusesNonRegularFiles(t *testing.T) {
+	t.Parallel()
 	fifo := mkfifo(t)
 	link := filepath.Join(t.TempDir(), "link.mp3")
 	if err := os.Symlink(fifo, link); err != nil {
@@ -51,6 +52,7 @@ func TestOpen_RefusesNonRegularFiles(t *testing.T) {
 		"character device": os.DevNull,
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			assertNotRegular(t, noHang(t, fifo, func() error {
 				f, err := OpenContext(t.Context(), path)
 				if err == nil {
@@ -72,6 +74,7 @@ func TestOpen_RefusesNonRegularFiles(t *testing.T) {
 // TestOpenFlags_DoNotBlockOnFIFO covers a path that becomes a FIFO between
 // the stat and the open: the open itself must return at once.
 func TestOpenFlags_DoNotBlockOnFIFO(t *testing.T) {
+	t.Parallel()
 	fifo := mkfifo(t)
 	err := noHang(t, fifo, func() error {
 		f, err := os.OpenFile(fifo, openFlags, 0)

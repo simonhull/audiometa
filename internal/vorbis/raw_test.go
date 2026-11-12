@@ -8,6 +8,7 @@ import (
 )
 
 func TestParseCommentRepeatedKeysAccumulate(t *testing.T) {
+	t.Parallel()
 	var f types.File
 	for _, c := range []string{"genre=Rock", "GENRE=Jazz", "Artist=A", "ARTIST=B"} {
 		if err := ParseComment(c, &f); err != nil {

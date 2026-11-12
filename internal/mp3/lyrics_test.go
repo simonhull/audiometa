@@ -41,6 +41,7 @@ func usltFrames(t *testing.T, data []byte) []langText {
 }
 
 func TestParseLyrics(t *testing.T) {
+	t.Parallel()
 	lines := "first line\r\nsecond line\n"
 	tests := []struct {
 		name string
@@ -63,6 +64,7 @@ func TestParseLyrics(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			tags := parseBytes(t, file(tt.data)).Tags
 			if tags.Lyrics != tt.want {
 				t.Errorf("Lyrics = %q, want %q", tags.Lyrics, tt.want)
@@ -75,6 +77,7 @@ func TestParseLyrics(t *testing.T) {
 }
 
 func TestLyricsNeverFillOtherFields(t *testing.T) {
+	t.Parallel()
 	tags := parseBytes(t, file(id3Tag(4, id3Frame(4, "USLT", usltPayload(3, "eng", "", "la"))))).Tags
 	tags.Lyrics = ""
 	want := types.Tags{}
@@ -85,6 +88,7 @@ func TestLyricsNeverFillOtherFields(t *testing.T) {
 }
 
 func TestParseLyrics_CompressedIsAWarning(t *testing.T) {
+	t.Parallel()
 	src := file(id3Tag(4, id3FrameFlags(4, "USLT", v24FrameCompression, usltPayload(3, "eng", "", "la"))))
 	f := parseBytes(t, src)
 	if f.Tags.Lyrics != "" {
@@ -96,6 +100,7 @@ func TestParseLyrics_CompressedIsAWarning(t *testing.T) {
 }
 
 func TestApplyLyrics_NewFrame(t *testing.T) {
+	t.Parallel()
 	for _, v := range []byte{3, 4} {
 		src := file(id3Tag(v, id3Frame(v, "TIT2", latin1Text("T"))))
 		out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.Lyrics = "歌詞\nline" }))
@@ -110,6 +115,7 @@ func TestApplyLyrics_NewFrame(t *testing.T) {
 }
 
 func TestApplyLyrics_KeepsLanguageDescriptionAndOtherFrames(t *testing.T) {
+	t.Parallel()
 	for _, v := range []byte{3, 4} {
 		src := file(id3Tag(v,
 			id3Frame(v, "USLT", usltPayload(0, "deu", "Fassung", "eins")),
@@ -131,6 +137,7 @@ func TestApplyLyrics_KeepsLanguageDescriptionAndOtherFrames(t *testing.T) {
 }
 
 func TestApplyLyrics_TargetsTheFrameTheFieldCameFrom(t *testing.T) {
+	t.Parallel()
 	src := file(id3Tag(4,
 		id3Frame(4, "USLT", usltPayload(3, "deu", "", "")),
 		id3Frame(4, "USLT", usltPayload(3, "eng", "d", "one")),
@@ -143,6 +150,7 @@ func TestApplyLyrics_TargetsTheFrameTheFieldCameFrom(t *testing.T) {
 }
 
 func TestApplyLyrics_ReusesAnEmptyFrame(t *testing.T) {
+	t.Parallel()
 	src := file(id3Tag(4, id3Frame(4, "USLT", usltPayload(3, "deu", "d", ""))))
 	out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.Lyrics = "two" }))
 	want := []langText{{"deu", "d", "two"}}
@@ -152,6 +160,7 @@ func TestApplyLyrics_ReusesAnEmptyFrame(t *testing.T) {
 }
 
 func TestApplyLyrics_DescriptionPicksTheEncoding(t *testing.T) {
+	t.Parallel()
 	src := file(id3Tag(3, id3Frame(3, "USLT", usltUTF16Payload("jpn", "歌", "old"))))
 	out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.Lyrics = "ascii" }))
 	want := []langText{{"jpn", "歌", "ascii"}}
@@ -161,6 +170,7 @@ func TestApplyLyrics_DescriptionPicksTheEncoding(t *testing.T) {
 }
 
 func TestLyricsClearAndDeleteRemoveEveryFrame(t *testing.T) {
+	t.Parallel()
 	src := file(id3Tag(3,
 		id3Frame(3, "TIT2", latin1Text("T")),
 		id3Frame(3, "USLT", usltPayload(0, "deu", "", "eins")),
@@ -171,6 +181,7 @@ func TestLyricsClearAndDeleteRemoveEveryFrame(t *testing.T) {
 		"delete": func(tg *types.Tags) { tg.Delete(frameIDUSLT) },
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			out := writeBytes(t, src, editsFor(t, src, mutate))
 			if got := frameIDs(framesOf(t, out).frames); !slices.Equal(got, []string{"TIT2"}) {
 				t.Errorf("frames %v", got)
@@ -183,6 +194,7 @@ func TestLyricsClearAndDeleteRemoveEveryFrame(t *testing.T) {
 }
 
 func TestRawUSLTSetIsRefused(t *testing.T) {
+	t.Parallel()
 	src := file(id3Tag(4, id3Frame(4, "USLT", usltPayload(3, "eng", "", "one"))))
 	_, err := tryWrite(src, editsFor(t, src, func(tg *types.Tags) { tg.Set(frameIDUSLT, "two") }))
 	if !errors.Is(err, types.ErrUnsupportedWrite) {
@@ -191,6 +203,7 @@ func TestRawUSLTSetIsRefused(t *testing.T) {
 }
 
 func TestApplyLyrics_RefusesInvalidText(t *testing.T) {
+	t.Parallel()
 	src := file(id3Tag(4, id3Frame(4, "TIT2", latin1Text("T"))))
 	for _, v := range []string{"a\x00b", "\xff"} {
 		_, err := tryWrite(src, editsFor(t, src, func(tg *types.Tags) { tg.Lyrics = v }))
@@ -201,6 +214,7 @@ func TestApplyLyrics_RefusesInvalidText(t *testing.T) {
 }
 
 func TestLyricsV22ConvertsAndKeepsLanguage(t *testing.T) {
+	t.Parallel()
 	src := file(id3Tag(2, id3v22Frame("ULT", usltPayload(0, "deu", "d", "eins"))))
 	out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.Lyrics = "zwei" }))
 	want := []langText{{"deu", "d", "zwei"}}

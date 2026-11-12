@@ -37,6 +37,7 @@ func createMvhdAtom(timescale, duration uint32) []byte {
 }
 
 func TestParseTechnicalInfo_Duration(t *testing.T) {
+	t.Parallel()
 	// Create moov with mvhd
 	// Duration: 10 seconds at 1000 Hz timescale = 10000 units
 	mvhdAtom := createMvhdAtom(1000, 10000)
@@ -59,6 +60,7 @@ func TestParseTechnicalInfo_Duration(t *testing.T) {
 }
 
 func TestParseTechnicalInfo_NonStandardTimescale(t *testing.T) {
+	t.Parallel()
 	// Duration: 5.5 seconds at 44100 Hz timescale = 242550 units
 	mvhdAtom := createMvhdAtom(44100, 242550)
 	moovData := mvhdAtom
@@ -85,6 +87,7 @@ func TestParseTechnicalInfo_NonStandardTimescale(t *testing.T) {
 }
 
 func TestParseTechnicalInfo_NoMvhd(t *testing.T) {
+	t.Parallel()
 	// moov with no mvhd
 	moov := createMockAtom("moov", []byte{})
 
@@ -104,6 +107,7 @@ func TestParseTechnicalInfo_NoMvhd(t *testing.T) {
 }
 
 func TestMvhdDuration(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		duration  uint64
@@ -119,6 +123,7 @@ func TestMvhdDuration(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := mvhdDuration(tt.duration, tt.timescale); got != tt.want {
 				t.Errorf("mvhdDuration(%d, %d) = %v, want %v", tt.duration, tt.timescale, got, tt.want)
 			}
@@ -188,6 +193,7 @@ func parseMoovTech(t *testing.T, children ...[]byte) *types.File {
 }
 
 func TestParseTechnicalInfo_SelectsSoundTrack(t *testing.T) {
+	t.Parallel()
 	text := trakWith("text", stsdFor("text", sampleEntryV01(0, 1, 1000)))
 	audio := trakWith("soun", stsdFor("mp4a", sampleEntryV01(0, 2, 44100)))
 	file := parseMoovTech(t, text, audio)
@@ -197,6 +203,7 @@ func TestParseTechnicalInfo_SelectsSoundTrack(t *testing.T) {
 }
 
 func TestParseTechnicalInfo_FallsBackToFirstTrakWithoutHdlr(t *testing.T) {
+	t.Parallel()
 	only := trakWith("", stsdFor("mp4a", sampleEntryV01(0, 1, 22050)))
 	file := parseMoovTech(t, only)
 	if file.Audio.Channels != 1 || file.Audio.SampleRate != 22050 {
@@ -205,6 +212,7 @@ func TestParseTechnicalInfo_FallsBackToFirstTrakWithoutHdlr(t *testing.T) {
 }
 
 func TestParseTechnicalInfo_SoundEntryVersions(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name         string
 		entry        []byte
@@ -217,6 +225,7 @@ func TestParseTechnicalInfo_SoundEntryVersions(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			file := parseMoovTech(t, trakWith("soun", stsdFor("mp4a", tt.entry)))
 			if file.Audio.SampleRate != tt.wantRate || file.Audio.Channels != tt.wantChannels {
 				t.Errorf("rate %d channels %d, want %d/%d", file.Audio.SampleRate, file.Audio.Channels, tt.wantRate, tt.wantChannels)
@@ -226,6 +235,7 @@ func TestParseTechnicalInfo_SoundEntryVersions(t *testing.T) {
 }
 
 func TestParseTechnicalInfo_UnknownSoundEntryVersionLeavesUnset(t *testing.T) {
+	t.Parallel()
 	file := parseMoovTech(t, trakWith("soun", stsdFor("mp4a", sampleEntryV01(7, 2, 48000))))
 	if file.Audio.SampleRate != 0 || file.Audio.Channels != 0 {
 		t.Errorf("rate %d channels %d, want unset", file.Audio.SampleRate, file.Audio.Channels)
@@ -244,6 +254,7 @@ func trakWithStbl(stbl ...[]byte) []byte {
 }
 
 func TestParseTechnicalInfo_BitrateIgnoresFileSize(t *testing.T) {
+	t.Parallel()
 	// parseMoovTech's mvhd lasts 10 s. Audio: 4 samples of 40,000 bytes = 160,000 bytes = 128 kbit/s.
 	stsz := stszAtom(0, 4, 40000, 40000, 40000, 40000)
 	mp4aStsd := fullAtom("stsd", append(u32be(1), mp4aSampleEntry(esdsPayload(0, []byte{0x12, 0x10}))...))
@@ -259,6 +270,7 @@ func TestParseTechnicalInfo_BitrateIgnoresFileSize(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			// A large unrelated atom (cover-art sized) must not count.
 			file := parseMoovTech(t, tt.trak, createMockAtom("free", make([]byte, 1<<20)))
 			if file.Audio.Bitrate != tt.want {
@@ -269,8 +281,10 @@ func TestParseTechnicalInfo_BitrateIgnoresFileSize(t *testing.T) {
 }
 
 func TestParseTechnicalInfo_Lossless(t *testing.T) {
+	t.Parallel()
 	for codec, want := range map[string]bool{"alac": true, "fLaC": true, "mp4a": false, "Opus": false} {
 		t.Run(codec, func(t *testing.T) {
+			t.Parallel()
 			file := parseMoovTech(t, trakWith("soun", stsdFor(codec, sampleEntryV01(0, 2, 44100))))
 			if file.Audio.Lossless != want {
 				t.Errorf("Lossless = %v, want %v", file.Audio.Lossless, want)
@@ -298,6 +312,7 @@ func dfLaBox(rate uint32, channels, bits byte) []byte {
 }
 
 func TestDfLaBox_MatchesFFmpegBytes(t *testing.T) {
+	t.Parallel()
 	box := dfLaBox(96000, 2, 24)
 	// Atom header(8) + FullBox(4) + block header(4), then STREAMINFO bytes 10-13.
 	if got := box[16+10 : 16+14]; !bytes.Equal(got, []byte{0x17, 0x70, 0x03, 0x70}) {
@@ -306,6 +321,7 @@ func TestDfLaBox_MatchesFFmpegBytes(t *testing.T) {
 }
 
 func TestParseTechnicalInfo_LosslessConfig(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name                 string
 		codec                string
@@ -320,6 +336,7 @@ func TestParseTechnicalInfo_LosslessConfig(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			a := parseMoovTech(t, trakWith("soun", stsdFor(tt.codec, tt.entry))).Audio
 			if a.SampleRate != tt.rate || a.BitDepth != tt.bits || a.Channels != tt.channels {
 				t.Errorf("rate %d bits %d channels %d, want %d/%d/%d", a.SampleRate, a.BitDepth, a.Channels, tt.rate, tt.bits, tt.channels)
@@ -336,6 +353,7 @@ func trakWithMdhd(timescale uint32, stsd []byte) []byte {
 }
 
 func TestParseTechnicalInfo_RateFromMdhd(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		timescale uint32
@@ -348,6 +366,7 @@ func TestParseTechnicalInfo_RateFromMdhd(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			a := parseMoovTech(t, trakWithMdhd(tt.timescale, stsdFor("mp4a", sampleEntryV01(0, 2, tt.entryRate)))).Audio
 			if a.SampleRate != tt.want {
 				t.Errorf("SampleRate = %d, want %d", a.SampleRate, tt.want)

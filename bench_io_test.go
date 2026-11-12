@@ -129,8 +129,10 @@ func benchIO(b *testing.B, step func(b *testing.B, f *File)) {
 }
 
 func TestOpenReader_ReadsHeadOnce(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"sample.flac", "sample.m4a", "sample.mp3", "sample.opus", "sample.wav"} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			data, err := os.ReadFile(filepath.Join("testdata", name))
 			if err != nil {
 				t.Fatal(err)

@@ -11,6 +11,7 @@ import (
 )
 
 func TestParse_ValidMP3(t *testing.T) {
+	t.Parallel()
 	// Create a minimal valid MP3 with ID3v2 tag
 	data := createMinimalMP3WithID3()
 
@@ -61,6 +62,7 @@ func TestParse_ValidMP3(t *testing.T) {
 }
 
 func TestParse_FileNotFound(t *testing.T) {
+	t.Parallel()
 	_, err := os.Open("/nonexistent/path.mp3")
 	if err == nil {
 		t.Error("expected error for nonexistent file")
@@ -68,6 +70,7 @@ func TestParse_FileNotFound(t *testing.T) {
 }
 
 func TestParse_EmptyFile(t *testing.T) {
+	t.Parallel()
 	tmpFile, err := os.CreateTemp(t.TempDir(), "test*.mp3")
 	if err != nil {
 		t.Fatal(err)
@@ -140,6 +143,7 @@ func createMinimalMP3WithID3() []byte {
 }
 
 func TestDecode_Synchsafe(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		input    []byte
 		expected uint32
@@ -160,6 +164,7 @@ func TestDecode_Synchsafe(t *testing.T) {
 }
 
 func TestParseYear(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		input    string
 		expected int
@@ -181,6 +186,7 @@ func TestParseYear(t *testing.T) {
 }
 
 func TestParseTextFrame(t *testing.T) {
+	t.Parallel()
 	file := &types.File{
 		Tags: types.Tags{},
 	}
@@ -223,6 +229,7 @@ func TestParseTextFrame(t *testing.T) {
 }
 
 func TestParseTXXXFrame(t *testing.T) {
+	t.Parallel()
 	file := &types.File{
 		Tags: types.Tags{},
 	}
@@ -262,6 +269,7 @@ func TestParseTXXXFrame(t *testing.T) {
 }
 
 func TestParseChapterFrames(t *testing.T) {
+	t.Parallel()
 	// Create mock CHAP frames
 	frames := []id3v2Frame{
 		{
@@ -322,6 +330,7 @@ func TestParseChapterFrames(t *testing.T) {
 }
 
 func TestParse_TrailingAPEv2IsNotAudio(t *testing.T) {
+	t.Parallel()
 	data := slices.Concat(id3Tag(4, id3Frame(4, "TIT2", latin1Text("x"))), audioBytes(417*40))
 	plain := parseBytes(t, data)
 	if plain.Audio.Bitrate != 128000 || plain.Audio.Duration == 0 {
@@ -335,6 +344,7 @@ func TestParse_TrailingAPEv2IsNotAudio(t *testing.T) {
 }
 
 func TestParse_TAGInsideAPEv2IsNotID3v1(t *testing.T) {
+	t.Parallel()
 	ape := apeWithHeader(200)
 	copy(ape[len(ape)-128:], "TAG") // an item value that looks like an ID3v1 trailer
 	f := parseBytes(t, slices.Concat(audioBytes(417*40), ape))
@@ -344,6 +354,7 @@ func TestParse_TAGInsideAPEv2IsNotID3v1(t *testing.T) {
 }
 
 func TestParse_ReleaseFields(t *testing.T) {
+	t.Parallel()
 	const (
 		albumID  = "f3c0fd5e-ba3e-4a2c-8fd3-6e4a6f0c1b2d"
 		artistID = "5b11f4ce-a62d-471e-81fc-a69a8278c7da"
@@ -404,6 +415,7 @@ func TestParse_ReleaseFields(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := parseBytes(t, slices.Concat(tc.tag, audio)).Tags
 			for _, c := range []struct {
 				name      string

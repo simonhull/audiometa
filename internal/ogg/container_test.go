@@ -183,6 +183,7 @@ func samePageResults(t *testing.T, data []byte, shared bool) {
 }
 
 func TestPageStreamMatchesReadPage(t *testing.T) {
+	t.Parallel()
 	inputs := map[string][]byte{
 		"opus+cover": ioOpus(true),
 		"empty pages": buildOgg(pageSpec{headerType: 2, serial: 1, lacing: []byte{3}, data: []byte("abc")},
@@ -201,6 +202,7 @@ func TestPageStreamMatchesReadPage(t *testing.T) {
 	}
 	for name, data := range inputs {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			for _, shared := range []bool{false, true} {
 				samePageResults(t, data, shared)
 				// Every cut inside the first pages, then cuts spread over the file.
@@ -230,6 +232,7 @@ func (f failingAt) ReadAt(p []byte, off int64) (int, error) {
 }
 
 func TestPageStreamReadError(t *testing.T) {
+	t.Parallel()
 	errDisk := errors.New("disk on fire")
 	data := ioOpus(false)
 	ps := newPageStream(failingAt{bytes.NewReader(data), 40_000, errDisk}, int64(len(data)), "x", false)
@@ -273,6 +276,7 @@ func TestSplitPacketsAllocs(t *testing.T) {
 }
 
 func TestSplitPackets(t *testing.T) {
+	t.Parallel()
 	pk := func(n int, b byte) []byte { return bytes.Repeat([]byte{b}, n) }
 	tests := []struct {
 		name     string
@@ -315,6 +319,7 @@ func TestSplitPackets(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, open := splitPackets(tt.pages)
 			if open != tt.wantOpen {
 				t.Errorf("open = %v, want %v", open, tt.wantOpen)
@@ -327,6 +332,7 @@ func TestSplitPackets(t *testing.T) {
 }
 
 func TestFindLastGranuleIgnoresOggSInPayload(t *testing.T) {
+	t.Parallel()
 	// A fake "OggS" with an implausible header sits in the true final page's payload.
 	fake := append([]byte("OggS\x07\xFF"), bytes.Repeat([]byte{0xAA}, 40)...)
 	data := buildOgg(
@@ -349,6 +355,7 @@ func TestFindLastGranuleIgnoresOggSInPayload(t *testing.T) {
 }
 
 func TestLastGranuleSkipsUnsetAndOtherStreams(t *testing.T) {
+	t.Parallel()
 	const unset = ^uint64(0)
 	data := buildOgg(
 		pageSpec{headerType: 0x02, serial: 1, lacing: []byte{4}, data: []byte("abcd")},
@@ -382,6 +389,7 @@ func opusLink(serial uint32, seconds uint64, audio ...pageSpec) []pageSpec {
 }
 
 func TestDuration_ChainedOggUsesFirstStream(t *testing.T) {
+	t.Parallel()
 	big := pageSpec{granule: 48000, serial: 2, lacing: lacingFor(60000), data: make([]byte, 60000)}
 	unsetEnd := opusLink(1, 0, pageSpec{granule: 4 * 48000, serial: 1, lacing: lacingFor(10), data: make([]byte, 10)})
 	unsetEnd[len(unsetEnd)-1].granule = ^uint64(0)
@@ -395,6 +403,7 @@ func TestDuration_ChainedOggUsesFirstStream(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			f := parseOggBytes(t, buildOgg(tt.pages...))
 			if f.Audio.Duration != tt.want {
 				t.Errorf("Duration = %v, want %v (the first stream)", f.Audio.Duration, tt.want)
@@ -461,6 +470,7 @@ func multiPageFile(idPacket, commentPkt []byte, serial uint32, tail pageSpec) []
 }
 
 func TestParseCommentPacketSpanningManyPages(t *testing.T) {
+	t.Parallel()
 	image := bytes.Repeat([]byte{0xAB}, 200_000)
 	tests := []struct {
 		name   string
@@ -475,6 +485,7 @@ func TestParseCommentPacketSpanningManyPages(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			comment := commentPacket(tt.magic, tt.frame, pictureComment(image), "TITLE=After The Picture")
 			data := multiPageFile(tt.id, comment, 7, tt.tail)
 
@@ -503,6 +514,7 @@ func TestParseCommentPacketSpanningManyPages(t *testing.T) {
 }
 
 func TestReadHeaderPacketsCap(t *testing.T) {
+	t.Parallel()
 	comment := commentPacket("\x03vorbis", true, "TITLE="+strings.Repeat("x", 200_000))
 	data := multiPageFile(vorbisIDPacket(), comment, 7, pageSpec{headerType: 0x04, serial: 7, lacing: []byte{1}, data: []byte{0}})
 	file := &types.File{}
@@ -524,6 +536,7 @@ func TestReadHeaderPacketsCap(t *testing.T) {
 }
 
 func TestReadHeaderPacketsSkipsOtherStreams(t *testing.T) {
+	t.Parallel()
 	id := vorbisIDPacket()
 	comment := commentPacket("\x03vorbis", true, "TITLE=Mine")
 	data := buildOgg(
@@ -542,6 +555,7 @@ func TestReadHeaderPacketsSkipsOtherStreams(t *testing.T) {
 }
 
 func TestParseHeadersSharingOnePage(t *testing.T) {
+	t.Parallel()
 	id := vorbisIDPacket()
 	comment := commentPacket("\x03vorbis", true, "TITLE=Shared")
 	setup := []byte("\x05vorbis\x01")
@@ -561,6 +575,7 @@ func TestParseHeadersSharingOnePage(t *testing.T) {
 }
 
 func TestReadHeaderPacketsDroppedContinuation(t *testing.T) {
+	t.Parallel()
 	// The comment header's last segment is 255, but the next page does not
 	// continue it. The comment ends where that page begins, so it is read too,
 	// and reading stops before the audio page.
@@ -598,11 +613,13 @@ func parseOggBytes(t *testing.T, data []byte) *types.File {
 }
 
 func TestParse_OpusBitrateExcludesHeaders(t *testing.T) {
+	t.Parallel()
 	for name, comments := range map[string][]string{
 		"no picture":    nil,
 		"30 KB picture": {pictureComment(bytes.Repeat([]byte{0xAB}, 30000))},
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			data := multiPageFile(opusHeadPacket(), commentPacket("OpusTags", false, comments...), 7, audioTail(7, 48000))
 			if got := parseOggBytes(t, data).Audio.Bitrate; got != 1024 {
 				t.Errorf("Bitrate = %d, want 1024", got)
@@ -612,8 +629,10 @@ func TestParse_OpusBitrateExcludesHeaders(t *testing.T) {
 }
 
 func TestParse_VorbisUnsetNominalBitrateIsEstimated(t *testing.T) {
+	t.Parallel()
 	for name, nominal := range map[string]uint32{"-1": 0xFFFFFFFF, "0": 0} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			id := vorbisIDPacket()
 			binary.LittleEndian.PutUint32(id[20:24], nominal)
 			comment := commentPacket("\x03vorbis", true, "TITLE=x")

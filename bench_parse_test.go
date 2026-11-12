@@ -86,9 +86,11 @@ func BenchmarkOpenFile(b *testing.B) {
 }
 
 func TestBenchFixturesParse(t *testing.T) {
+	t.Parallel()
 	wantChapters := map[string]int{"book.m4b": 50, "book.mp3": 50, "book.opus": 50, "book.flac": 0}
 	for _, name := range benchFixtures {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			data, err := os.ReadFile(filepath.Join("testdata", "bench", name))
 			if err != nil {
 				t.Fatal(err)

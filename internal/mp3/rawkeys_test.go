@@ -9,6 +9,7 @@ import (
 )
 
 func TestRawKey_RefusesFalseTXXX(t *testing.T) {
+	t.Parallel()
 	keys := []string{
 		"", "USLT", "COMM", "APIC", "UFID", "PRIV", "POPM", "WOAR", "TXXX", "WXXX", "GEOB", "CHAP", "CTOC", "IPLS", "TCAT",
 	}
@@ -24,6 +25,7 @@ func TestRawKey_RefusesFalseTXXX(t *testing.T) {
 }
 
 func TestRawKey_CustomKeysStillWriteTXXX(t *testing.T) {
+	t.Parallel()
 	for _, key := range []string{"MOOD", "ISBN", "ASIN", "LANG", "ISRC", "DATE", "WORK", "TEST", "CODE", "ZZZ", "X", "mood", "My Key", "MusicBrainz Album Id"} {
 		src := file(id3Tag(4, id3Frame(4, "TIT2", latin1Text("T"))))
 		out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.Set(key, "x") }))
@@ -36,6 +38,7 @@ func TestRawKey_CustomKeysStillWriteTXXX(t *testing.T) {
 // TestRawKey_EveryBoundKeyWrites guards the documented paths: no key a typed
 // field reads or writes may be refused, whichever one a file holds.
 func TestRawKey_EveryBoundKeyWrites(t *testing.T) {
+	t.Parallel()
 	wt := framesOf(t, file(id3Tag(4)))
 	refused := func(key string) bool { return !wt.isTextKey(key) && wt.isFalseTXXX(key) }
 	for _, b := range types.FieldBindings(types.FormatMP3) {
@@ -53,6 +56,7 @@ func TestRawKey_EveryBoundKeyWrites(t *testing.T) {
 }
 
 func TestRawKey_TypedFieldsWithFrameShapedKeysWrite(t *testing.T) {
+	t.Parallel()
 	src := file(id3Tag(3, id3Frame(3, "TIT2", latin1Text("T"))))
 	out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.ISBN, tg.ASIN = "978", "B00" }))
 	if tags := parseBytes(t, out).Tags; tags.ISBN != "978" || tags.ASIN != "B00" {
@@ -61,6 +65,7 @@ func TestRawKey_TypedFieldsWithFrameShapedKeysWrite(t *testing.T) {
 }
 
 func TestRawKey_ExistingTXXXStaysEditable(t *testing.T) {
+	t.Parallel()
 	for _, desc := range []string{"POPM", "Comm", "WOAR"} {
 		src := file(id3Tag(4, id3Frame(4, "TXXX", txxxPayload(3, desc, "old"))))
 		key := parseRawKey(t, src)
@@ -95,6 +100,7 @@ func parseRawKey(t *testing.T, src []byte) string {
 }
 
 func TestRawKey_RealNonTextFrameIsNotReplaced(t *testing.T) {
+	t.Parallel()
 	src := file(id3Tag(4, id3Frame(4, "WOAR", []byte("http://x"))))
 	if _, err := tryWrite(src, editsFor(t, src, func(tg *types.Tags) { tg.Set("WOAR", "y") })); !errors.Is(err, types.ErrUnsupportedWrite) {
 		t.Errorf("err = %v, want ErrUnsupportedWrite", err)
@@ -102,6 +108,7 @@ func TestRawKey_RealNonTextFrameIsNotReplaced(t *testing.T) {
 }
 
 func TestRawKey_PresentNonStandardTextFrameStaysEditable(t *testing.T) {
+	t.Parallel()
 	src := file(id3Tag(4, id3Frame(4, "TCAT", latin1Text("old"))))
 	out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.Set("TCAT", "new") }))
 	if got := frameIDs(framesOf(t, out).frames); !slices.Equal(got, []string{"TCAT"}) {
@@ -110,6 +117,7 @@ func TestRawKey_PresentNonStandardTextFrameStaysEditable(t *testing.T) {
 }
 
 func TestRawKey_V22SourceMapsBeforeTheCheck(t *testing.T) {
+	t.Parallel()
 	src := file(id3Tag(2, id3v22Frame("TT2", latin1Text("T"))))
 	for key, want := range map[string]error{"COM": types.ErrUnsupportedWrite, "WAR": types.ErrUnsupportedWrite, "TAL": nil} {
 		_, err := tryWrite(src, editsFor(t, src, func(tg *types.Tags) { tg.Set(key, "x") }))
@@ -121,6 +129,7 @@ func TestRawKey_V22SourceMapsBeforeTheCheck(t *testing.T) {
 
 // A frame ID is upper-case, so any other spelling is an ordinary description.
 func TestRawKey_OtherCasesStayCustom(t *testing.T) {
+	t.Parallel()
 	for _, key := range []string{"text", "time", "user", "link", "tit2", "Popm"} {
 		src := file(id3Tag(4, id3Frame(4, "TIT2", latin1Text("T"))))
 		out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.Set(key, "x") }))

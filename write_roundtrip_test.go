@@ -554,6 +554,7 @@ var roundTripReleaseEdits = func() []tagEdit {
 // Editing a release field and its own raw key in one save is a conflict, as
 // for every other bound field.
 func TestWriteRoundTrip_ReleaseFieldAndKeyConflict(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ path, key string }{
 		{"testdata/sample_v24.mp3", "TSRC"},
 		{"testdata/sample.m4a", "ISRC"},
@@ -664,8 +665,10 @@ func tagsOf(t *testing.T, path string) *audiometa.Tags {
 }
 
 func TestWriteRoundTrip_Corpus(t *testing.T) {
+	t.Parallel()
 	for _, tc := range roundTripCorpus {
 		t.Run(filepath.Base(tc.path), func(t *testing.T) {
+			t.Parallel()
 			if !tc.writable {
 				f := openFile(t, tc.path)
 				if _, err := f.WriteTo(io.Discard); !errors.Is(err, audiometa.ErrUnsupportedWrite) {
@@ -684,9 +687,15 @@ func TestWriteRoundTrip_Corpus(t *testing.T) {
 			}
 
 			for _, e := range slices.Concat(roundTripEdits, roundTripMP3Edits, roundTripIFFEdits, roundTripFLACEdits, roundTripM4AEdits, roundTripReleaseEdits, roundTripArtworkEdits) {
-				t.Run(e.name, func(t *testing.T) { runRoundTrip(t, tc.path, src, e) })
+				t.Run(e.name, func(t *testing.T) {
+					t.Parallel()
+					runRoundTrip(t, tc.path, src, e)
+				})
 			}
-			t.Run("delete keys", func(t *testing.T) { runDeleteRoundTrip(t, tc.path, src) })
+			t.Run("delete keys", func(t *testing.T) {
+				t.Parallel()
+				runDeleteRoundTrip(t, tc.path, src)
+			})
 		})
 	}
 }
@@ -931,6 +940,7 @@ func writeEdited(t *testing.T, path string, edit func(f *audiometa.File)) []byte
 }
 
 func TestWriteRoundTrip_MP3VersionPreserved(t *testing.T) {
+	t.Parallel()
 	for path, want := range map[string]byte{"testdata/sample.mp3": 3, "testdata/sample_v24.mp3": 4} {
 		out := writeEdited(t, path, func(f *audiometa.File) { f.Tags.Title = "New" })
 		if string(out[:3]) != "ID3" || out[3] != want {
@@ -940,6 +950,7 @@ func TestWriteRoundTrip_MP3VersionPreserved(t *testing.T) {
 }
 
 func TestWriteRoundTrip_MP3ID3v1Preserved(t *testing.T) {
+	t.Parallel()
 	const path = "testdata/sample_v24.mp3"
 	src := readTestdata(t, path)
 	if string(src[len(src)-128:len(src)-125]) != "TAG" {
@@ -952,6 +963,7 @@ func TestWriteRoundTrip_MP3ID3v1Preserved(t *testing.T) {
 }
 
 func TestWriteRoundTrip_MP3ID3v1OnlyKeepsTags(t *testing.T) {
+	t.Parallel()
 	src := readTestdata(t, "testdata/sample.mp3")
 	if string(src[:3]) != "ID3" {
 		t.Fatal("sample.mp3 has no ID3v2 tag")
@@ -972,6 +984,7 @@ func TestWriteRoundTrip_MP3ID3v1OnlyKeepsTags(t *testing.T) {
 		"in-place": {audiometa.WithInPlace()},
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			p := filepath.Join(t.TempDir(), "v1only.mp3")
 			if err := os.WriteFile(p, v1Only, 0o600); err != nil {
 				t.Fatal(err)
@@ -994,8 +1007,10 @@ func TestWriteRoundTrip_MP3ID3v1OnlyKeepsTags(t *testing.T) {
 // and the same chapters. The ID3v2 tag is kept (with the non-key frames such
 // as APIC and CHAP, and padding).
 func TestWriteRoundTrip_MP3DeleteAllKeys(t *testing.T) {
+	t.Parallel()
 	for _, path := range mp3RoundTripPaths(t) {
 		t.Run(filepath.Base(path), func(t *testing.T) {
+			t.Parallel()
 			src := readTestdata(t, path)
 			orig := openFile(t, path)
 			out := writeEdited(t, path, func(f *audiometa.File) {
@@ -1036,6 +1051,7 @@ func flacAudioStart(t *testing.T, data []byte) int {
 
 // A small edit fits in sample.flac's PADDING block, so the audio stays put.
 func TestWriteRoundTrip_FLACKeepsAudioOffset(t *testing.T) {
+	t.Parallel()
 	const path = "testdata/sample.flac"
 	if got := flacAudioStart(t, readTestdata(t, path)); got != 8618 {
 		t.Fatalf("source audio starts at %d, want 8618", got)
@@ -1049,8 +1065,10 @@ func TestWriteRoundTrip_FLACKeepsAudioOffset(t *testing.T) {
 // Deleting every raw key leaves a VORBIS_COMMENT block with only the vendor
 // string: re-open gives no raw tags, and the audio and chapters are unchanged.
 func TestWriteRoundTrip_FLACDeleteAllKeys(t *testing.T) {
+	t.Parallel()
 	for _, path := range []string{"testdata/sample.flac", "testdata/sample_upper.flac"} {
 		t.Run(filepath.Base(path), func(t *testing.T) {
+			t.Parallel()
 			src := readTestdata(t, path)
 			orig := openFile(t, path)
 			out := writeEdited(t, path, func(f *audiometa.File) {
@@ -1075,6 +1093,7 @@ func TestWriteRoundTrip_FLACDeleteAllKeys(t *testing.T) {
 // offset, and checks that the audio, chapters and atom layout survive. With
 // ffmpeg on PATH it also decodes the result and compares the decoded PCM.
 func TestWriteRoundTrip_M4AFaststartGrowth(t *testing.T) {
+	t.Parallel()
 	const path = "testdata/sample_faststart.m4b"
 	src := readTestdata(t, path)
 	orig := openFile(t, path)
@@ -1124,6 +1143,7 @@ func pcm(t *testing.T, path string) [32]byte {
 // Write and WithInPlace: the new moov fits in the old one plus its free
 // atom, so the file keeps its size and the audio does not move.
 func TestWriteRoundTrip_M4AInPlace(t *testing.T) {
+	t.Parallel()
 	src := readTestdata(t, "testdata/sample_faststart.m4b")
 	path := filepath.Join(t.TempDir(), "book.m4b")
 	if err := os.WriteFile(path, src, 0o600); err != nil {
@@ -1149,6 +1169,7 @@ func TestWriteRoundTrip_M4AInPlace(t *testing.T) {
 // file (same inode, same size) for every writer that supports it, and falls
 // back to a new file for WAV, whose writer does not.
 func TestWrite_InPlaceRealWriters(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		path    string
 		inPlace bool
@@ -1163,6 +1184,7 @@ func TestWrite_InPlaceRealWriters(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(filepath.Base(tc.path), func(t *testing.T) {
+			t.Parallel()
 			path := writeTempCopy(t, tc.path)
 			src := readTestdata(t, path)
 			// Stat the open handle: on Windows only a handle stat carries the file's identity.
@@ -1204,11 +1226,13 @@ func TestWrite_InPlaceRealWriters(t *testing.T) {
 // only covr (artwork is not a raw key), with no raw tags, the same audio and
 // the same chapters.
 func TestWriteRoundTrip_M4ADeleteAllKeys(t *testing.T) {
+	t.Parallel()
 	for _, tc := range roundTripCorpus {
 		if !tc.writable || !strings.Contains(tc.path, ".m4") {
 			continue
 		}
 		t.Run(filepath.Base(tc.path), func(t *testing.T) {
+			t.Parallel()
 			src := readTestdata(t, tc.path)
 			orig := openFile(t, tc.path)
 			out := writeEdited(t, tc.path, func(f *audiometa.File) {
@@ -1268,6 +1292,7 @@ func fieldString(tags *audiometa.Tags, name string) string {
 // the higher keys in the file) and checks the parsed field equals the highest
 // precedence key's value, whatever the tag order.
 func TestReadPrecedence_MatchesBindings(t *testing.T) {
+	t.Parallel()
 	for _, path := range []string{
 		"testdata/sample.flac", "testdata/sample_upper.flac",
 		"testdata/sample.mp3", "testdata/sample_v24.mp3",
@@ -1281,6 +1306,7 @@ func TestReadPrecedence_MatchesBindings(t *testing.T) {
 			}
 			field := b.Field.String()
 			t.Run(filepath.Base(path)+"/"+field, func(t *testing.T) {
+				t.Parallel()
 				file := writeTempCopy(t, path)
 				// Clear every candidate key first so the file starts clean.
 				if err := audiometa.Write(file, func(f *audiometa.File) error {
@@ -1320,6 +1346,7 @@ func TestReadPrecedence_MatchesBindings(t *testing.T) {
 // TestWrite_ID3YearOutsideReadableRange: the ID3 reader keeps only 1900-2100,
 // so Write refuses other years on MP3 and on the ID3 chunk of a WAV.
 func TestWrite_ID3YearOutsideReadableRange(t *testing.T) {
+	t.Parallel()
 	for _, path := range []string{"testdata/sample.mp3", "testdata/sample_id3.wav"} {
 		file := writeTempCopy(t, path)
 		err := audiometa.Write(file, func(f *audiometa.File) error {
@@ -1335,6 +1362,7 @@ func TestWrite_ID3YearOutsideReadableRange(t *testing.T) {
 // TestWrite_FLACTotalTracksFirst round-trips a FLAC whose lower-precedence
 // TOTALTRACKS precedes TRACKTOTAL: setting TrackTotal must read back.
 func TestWrite_FLACTotalTracksFirst(t *testing.T) {
+	t.Parallel()
 	file := writeTempCopy(t, "testdata/sample.flac")
 	for _, step := range [][2]string{{"TOTALTRACKS", "5"}, {"TRACKTOTAL", "7"}} {
 		if err := audiometa.Write(file, func(f *audiometa.File) error {
@@ -1373,8 +1401,10 @@ func writeTempCopy(t *testing.T, src string) string {
 }
 
 func TestWrite_EmptyKeyRefusedOnEveryFormat(t *testing.T) {
+	t.Parallel()
 	for _, path := range []string{"testdata/sample.mp3", "testdata/sample_v24.mp3", "testdata/sample.flac", "testdata/sample.m4a", "testdata/sample.m4b", "testdata/sample.ogg", "testdata/sample.opus", "testdata/sample.wav", "testdata/sample.aiff"} {
 		t.Run(path, func(t *testing.T) {
+			t.Parallel()
 			f := openFile(t, path)
 			f.Tags.Set("", "x")
 			if _, err := f.WriteTo(io.Discard); !errors.Is(err, audiometa.ErrUnsupportedWrite) {

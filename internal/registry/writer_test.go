@@ -23,6 +23,7 @@ func (stubWriter) PreservedDigest(context.Context, io.ReaderAt, int64) ([]byte, 
 }
 
 func TestRegisterWriter_GetWriter(t *testing.T) {
+	t.Parallel()
 	t.Cleanup(func() { unregisterWriter(types.FormatWAV) })
 
 	w := stubWriter{}
@@ -42,6 +43,7 @@ func (stubDigester) AudioDigest(context.Context, io.ReaderAt, int64) ([]byte, er
 }
 
 func TestGetDigester(t *testing.T) {
+	t.Parallel()
 	t.Cleanup(func() {
 		unregisterWriter(types.FormatWAV)
 		unregisterDigester(types.FormatAIFF)
@@ -64,6 +66,7 @@ func TestGetDigester(t *testing.T) {
 }
 
 func TestRange_Overlaps(t *testing.T) {
+	t.Parallel()
 	r := Range{Off: 10, End: 20}
 	for _, tc := range []struct {
 		o    Range

@@ -29,6 +29,7 @@ func writeTemp(t *testing.T, name string, data []byte) string {
 var oneWarningFLAC = []byte{'f', 'L', 'a', 'C', 0x80, 0, 0, 0}
 
 func TestWarningPolicy(t *testing.T) {
+	t.Parallel()
 	path := writeTemp(t, "a.flac", oneWarningFLAC)
 	tests := []struct {
 		name         string
@@ -43,6 +44,7 @@ func TestWarningPolicy(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			f, err := Open(path, tt.opts...)
 			if tt.wantErr {
 				if err == nil {
@@ -69,6 +71,7 @@ func TestWarningPolicy(t *testing.T) {
 }
 
 func TestApplyWarningPolicy_JoinsErrors(t *testing.T) {
+	t.Parallel()
 	errA, errB := errors.New("a"), errors.New("b")
 	file := &types.File{Warnings: []types.Warning{
 		{Message: "first", Err: errA},
@@ -87,6 +90,7 @@ func TestApplyWarningPolicy_JoinsErrors(t *testing.T) {
 }
 
 func TestWarningCap(t *testing.T) {
+	t.Parallel()
 	data := append([]byte("fLaC"), make([]byte, 4000)...)
 	f, err := Open(writeTemp(t, "flood.flac", data))
 	if err != nil {
@@ -203,6 +207,7 @@ func TestOpenContext_PreloadFailureIsAWarning(t *testing.T) {
 }
 
 func TestExtractArtwork_RecoversPanic(t *testing.T) {
+	t.Parallel()
 	f := &File{parser: panicParser{}, reader: bytes.NewReader(nil)}
 	_, err := f.ExtractArtwork()
 	if _, ok := errors.AsType[*CorruptedFileError](err); !ok {
@@ -229,6 +234,7 @@ func (c *countingExtractor) ExtractArtwork(context.Context, io.ReaderAt, int64, 
 }
 
 func TestExtractArtwork_ConcurrentExtractOnce(t *testing.T) {
+	t.Parallel()
 	ext := &countingExtractor{}
 	f := &File{parser: ext, reader: bytes.NewReader(nil)}
 	var wg sync.WaitGroup
@@ -247,6 +253,7 @@ func TestExtractArtwork_ConcurrentExtractOnce(t *testing.T) {
 }
 
 func TestExtractArtwork_ErrorNotCached(t *testing.T) {
+	t.Parallel()
 	f := &File{parser: &countingExtractor{fail: true}, reader: bytes.NewReader(nil)}
 	if _, err := f.ExtractArtwork(); err == nil {
 		t.Fatal("first call should fail")
@@ -264,6 +271,7 @@ func (noExtractor) Parse(context.Context, io.ReaderAt, int64, string) (*types.Fi
 }
 
 func TestExtractArtwork_NoExtractor(t *testing.T) {
+	t.Parallel()
 	f := &File{parser: noExtractor{}, reader: bytes.NewReader(nil)}
 	art, err := f.ExtractArtwork()
 	if err != nil || art == nil || len(art) != 0 {

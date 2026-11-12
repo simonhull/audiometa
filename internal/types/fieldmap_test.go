@@ -9,6 +9,7 @@ import (
 // the MP3 writer uses to refuse others) has the same bounds and is tested
 // there.
 func TestDecodeYear_ID3Bounds(t *testing.T) {
+	t.Parallel()
 	for _, format := range []Format{FormatMP3, FormatWAV, FormatAIFF} {
 		for year, want := range map[string]bool{"1899": false, "1900": true, "2100": true, "2101": false} {
 			var tags Tags
@@ -22,6 +23,7 @@ func TestDecodeYear_ID3Bounds(t *testing.T) {
 var bindingFormats = []Format{FormatMP3, FormatFLAC, FormatOgg, FormatOpus, FormatM4A, FormatM4B, FormatWAV, FormatAIFF}
 
 func TestFieldBindings_KeysAreNonEmpty(t *testing.T) {
+	t.Parallel()
 	for _, format := range bindingFormats {
 		bindings := FieldBindings(format)
 		if len(bindings) == 0 {
@@ -54,6 +56,7 @@ func TestFieldBindings_KeysAreNonEmpty(t *testing.T) {
 // WAV and AIFF read the ID3v2 chunk as MP3 does, and their native text after it:
 // every MP3 key keeps its place, and the native key comes last.
 func TestFieldBindings_NativeTextAfterID3(t *testing.T) {
+	t.Parallel()
 	native := map[Format]map[Field]string{
 		FormatWAV:  {FieldTitle: "INAM", FieldArtist: "IART", FieldArtists: "IART", FieldAlbum: "IPRD", FieldGenres: "IGNR", FieldYear: "ICRD", FieldCopyright: "ICOP"},
 		FormatAIFF: {FieldTitle: "NAME", FieldArtist: "AUTH", FieldArtists: "AUTH", FieldCopyright: "(c) "},
@@ -80,6 +83,7 @@ func TestFieldBindings_NativeTextAfterID3(t *testing.T) {
 }
 
 func TestFieldBindings_ReturnsCopy(t *testing.T) {
+	t.Parallel()
 	first := FieldBindings(FormatMP3)
 	first[0].Keys[0] = "MUTATED"
 	first[0].Field = FieldLyrics
@@ -90,6 +94,7 @@ func TestFieldBindings_ReturnsCopy(t *testing.T) {
 }
 
 func TestFieldBindings_NoCrossFieldKeys(t *testing.T) {
+	t.Parallel()
 	composerKeys := map[string]bool{"TCOM": true, "COMPOSER": true, "\xA9wrt": true}
 	groupingKeys := map[string]bool{"GRP1": true, "TIT1": true, "GROUPING": true, "\xA9grp": true}
 	for _, format := range bindingFormats {
@@ -107,6 +112,7 @@ func TestFieldBindings_NoCrossFieldKeys(t *testing.T) {
 }
 
 func TestDecodeField(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		format Format
@@ -135,6 +141,7 @@ func TestDecodeField(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			tags := &Tags{}
 			if ok := decodeField(tags, tc.format, tc.field, tc.key, tc.values); ok != tc.ok {
 				t.Fatalf("ok = %v, want %v", ok, tc.ok)
@@ -148,6 +155,7 @@ func TestDecodeField(t *testing.T) {
 }
 
 func TestNativeTextBindings(t *testing.T) {
+	t.Parallel()
 	mp3 := FieldBindings(FormatMP3)
 	for _, format := range []Format{FormatWAV, FormatAIFF} {
 		all := FieldBindings(format)
@@ -186,6 +194,7 @@ func keysOf(format Format, field Field) []string {
 }
 
 func TestFieldBindings_ReleaseFields(t *testing.T) {
+	t.Parallel()
 	id3 := map[Field][]string{
 		FieldMusicBrainzAlbumID:  {"MUSICBRAINZ ALBUM ID"},
 		FieldMusicBrainzArtistID: {"MUSICBRAINZ ARTIST ID"},
@@ -247,6 +256,7 @@ func TestFieldBindings_ReleaseFields(t *testing.T) {
 // TPUB is one frame, so it may feed only one field: a Label edit and a
 // Publisher edit must never overwrite each other.
 func TestFieldBindings_TPUBBoundOnce(t *testing.T) {
+	t.Parallel()
 	for _, format := range []Format{FormatMP3, FormatWAV, FormatAIFF} {
 		var fields []Field
 		for _, b := range FieldBindings(format) {

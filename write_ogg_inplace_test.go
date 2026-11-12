@@ -13,8 +13,10 @@ import (
 // file when the edit keeps the comment header's length, and falls back to the
 // atomic rewrite otherwise.
 func TestWriteInPlaceOgg(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{"testdata/sample.ogg", "testdata/sample.opus", "testdata/bench/book.opus"} {
 		t.Run(filepath.Base(src), func(t *testing.T) {
+			t.Parallel()
 			title := tagsOf(t, src).Title
 			path := filepath.Join(t.TempDir(), filepath.Base(src))
 			if err := os.WriteFile(path, readTestdata(t, src), 0o600); err != nil {

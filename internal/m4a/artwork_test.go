@@ -11,6 +11,7 @@ import (
 )
 
 func TestExtractArtwork_WithJPEGCover(t *testing.T) {
+	t.Parallel()
 	// Create test JPEG data (minimal valid JPEG)
 	jpegData := []byte{
 		0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, // JPEG header
@@ -125,6 +126,7 @@ func createM4BWithCover(imageData []byte, flags byte) []byte {
 }
 
 func TestExtractArtwork_WithPNGCover(t *testing.T) {
+	t.Parallel()
 	// Create minimal valid PNG
 	pngData := []byte{
 		0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG signature
@@ -186,6 +188,7 @@ func TestExtractArtwork_WithPNGCover(t *testing.T) {
 }
 
 func TestExtractArtwork_MultipleImages(t *testing.T) {
+	t.Parallel()
 	// Some files have front + back cover
 	jpegData1 := []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0xFF, 0xD9}
 	jpegData2 := []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x02, 0x00, 0x02, 0x00, 0x00, 0xFF, 0xD9}
@@ -273,6 +276,7 @@ func createM4BWithMultipleCovers(images [][]byte) []byte {
 }
 
 func TestExtractArtwork_NoArtwork(t *testing.T) {
+	t.Parallel()
 	// File with metadata but no covr atom
 	fileData := createMinimalM4B("Test", "Artist", "Album")
 
@@ -309,6 +313,7 @@ func TestExtractArtwork_NoArtwork(t *testing.T) {
 }
 
 func TestExtractArtwork_NoMoovAtom(t *testing.T) {
+	t.Parallel()
 	// Minimal file with just ftyp (corrupted/incomplete)
 	fileData := createMockAtom("ftyp", []byte("M4B \x00\x00\x00\x00M4B "))
 
@@ -346,6 +351,7 @@ func TestExtractArtwork_NoMoovAtom(t *testing.T) {
 }
 
 func TestExtractArtwork_CorruptedImageData(t *testing.T) {
+	t.Parallel()
 	// covr atom with invalid/truncated image data
 	invalidData := []byte{0x00, 0x01, 0x02} // Not a valid image
 

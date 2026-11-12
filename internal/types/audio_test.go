@@ -7,6 +7,7 @@ import (
 )
 
 func TestPow10(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		input    float64
 		expected float64
@@ -30,6 +31,7 @@ func TestPow10(t *testing.T) {
 }
 
 func TestAudioInfo_String(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		audio AudioInfo
@@ -88,6 +90,7 @@ func TestAudioInfo_String(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := tc.audio.String()
 			if got != tc.want {
 				t.Errorf("AudioInfo.String() = %q, want %q", got, tc.want)
@@ -97,6 +100,7 @@ func TestAudioInfo_String(t *testing.T) {
 }
 
 func TestChannelDescription(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		channels int
 		want     string
@@ -120,6 +124,7 @@ func TestChannelDescription(t *testing.T) {
 }
 
 func TestAudioInfo_IsHighRes(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		audio AudioInfo
@@ -154,6 +159,7 @@ func TestAudioInfo_IsHighRes(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := tc.audio.IsHighRes()
 			if got != tc.want {
 				t.Errorf("AudioInfo.IsHighRes() = %v, want %v", got, tc.want)
@@ -163,6 +169,7 @@ func TestAudioInfo_IsHighRes(t *testing.T) {
 }
 
 func TestAudioInfo_ApplyReplayGain(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		audio     AudioInfo
@@ -283,6 +290,7 @@ func TestAudioInfo_ApplyReplayGain(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := tc.audio.ApplyReplayGain(tc.amplitude, tc.mode)
 			if math.Abs(got-tc.want) > tc.tolerance {
 				t.Errorf("ApplyReplayGain(%v, %q) = %v, want %v (±%v)", tc.amplitude, tc.mode, got, tc.want, tc.tolerance)
@@ -292,6 +300,7 @@ func TestAudioInfo_ApplyReplayGain(t *testing.T) {
 }
 
 func TestAudioInfo_ShortCodecName(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		audio AudioInfo
@@ -311,6 +320,7 @@ func TestAudioInfo_ShortCodecName(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := tc.audio.ShortCodecName()
 			if got != tc.want {
 				t.Errorf("ShortCodecName() = %q, want %q", got, tc.want)
@@ -320,6 +330,7 @@ func TestAudioInfo_ShortCodecName(t *testing.T) {
 }
 
 func TestAudioInfo_FullCodecName(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		audio AudioInfo
@@ -349,6 +360,7 @@ func TestAudioInfo_FullCodecName(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := tc.audio.FullCodecName()
 			if got != tc.want {
 				t.Errorf("FullCodecName() = %q, want %q", got, tc.want)
@@ -358,6 +370,7 @@ func TestAudioInfo_FullCodecName(t *testing.T) {
 }
 
 func TestAudioInfo_IsModernAudiobookCodec(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		audio AudioInfo
@@ -377,6 +390,7 @@ func TestAudioInfo_IsModernAudiobookCodec(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := tc.audio.IsModernAudiobookCodec()
 			if got != tc.want {
 				t.Errorf("IsModernAudiobookCodec() = %v, want %v", got, tc.want)
@@ -386,6 +400,7 @@ func TestAudioInfo_IsModernAudiobookCodec(t *testing.T) {
 }
 
 func TestAudioInfo_Duration(t *testing.T) {
+	t.Parallel()
 	audio := AudioInfo{Duration: 3*time.Minute + 45*time.Second}
 	if audio.Duration != 225*time.Second {
 		t.Errorf("Duration = %v, want %v", audio.Duration, 225*time.Second)

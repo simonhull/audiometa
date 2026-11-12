@@ -68,6 +68,7 @@ func slowCRC(b []byte) uint32 {
 }
 
 func TestCRCUpdateMatchesTheBitwiseDefinition(t *testing.T) {
+	t.Parallel()
 	rng := rand.New(rand.NewPCG(1, 2))
 	for _, n := range []int{0, 1, 4, 27, 282, 65307} {
 		b := make([]byte, n)
@@ -89,6 +90,7 @@ func TestCRCUpdateMatchesTheBitwiseDefinition(t *testing.T) {
 // corpus file, with the CRC field zeroed, and compares it with the stored one:
 // a wrong table, polynomial or initial value fails here.
 func TestCorpusPagesCarryTheirCRC(t *testing.T) {
+	t.Parallel()
 	for _, name := range corpusFiles {
 		for i, p := range rawPagesOf(t, readCorpus(t, name)) {
 			zeroed := slices.Clone(p.raw)
@@ -103,6 +105,7 @@ func TestCorpusPagesCarryTheirCRC(t *testing.T) {
 // TestCorpusPagesReencodeByteForByte encodes every parsed page of every corpus
 // file again: header layout, lacing and CRC must reproduce the original bytes.
 func TestCorpusPagesReencodeByteForByte(t *testing.T) {
+	t.Parallel()
 	for _, name := range corpusFiles {
 		pages := rawPagesOf(t, readCorpus(t, name))
 		if len(pages) == 0 {
@@ -117,6 +120,7 @@ func TestCorpusPagesReencodeByteForByte(t *testing.T) {
 }
 
 func TestAppendLacing(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		n    int
 		want []byte
@@ -137,6 +141,7 @@ func TestAppendLacing(t *testing.T) {
 }
 
 func TestPaginateSinglePage(t *testing.T) {
+	t.Parallel()
 	pages := paginate([][]byte{bytes.Repeat([]byte{1}, 100), bytes.Repeat([]byte{2}, 300)}, 7, 5, false)
 	if len(pages) != 1 {
 		t.Fatalf("%d pages, want 1", len(pages))
@@ -149,6 +154,7 @@ func TestPaginateSinglePage(t *testing.T) {
 }
 
 func TestPaginateSpansPages(t *testing.T) {
+	t.Parallel()
 	big := bytes.Repeat([]byte{0xAB}, 100_000)
 	setup := bytes.Repeat([]byte{0xCD}, 40_000)
 	pages := paginate([][]byte{big, setup}, 9, 1, true)
@@ -185,7 +191,9 @@ func TestPaginateSpansPages(t *testing.T) {
 // TestPaginateAtTheSegmentLimit covers a packet that ends exactly on the last
 // lacing value of a page, and one whose final 0 value starts the next page.
 func TestPaginateAtTheSegmentLimit(t *testing.T) {
+	t.Parallel()
 	t.Run("packet ends on the last segment", func(t *testing.T) {
+		t.Parallel()
 		pk := bytes.Repeat([]byte{1}, 254*255+10) // 254 values of 255 and one of 10: 255 values
 		pages := paginate([][]byte{pk, {7}}, 1, 0, false)
 		if len(pages) != 2 || len(pages[0].Lacing) != 255 || pages[1].HeaderType != 0 || !bytes.Equal(pages[1].Lacing, []byte{1}) {
@@ -196,6 +204,7 @@ func TestPaginateAtTheSegmentLimit(t *testing.T) {
 		}
 	})
 	t.Run("terminating zero on the next page", func(t *testing.T) {
+		t.Parallel()
 		pk := bytes.Repeat([]byte{1}, 255*255) // 255 values of 255, then a 0
 		pages := paginate([][]byte{pk}, 1, 0, false)
 		if len(pages) != 2 || pages[0].GranulePosition != noGranule || pages[1].HeaderType != pageContinued ||
@@ -204,12 +213,14 @@ func TestPaginateAtTheSegmentLimit(t *testing.T) {
 		}
 	})
 	t.Run("an empty packet", func(t *testing.T) {
+		t.Parallel()
 		pages := paginate([][]byte{{}}, 1, 0, false)
 		if len(pages) != 1 || !bytes.Equal(pages[0].Lacing, []byte{0}) {
 			t.Fatalf("pages = %+v", pages)
 		}
 	})
 	t.Run("no packets", func(t *testing.T) {
+		t.Parallel()
 		if pages := paginate(nil, 1, 0, true); len(pages) != 0 {
 			t.Errorf("%d pages for no packets", len(pages))
 		}
@@ -244,6 +255,7 @@ func assembled(tb testing.TB, name string, comment []byte) []byte {
 }
 
 func TestAssembledFileParses(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct{ file, magic string }{{"sample.opus", "OpusTags"}, {"sample.ogg", "\x03vorbis"}} {
 		comment := commentPacket(tt.magic, tt.magic[0] == 3, "TITLE=assembled", "BIG="+string(bytes.Repeat([]byte("x"), 100_000)))
 		out := assembled(t, tt.file, comment)
@@ -265,6 +277,7 @@ func TestAssembledFileParses(t *testing.T) {
 // implementation that shares no code with this package: it flags a bad CRC on
 // stderr. It skips when ffmpeg is absent, unless AUDIOMETA_REQUIRE_ORACLES=1.
 func TestAssembledFilePassesFFmpeg(t *testing.T) {
+	t.Parallel()
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {
 		if os.Getenv("AUDIOMETA_REQUIRE_ORACLES") == "1" {

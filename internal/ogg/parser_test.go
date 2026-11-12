@@ -237,6 +237,7 @@ func createMinimalOpus(title, artist, album string, extra ...string) []byte {
 }
 
 func TestParse_Success(t *testing.T) {
+	t.Parallel()
 	data := createMinimalOgg("Test Song", "Test Artist", "Test Album")
 
 	// Write to temp file
@@ -329,6 +330,7 @@ func TestParse_Success(t *testing.T) {
 }
 
 func TestParse_InvalidMagic(t *testing.T) {
+	t.Parallel()
 	// Create invalid data with wrong magic bytes
 	data := []byte("INVALID")
 
@@ -369,6 +371,7 @@ func TestParse_InvalidMagic(t *testing.T) {
 }
 
 func TestParse_EmptyTags(t *testing.T) {
+	t.Parallel()
 	// Create Ogg with no tags
 	data := createMinimalOgg("", "", "")
 
@@ -417,6 +420,7 @@ func TestParse_EmptyTags(t *testing.T) {
 }
 
 func TestParseOpus_Success(t *testing.T) {
+	t.Parallel()
 	data := createMinimalOpus("Opus Song", "Opus Artist", "Opus Album")
 
 	// Write to temp file
@@ -506,6 +510,7 @@ func TestParseOpus_Success(t *testing.T) {
 }
 
 func TestParseOpus_BitrateEstimation(t *testing.T) {
+	t.Parallel()
 	data := createMinimalOpus("Test", "Test", "Test")
 
 	// Write to temp file
@@ -546,6 +551,7 @@ func TestParseOpus_BitrateEstimation(t *testing.T) {
 }
 
 func TestOggParser_BothCodecs(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name               string
 		expectedCodec      string
@@ -568,6 +574,7 @@ func TestOggParser_BothCodecs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			// Write to temp file
 			tmpFile, err := os.CreateTemp(t.TempDir(), "test*.ogg")
 			if err != nil {
@@ -865,6 +872,7 @@ func BenchmarkParseOpusTags(b *testing.B) {
 }
 
 func TestParse_ChapterEndTimeUsesDuration(t *testing.T) {
+	t.Parallel()
 	extra := []string{"CHAPTER001=00:00:00.000", "CHAPTER001NAME=Intro", "CHAPTER002=00:00:00.500"}
 	for _, tc := range []struct {
 		name string
@@ -874,6 +882,7 @@ func TestParse_ChapterEndTimeUsesDuration(t *testing.T) {
 		{"opus", createMinimalOpus("T", "A", "B", extra...)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			file, err := (&parser{}).Parse(context.Background(), bytes.NewReader(tc.data), int64(len(tc.data)), "test.ogg")
 			if err != nil {
 				t.Fatal(err)
@@ -895,6 +904,7 @@ func TestParse_ChapterEndTimeUsesDuration(t *testing.T) {
 }
 
 func TestParseOpus_InformationalHeaderFieldsDoNotWarn(t *testing.T) {
+	t.Parallel()
 	data := createMinimalOpus("T", "A", "B")
 	// Patch OpusHead: input sample rate 44100, output gain 256 (+1 dB).
 	i := bytes.Index(data, []byte("OpusHead"))

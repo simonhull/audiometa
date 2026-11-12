@@ -224,6 +224,22 @@ linters:
       # sentinel per message would add names without adding a way to handle the error.
       - linters: [err113]
         path: ^(internal|cmd)/
+      # These tests swap the package's writer registry (useWriter) and run their subtests against
+      # it; any other test running meanwhile would see the swapped writer.
+      - linters: [paralleltest]
+        path: ^(write_internal_test|write_fs_test)\.go$
+      # Serial tests that swap package state: the format parser registry (file_boundary_test),
+      # the digester lookup (digest_test), the build metadata (version_test) and the
+      # directory-sync hook (atomicfile_test). The other tests in these files are parallel.
+      - linters: [paralleltest]
+        path: ^(file_boundary_test|digest_test|version_test|internal/atomicfile/atomicfile_test)\.go$
+      # The subtests of these tests share one SafeReader, which is not safe for concurrent use.
+      - linters: [paralleltest]
+        path: ^internal/binary/(endian|reader)_test\.go$
+      # Tests that measure process-wide allocation (testbudget, AllocsPerRun) cannot overlap
+      # another test. The other tests in these files are parallel.
+      - linters: [paralleltest]
+        path: ^internal/(flac/bounded|iff/writer|m4a/budget|m4a/chapters|mp3/artwork_walk|mp3/mediamarkers|ogg/budget|ogg/container|testbudget/budget)_test\.go$
       # Test data repeats literals (fixture names, tag values, frame IDs) on purpose: a table row
       # reads best with its value inline, and a constant per literal hides the data.
       - linters: [goconst]

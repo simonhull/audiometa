@@ -28,6 +28,7 @@ func wantFrame(t *testing.T, f *types.File, key, want string) {
 }
 
 func TestID3v1Seed_SetTitleKeepsOtherFields(t *testing.T) {
+	t.Parallel()
 	src := v1Only()
 	out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.Title = "New" }))
 	f := parseBytes(t, out)
@@ -45,6 +46,7 @@ func TestID3v1Seed_SetTitleKeepsOtherFields(t *testing.T) {
 }
 
 func TestID3v1Seed_ClearArtist(t *testing.T) {
+	t.Parallel()
 	src := v1Only()
 	out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.Artist = "" }))
 	f := parseBytes(t, out)
@@ -57,6 +59,7 @@ func TestID3v1Seed_ClearArtist(t *testing.T) {
 }
 
 func TestID3v1Seed_FallbackKeepsID3v2Album(t *testing.T) {
+	t.Parallel()
 	src := append(append(id3Tag(4, id3Frame(4, "TALB", latin1Text("V2 Album"))), audioBytes(4096)...),
 		id3v1Trailer("T1", "A1", "Al1", "2001", "c", 3)...)
 	out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.Year = 1999 }))
@@ -68,6 +71,7 @@ func TestID3v1Seed_FallbackKeepsID3v2Album(t *testing.T) {
 }
 
 func TestID3v1Seed_NoFallbackSeedsNothing(t *testing.T) {
+	t.Parallel()
 	src := append(append(id3Tag(4, id3Frame(4, "TIT2", latin1Text("V2 Title"))), audioBytes(4096)...),
 		id3v1Trailer("T1", "A1", "Al1", "2001", "c", 3)...)
 	out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.Album = "X" }))
@@ -78,6 +82,7 @@ func TestID3v1Seed_NoFallbackSeedsNothing(t *testing.T) {
 }
 
 func TestID3v1Seed_ID3v23UsesTYER(t *testing.T) {
+	t.Parallel()
 	src := append(append(id3Tag(3, id3Frame(3, "TALB", latin1Text("V2"))), audioBytes(4096)...),
 		id3v1Trailer("T1", "A1", "Al1", "2001", "c", 3)...)
 	out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.Album = "X" }))
@@ -87,6 +92,7 @@ func TestID3v1Seed_ID3v23UsesTYER(t *testing.T) {
 }
 
 func TestID3v1Seed_InPlace(t *testing.T) {
+	t.Parallel()
 	trailer := id3v1Trailer("T1", "A1", "Al1", "2001", "c", 3)
 	padded := id3TagFlags(4, 0, 512, id3Frame(4, "TALB", latin1Text("V2 Album")))
 	src := append(append(slices.Clone(padded), audioBytes(4096)...), trailer...)
@@ -115,6 +121,7 @@ func TestID3v1Seed_InPlace(t *testing.T) {
 }
 
 func TestID3v1Seed_EmbeddedTagNeverSeeds(t *testing.T) {
+	t.Parallel()
 	tagOnly := id3Tag(4, id3Frame(4, "TALB", latin1Text("x")))
 	chunk := append(slices.Clone(tagOnly), id3v1Trailer("T1", "A1", "Al1", "2001", "c", 3)...)
 	edits := editsFor(t, append(slices.Clone(tagOnly), audioBytes(64)...), func(tg *types.Tags) { tg.Album = "Y" })
@@ -129,6 +136,7 @@ func TestID3v1Seed_EmbeddedTagNeverSeeds(t *testing.T) {
 }
 
 func TestID3v1Seed_RawKeysWin(t *testing.T) {
+	t.Parallel()
 	src := v1Only()
 	out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) {
 		tg.Set("TIT2", "KeyTitle")
@@ -144,6 +152,7 @@ func TestID3v1Seed_RawKeysWin(t *testing.T) {
 // Clearing both Title and Artist writes neither frame, so the reader falls back
 // to the stale ID3v1 trailer again. Plan 079's Update and Remove modes fix it.
 func TestID3v1Seed_ClearTitleAndArtistFallsBack(t *testing.T) {
+	t.Parallel()
 	src := v1Only()
 	out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) {
 		tg.Title = ""
@@ -158,6 +167,7 @@ func TestID3v1Seed_ClearTitleAndArtistFallsBack(t *testing.T) {
 }
 
 func TestID3v1Seed_DoesNotMutateEdits(t *testing.T) {
+	t.Parallel()
 	src := v1Only()
 	edits := editsFor(t, src, func(tg *types.Tags) { tg.Title = "New" })
 	before := slices.Clone(edits.Fields)

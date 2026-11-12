@@ -8,6 +8,7 @@ import (
 )
 
 func TestParseChaptersSetsSource(t *testing.T) {
+	t.Parallel()
 	chapters := ParseChapters([]string{
 		"CHAPTER001=00:00:00.000", "CHAPTER001NAME=Intro",
 		"CHAPTER002=00:05:00.000", "CHAPTER002NAME=Body",
@@ -26,6 +27,7 @@ func TestParseChaptersSetsSource(t *testing.T) {
 }
 
 func TestParseChapterTimestamp(t *testing.T) {
+	t.Parallel()
 	ok := []struct {
 		in   string
 		want time.Duration

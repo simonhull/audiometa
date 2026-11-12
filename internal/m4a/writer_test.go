@@ -17,6 +17,7 @@ import (
 )
 
 func TestWriter_Registered(t *testing.T) {
+	t.Parallel()
 	for _, f := range []types.Format{types.FormatM4A, types.FormatM4B} {
 		if _, ok := registry.GetWriter(f).(*writer); !ok {
 			t.Errorf("no writer registered for %s", f)
@@ -56,6 +57,7 @@ func assertAudioAtOffsets(t *testing.T, out []byte) {
 }
 
 func TestLayout_FitsInFree(t *testing.T) {
+	t.Parallel()
 	src := titled(true)
 	out := writeTags(t, src, growTitle(-3))
 	if l := layoutOf(t, src, growTitle(-3)); l.placement != placeFits || l.delta != 0 || l.free != 11 {
@@ -77,6 +79,7 @@ func TestLayout_FitsInFree(t *testing.T) {
 }
 
 func TestLayout_ExactFit(t *testing.T) {
+	t.Parallel()
 	src := titled(true)
 	out := writeTags(t, src, growTitle(8))
 	if l := layoutOf(t, src, growTitle(8)); l.placement != placeFits || l.delta != 0 || l.free != 0 {
@@ -92,6 +95,7 @@ func TestLayout_ExactFit(t *testing.T) {
 }
 
 func TestLayout_GrowShiftsOffsets(t *testing.T) {
+	t.Parallel()
 	src := buildMP4With(mp4Opts{faststart: true, items: [][]byte{ilstText("\xA9nam", strings.Repeat("t", 20))}, extra: []uint64{0}})
 	// The second chunk offset (0) lies before moov and must not move.
 	before := chunkOffsets(t, src)
@@ -120,6 +124,7 @@ func TestLayout_GrowShiftsOffsets(t *testing.T) {
 }
 
 func TestLayout_Remainder1to7Grows(t *testing.T) {
+	t.Parallel()
 	src := titled(true)
 	l := layoutOf(t, src, growTitle(5)) // 8 bytes of free, 5 used: 3 left
 	if l.placement != placeShift || l.delta != growFree-3 || l.free != growFree {
@@ -129,6 +134,7 @@ func TestLayout_Remainder1to7Grows(t *testing.T) {
 }
 
 func TestLayout_MoovLast(t *testing.T) {
+	t.Parallel()
 	src := titled(false)
 	if l := layoutOf(t, src, growTitle(100)); l.placement != placeAtEnd || l.delta != 0 || l.free != 0 {
 		t.Errorf("placement = %d, delta = %d, free = %d; want at end, 0 and 0", l.placement, l.delta, l.free)
@@ -147,6 +153,7 @@ func TestLayout_MoovLast(t *testing.T) {
 }
 
 func TestLayout_MoovLastShrinkPads(t *testing.T) {
+	t.Parallel()
 	src := titled(false)
 	out := writeTags(t, src, growTitle(-10))
 	if got := topTypes(t, out); !slices.Equal(got, []string{"ftyp", atomMdat, atomMoov, atomFree}) || len(out) != len(src) {
@@ -155,6 +162,7 @@ func TestLayout_MoovLastShrinkPads(t *testing.T) {
 }
 
 func TestShift_Co64(t *testing.T) {
+	t.Parallel()
 	src := buildMP4With(mp4Opts{faststart: true, co64: true, items: [][]byte{ilstText("\xA9nam", "t")}})
 	before := chunkOffsets(t, src)
 	l := layoutOf(t, src, growTitle(100))
@@ -167,6 +175,7 @@ func TestShift_Co64(t *testing.T) {
 }
 
 func TestShift_StcoOverflowRefused(t *testing.T) {
+	t.Parallel()
 	src := buildMP4With(mp4Opts{faststart: true, items: [][]byte{ilstText("\xA9nam", "t")}, extra: []uint64{0xFFFFFF00}})
 	if _, err := tryTags(t, src, growTitle(100)); !errors.Is(err, types.ErrUnsupportedWrite) {
 		t.Errorf("err = %v, want ErrUnsupportedWrite", err)
@@ -180,6 +189,7 @@ func TestShift_StcoOverflowRefused(t *testing.T) {
 }
 
 func TestShift_OffsetIntoMoovRefused(t *testing.T) {
+	t.Parallel()
 	build := func(o uint64) []byte {
 		return buildMP4With(mp4Opts{faststart: true, items: [][]byte{ilstText("\xA9nam", strings.Repeat("t", 20))}, extra: []uint64{o}})
 	}
@@ -194,6 +204,7 @@ func TestShift_OffsetIntoMoovRefused(t *testing.T) {
 }
 
 func TestLayout_OffsetIntoRegionRefusedEveryPlacement(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		faststart bool
@@ -208,6 +219,7 @@ func TestLayout_OffsetIntoRegionRefusedEveryPlacement(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			build := func(o uint64) []byte {
 				return buildMP4With(mp4Opts{faststart: tt.faststart, items: [][]byte{ilstText("\xA9nam", strings.Repeat("t", 20))}, extra: []uint64{o}})
 			}
@@ -237,6 +249,7 @@ func TestLayout_OffsetIntoRegionRefusedEveryPlacement(t *testing.T) {
 }
 
 func TestStructure_DRMRefused(t *testing.T) {
+	t.Parallel()
 	for _, entry := range []string{"drms", "enca", "aavd", "drmi"} {
 		src := buildMP4With(mp4Opts{entries: []string{"mp4a", entry}, items: [][]byte{ilstText("\xA9nam", "t")}})
 		if _, err := tryTags(t, src, growTitle(1)); !errors.Is(err, types.ErrDRMProtected) {
@@ -246,6 +259,7 @@ func TestStructure_DRMRefused(t *testing.T) {
 }
 
 func TestStructure_FragmentedRefused(t *testing.T) {
+	t.Parallel()
 	for name, o := range map[string]mp4Opts{
 		"moof": {topExtra: atom("moof", atom("mfhd", make([]byte, 8)))},
 		"mvex": {moovExtra: atom("mvex", atom("trex", make([]byte, 24)))},
@@ -259,6 +273,7 @@ func TestStructure_FragmentedRefused(t *testing.T) {
 }
 
 func TestStructure_MoovCount(t *testing.T) {
+	t.Parallel()
 	src := titled(false)
 	m := topAtomOf(t, src, atomMoov)
 	for name, data := range map[string][]byte{
@@ -272,6 +287,7 @@ func TestStructure_MoovCount(t *testing.T) {
 }
 
 func TestTopLevel_SizeZeroMdat(t *testing.T) {
+	t.Parallel()
 	src := titled(true)
 	mdat := topAtomOf(t, src, atomMdat)
 	binary.BigEndian.PutUint32(src[mdat.start:], 0) // extends to EOF
@@ -303,6 +319,7 @@ func digestOf(t *testing.T, data []byte) []byte {
 }
 
 func TestWriter_InPlaceEqualsFullRewrite(t *testing.T) {
+	t.Parallel()
 	for _, faststart := range []bool{true, false} {
 		src := titled(faststart)
 		edits := editsFor(t, src, growTitle(-10))
@@ -320,6 +337,7 @@ func TestWriter_InPlaceEqualsFullRewrite(t *testing.T) {
 }
 
 func TestWriter_InPlaceNotOK(t *testing.T) {
+	t.Parallel()
 	for _, src := range [][]byte{titled(true), titled(false)} {
 		p, err := (&writer{}).InPlacePatch(context.Background(), bytes.NewReader(src), int64(len(src)), editsFor(t, src, growTitle(100)))
 		if err != nil || p != nil {
@@ -329,6 +347,7 @@ func TestWriter_InPlaceNotOK(t *testing.T) {
 }
 
 func TestWriter_AudioDigest(t *testing.T) {
+	t.Parallel()
 	for _, path := range []string{"../../testdata/sample.m4a", "../../testdata/sample.m4b"} {
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -353,6 +372,7 @@ func TestWriter_AudioDigest(t *testing.T) {
 }
 
 func TestWriter_Deterministic(t *testing.T) {
+	t.Parallel()
 	src := buildMP4(true, ilstText("\xA9nam", "t"), covrItem(covrImage{covrJPEG, []byte{1}}))
 	edits := editsFor(t, src, func(tg *types.Tags) {
 		tg.Title = strings.Repeat("x", 500)
@@ -375,6 +395,7 @@ func moovChild(t *testing.T, data []byte, path ...string) []byte {
 }
 
 func TestWriter_ChapterTrackPreserved(t *testing.T) {
+	t.Parallel()
 	src, err := os.ReadFile("../../testdata/sample.m4b")
 	if err != nil {
 		t.Fatal(err)
@@ -401,6 +422,7 @@ func TestWriter_ChapterTrackPreserved(t *testing.T) {
 }
 
 func TestWriter_ContextCanceled(t *testing.T) {
+	t.Parallel()
 	src := titled(true)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -411,6 +433,7 @@ func TestWriter_ContextCanceled(t *testing.T) {
 }
 
 func TestLayout_FaststartCorpusGrowth(t *testing.T) {
+	t.Parallel()
 	for _, path := range []string{"../../testdata/sample_faststart.m4a", "../../testdata/sample_faststart.m4b"} {
 		src, err := os.ReadFile(path)
 		if err != nil {

@@ -16,6 +16,7 @@ func TestAllocated(t *testing.T) {
 }
 
 func TestLimit(t *testing.T) {
+	t.Parallel()
 	b := Budget{PerByte: 4, Fixed: 100}
 	if got := b.Limit(10); got != 140 {
 		t.Errorf("Limit(10) = %d, want 140", got)
@@ -26,6 +27,7 @@ func TestLimit(t *testing.T) {
 }
 
 func TestForCoversEveryFormat(t *testing.T) {
+	t.Parallel()
 	for _, op := range []Op{Read, Write} {
 		for _, f := range []types.Format{
 			types.FormatMP3, types.FormatFLAC, types.FormatM4A, types.FormatM4B,

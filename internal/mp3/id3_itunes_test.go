@@ -19,6 +19,7 @@ func plainV24Tag(title string, extra ...[]byte) []byte {
 }
 
 func TestParse_ITunesV24PlainFrameSizes(t *testing.T) {
+	t.Parallel()
 	title := strings.Repeat("a", 299) // 300-byte payload: plain size 0x0000012C, synchsafe reading 172
 	f := parseBytes(t, plainV24Tag(title))
 	if f.Tags.Title != title || f.Tags.Album != "Album" {
@@ -27,6 +28,7 @@ func TestParse_ITunesV24PlainFrameSizes(t *testing.T) {
 }
 
 func TestParse_StandardV24SizesAreNotSwitched(t *testing.T) {
+	t.Parallel()
 	long := strings.Repeat("a", 299)
 	tests := map[string]string{
 		"300-byte frame": long,
@@ -34,6 +36,7 @@ func TestParse_StandardV24SizesAreNotSwitched(t *testing.T) {
 	}
 	for name, title := range tests {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			tag := id3Tag(4, id3Frame(4, "TIT2", latin1Text(title)), id3Frame(4, "TALB", latin1Text("Album")))
 			f := parseBytes(t, append(tag, bytes.Repeat(mpegFrame, 4)...))
 			if f.Tags.Title != title || f.Tags.Album != "Album" {
@@ -44,6 +47,7 @@ func TestParse_StandardV24SizesAreNotSwitched(t *testing.T) {
 }
 
 func TestExtractArtwork_ITunesV24PlainFrameSizes(t *testing.T) {
+	t.Parallel()
 	image := append([]byte{0xFF, 0xD8, 0xFF, 0xE0}, bytes.Repeat([]byte{7}, 400)...)
 	apic := id3Frame(3, "APIC", apicPayload("image/jpeg", 3, "", image))
 	art := extractAll(t, plainV24Tag(strings.Repeat("a", 299), apic))
@@ -53,6 +57,7 @@ func TestExtractArtwork_ITunesV24PlainFrameSizes(t *testing.T) {
 }
 
 func TestWrite_ITunesV24PlainFrameSizesBecomeStandard(t *testing.T) {
+	t.Parallel()
 	src := plainV24Tag(strings.Repeat("a", 299))
 	out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.Title = "New" }))
 

@@ -38,7 +38,9 @@ func pngWithPadding(t *testing.T, size int) []byte {
 // TestPublicErrors checks the write error contract through the public API
 // alone.
 func TestPublicErrors(t *testing.T) {
+	t.Parallel()
 	t.Run("ErrTagTooLarge via WriteTo", func(t *testing.T) {
+		t.Parallel()
 		f, err := audiometa.Open("testdata/sample.flac")
 		if err != nil {
 			t.Fatal(err)
@@ -57,6 +59,7 @@ func TestPublicErrors(t *testing.T) {
 	})
 
 	t.Run("ErrDRMProtected via WriteTo", func(t *testing.T) {
+		t.Parallel()
 		data, err := os.ReadFile("testdata/sample.m4a")
 		if err != nil {
 			t.Fatal(err)
@@ -88,6 +91,7 @@ func TestPublicErrors(t *testing.T) {
 	})
 
 	t.Run("Warning unwraps its cause", func(t *testing.T) {
+		t.Parallel()
 		// Warning is not an error itself (it has no Error method), but its
 		// Unwrap method lets callers reach the cause with errors.Is.
 		w := audiometa.Warning{Stage: audiometa.StageMetadata, Message: "m", Err: io.ErrUnexpectedEOF}

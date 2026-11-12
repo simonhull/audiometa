@@ -8,6 +8,7 @@ import (
 )
 
 func TestParse_UnterminatedChainWarns(t *testing.T) {
+	t.Parallel()
 	streamInfo := flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100))
 	tests := []struct {
 		name string
@@ -19,6 +20,7 @@ func TestParse_UnterminatedChainWarns(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			file := parseTestFLAC(t, tt.data)
 			var warned bool
 			for _, w := range file.Warnings {

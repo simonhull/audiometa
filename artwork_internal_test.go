@@ -8,6 +8,7 @@ import (
 )
 
 func TestReconcileExtracted(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, 3, 2))); err != nil {
 		t.Fatal(err)
@@ -42,6 +43,7 @@ func TestReconcileExtracted(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := reconcileExtracted([]Artwork{tt.in})
 			if len(got) != len(tt.want) {
 				t.Fatalf("got %d pictures, want %d", len(got), len(tt.want))

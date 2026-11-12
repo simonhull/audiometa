@@ -11,6 +11,7 @@ import (
 )
 
 func TestParseMarkerTime(t *testing.T) {
+	t.Parallel()
 	ok := []struct {
 		in   string
 		want time.Duration
@@ -42,6 +43,7 @@ const twoMarkers = `<Markers>
 </Markers>`
 
 func TestParseMediaMarkers(t *testing.T) {
+	t.Parallel()
 	chapters, err := parseMediaMarkers(twoMarkers)
 	if err != nil {
 		t.Fatal(err)
@@ -61,6 +63,7 @@ func TestParseMediaMarkers(t *testing.T) {
 }
 
 func TestParseMediaMarkersEdgeCases(t *testing.T) {
+	t.Parallel()
 	if ch, err := parseMediaMarkers("<Markers/>"); ch != nil || err != nil {
 		t.Errorf("empty = %v, %v", ch, err)
 	}
@@ -101,6 +104,7 @@ func TestParseMediaMarkers_OversizeRefusedBeforeDecoding(t *testing.T) {
 }
 
 func TestParseTXXXMediaMarkers(t *testing.T) {
+	t.Parallel()
 	latin := func(desc string) []byte {
 		return append(append([]byte{0}, desc+"\x00"...), twoMarkers...)
 	}
@@ -122,6 +126,7 @@ func TestParseTXXXMediaMarkers(t *testing.T) {
 	}
 	for name, data := range tests {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			var f types.File
 			parseTXXXFrame(id3v2Frame{ID: "TXXX", Data: data}, &f)
 			if len(f.Chapters) != 2 || f.Chapters[1].Title != "Chapter 2" {
@@ -144,6 +149,7 @@ func mediaMarkersFrame(doc string) []byte {
 }
 
 func TestParse_OverDriveMediaMarkers(t *testing.T) {
+	t.Parallel()
 	// 1 s of CBR audio at 128 kbps = 16000 bytes.
 	// Second chapter starts inside the file, at 0.5 s.
 	doc := strings.Replace(twoMarkers, "15:51.000", "0:00.500", 1)
@@ -164,6 +170,7 @@ func TestParse_OverDriveMediaMarkers(t *testing.T) {
 }
 
 func TestParse_OverDriveLastChapterBeyondDuration(t *testing.T) {
+	t.Parallel()
 	tag := id3Tag(3, mediaMarkersFrame(twoMarkers)) // second chapter starts at 15:51, far past the audio
 	f := parseBytes(t, append(tag, audioBytes(16000)...))
 	if len(f.Chapters) != 2 || f.Chapters[1].EndTime != 0 {
@@ -172,6 +179,7 @@ func TestParse_OverDriveLastChapterBeyondDuration(t *testing.T) {
 }
 
 func TestParse_CHAPBeatsMediaMarkers(t *testing.T) {
+	t.Parallel()
 	chap := id3Frame(3, "CHAP", chapFrameBody("ch1"))
 	for _, frames := range [][][]byte{
 		{mediaMarkersFrame(twoMarkers), chap},

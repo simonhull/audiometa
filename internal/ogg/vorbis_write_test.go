@@ -11,6 +11,7 @@ import (
 )
 
 func TestWriter_RegisteredForVorbis(t *testing.T) {
+	t.Parallel()
 	w, ok := registry.GetWriter(types.FormatOgg).(*writer)
 	if !ok || w.codec != vorbisCodec {
 		t.Errorf("writer for Ogg Vorbis = %T %+v", registry.GetWriter(types.FormatOgg), w)
@@ -25,6 +26,7 @@ func TestWriter_RegisteredForVorbis(t *testing.T) {
 // never parses, stay identical however the comment packet grows or shrinks,
 // and the setup packet still ends the last header page.
 func TestWriteVorbisCarriesTheHeadersOpaquely(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"sample.ogg", "sample_retagged.ogg"} {
 		src := readCorpus(t, name)
 		before, err := layoutOf(t, src)
@@ -72,6 +74,7 @@ func packetEndsOn(page *oggPage) bool {
 }
 
 func TestWriteVorbisKeepsVendorAndFramingBit(t *testing.T) {
+	t.Parallel()
 	src := readCorpus(t, "sample.ogg")
 	before, err := layoutOf(t, src)
 	if err != nil {
@@ -99,6 +102,7 @@ func TestWriteVorbisKeepsVendorAndFramingBit(t *testing.T) {
 }
 
 func TestWriteVorbisRefusals(t *testing.T) {
+	t.Parallel()
 	good := readCorpus(t, "sample.ogg")
 	chained := append(bytes.Clone(good), withSerial(t, good, 99)...)
 	if _, err := tryWrite(t, chained, keyEdit("TITLE", "x")); !errors.Is(err, types.ErrUnsupportedWrite) {
@@ -122,6 +126,7 @@ func TestWriteVorbisRefusals(t *testing.T) {
 }
 
 func TestWriteVorbisTrailingBytesAndRenumbering(t *testing.T) {
+	t.Parallel()
 	src := append(readCorpus(t, "sample_retagged.ogg"), "tail bytes"...)
 	for name, size := range map[string]int{"same": 10, "more pages": 80_000} {
 		out := writeBytes(t, src, keyEdit("BIG", strings.Repeat("t", size)))

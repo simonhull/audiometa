@@ -11,6 +11,7 @@ import (
 )
 
 func TestParse_CancelInsideBlockLoop(t *testing.T) {
+	t.Parallel()
 	data, err := os.ReadFile("../../testdata/sample.flac")
 	if err != nil {
 		t.Fatal(err)

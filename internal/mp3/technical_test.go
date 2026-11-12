@@ -22,6 +22,7 @@ func (c *countingReaderAt) ReadAt(p []byte, off int64) (int, error) {
 }
 
 func TestParseTechnical_JunkAfterTag_Bounded(t *testing.T) {
+	t.Parallel()
 	data := make([]byte, 200<<10) // 200 KiB with no frame sync anywhere
 	cr := &countingReaderAt{r: bytes.NewReader(data)}
 	sr := binutil.NewSafeReader(cr, int64(len(data)), "junk.mp3")
@@ -36,6 +37,7 @@ func TestParseTechnical_JunkAfterTag_Bounded(t *testing.T) {
 }
 
 func TestParseTechnicalInfo_OneRead(t *testing.T) {
+	t.Parallel()
 	// An MPEG-1 Layer III 128 kbps 44.1 kHz stereo frame (417 bytes) carrying a
 	// Xing header with a frame count, then two more frames.
 	frame := func() []byte { return append([]byte{0xFF, 0xFB, 0x90, 0x00}, make([]byte, 413)...) }
@@ -58,6 +60,7 @@ func TestParseTechnicalInfo_OneRead(t *testing.T) {
 }
 
 func TestParseTechnical_FindsFrameAfterPadding(t *testing.T) {
+	t.Parallel()
 	// 1000 bytes of padding, then an MPEG-1 Layer III 128 kbps 44.1 kHz stereo header.
 	data := make([]byte, 1000, 1100)
 	data = append(data, 0xFF, 0xFB, 0x90, 0x00)
@@ -74,6 +77,7 @@ func TestParseTechnical_FindsFrameAfterPadding(t *testing.T) {
 }
 
 func TestParseTechnical_FrameBeyondWindowNotFound(t *testing.T) {
+	t.Parallel()
 	data := make([]byte, maxFrameSearch+100)
 	copy(data[maxFrameSearch+10:], []byte{0xFF, 0xFB, 0x90, 0x00})
 	sr := binutil.NewSafeReader(bytes.NewReader(data), int64(len(data)), "far.mp3")
@@ -85,6 +89,7 @@ func TestParseTechnical_FrameBeyondWindowNotFound(t *testing.T) {
 }
 
 func TestParseTechnical_MPEG25(t *testing.T) {
+	t.Parallel()
 	// MPEG-2.5 Layer III, 8 kbps, 8 kHz, mono: 72 * 8000 / 8000 = 72-byte frames.
 	frame := append([]byte{0xFF, 0xE3, 0x18, 0xC4}, make([]byte, 72-4)...)
 	f := parseBytes(t, bytes.Repeat(frame, 10))
@@ -94,6 +99,7 @@ func TestParseTechnical_MPEG25(t *testing.T) {
 }
 
 func TestParseTechnical_SkipsUnconfirmedSync(t *testing.T) {
+	t.Parallel()
 	// A 64 kbps header with nothing at its next-frame offset (+208), then real 128 kbps frames.
 	data := append([]byte{0xFF, 0xFB, 0x50, 0x00}, make([]byte, 96)...)
 	data = append(data, audioBytes(16000)...)

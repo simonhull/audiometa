@@ -189,6 +189,7 @@ func withCRCs(data []byte) []byte {
 }
 
 func TestWriter_Registered(t *testing.T) {
+	t.Parallel()
 	if _, ok := registry.GetWriter(types.FormatOpus).(*writer); !ok {
 		t.Error("no Opus writer registered")
 	}
@@ -204,6 +205,7 @@ func TestWriter_Registered(t *testing.T) {
 // header that grows by a page (every later page renumbered) and one that
 // shrinks back.
 func TestWriteCorpus(t *testing.T) {
+	t.Parallel()
 	big := strings.Repeat("x", 70_000)
 	for _, name := range []string{"sample.opus", "sample_retagged.opus", "bench/book.opus", "sample.ogg", "sample_retagged.ogg"} {
 		src := readCorpus(t, name)
@@ -257,6 +259,7 @@ func TestWriteCorpus(t *testing.T) {
 }
 
 func TestWriteOpusTagsReadBack(t *testing.T) {
+	t.Parallel()
 	src := readCorpus(t, "sample.opus")
 	out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) {
 		tg.Title = "Nouveau titre ✓ 日本語"
@@ -282,6 +285,7 @@ func TestWriteOpusTagsReadBack(t *testing.T) {
 }
 
 func TestWriteOpusNoOpIsByteIdentical(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"sample.opus", "bench/book.opus", "sample.ogg"} {
 		src := readCorpus(t, name)
 		for label, edits := range map[string]*types.EditSet{
@@ -297,6 +301,7 @@ func TestWriteOpusNoOpIsByteIdentical(t *testing.T) {
 }
 
 func TestWriteOpusIsDeterministic(t *testing.T) {
+	t.Parallel()
 	src := readCorpus(t, "sample.opus")
 	edit := func() *types.EditSet {
 		return editsFor(t, src, func(tg *types.Tags) { tg.Title = "T"; tg.Set("BIG", strings.Repeat("y", 70_000)) })
@@ -307,6 +312,7 @@ func TestWriteOpusIsDeterministic(t *testing.T) {
 }
 
 func TestWriteOpusKeepsVendorAndTail(t *testing.T) {
+	t.Parallel()
 	// OpusTags with the LSB-1 binary data RFC 7845 §5.2 says to preserve, then zero padding.
 	body := commentPacket("OpusTags", false, "TITLE=Old")
 	body = append(body, 0x01, 0xAA, 0xBB, 0, 0, 0)
@@ -328,6 +334,7 @@ func TestWriteOpusKeepsVendorAndTail(t *testing.T) {
 }
 
 func TestWriteOpusTrailingBytesCarriedThrough(t *testing.T) {
+	t.Parallel()
 	src := slices.Concat(readCorpus(t, "sample.opus"), []byte("TAG appended after the last page"))
 	for name, mutate := range map[string]func(*types.Tags){
 		"same pages": func(tg *types.Tags) { tg.Title = "T" },
@@ -359,6 +366,7 @@ func withSerial(tb testing.TB, data []byte, serial uint32) []byte {
 }
 
 func TestWriteOpusRefusals(t *testing.T) {
+	t.Parallel()
 	good := readCorpus(t, "sample.opus")
 	l, err := layoutOf(t, good)
 	if err != nil {
@@ -404,6 +412,7 @@ func TestWriteOpusRefusals(t *testing.T) {
 }
 
 func TestWriteOpusRefusesBadEdits(t *testing.T) {
+	t.Parallel()
 	src := readCorpus(t, "sample.opus")
 	tests := map[string]*types.EditSet{
 		"key with =":      keyEdit("A=B", "v"),
@@ -421,6 +430,7 @@ func TestWriteOpusRefusesBadEdits(t *testing.T) {
 }
 
 func TestWriteOpusRefusesAHeaderBeyondTheReadersLimit(t *testing.T) {
+	t.Parallel()
 	src := readCorpus(t, "sample.opus")
 	huge := strings.Repeat("a", maxHeaderBytes)
 	if _, err := tryWrite(t, src, keyEdit("BIG", huge)); !errors.Is(err, types.ErrUnsupportedWrite) {
@@ -429,6 +439,7 @@ func TestWriteOpusRefusesAHeaderBeyondTheReadersLimit(t *testing.T) {
 }
 
 func TestWriteOpusCanceled(t *testing.T) {
+	t.Parallel()
 	src := readCorpus(t, "sample.opus")
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
@@ -444,6 +455,7 @@ func TestWriteOpusCanceled(t *testing.T) {
 // TestWriteOpusRenumbersManyPages rewrites a stream whose audio takes dozens of
 // pages: a long renumbering run crosses the flush size.
 func TestWriteOpusRenumbersManyPages(t *testing.T) {
+	t.Parallel()
 	src := syntheticOpus([]string{"TITLE=Old"}, 3000) // about 330 KB of audio
 	out := writeBytes(t, src, keyEdit("BIG", strings.Repeat("q", 70_000)))
 	checkStructure(t, "many pages", out)
@@ -463,6 +475,7 @@ func mustPages(tb testing.TB, data []byte) []rawPage {
 }
 
 func TestPreservedDigest(t *testing.T) {
+	t.Parallel()
 	src := syntheticOpus([]string{"TITLE=Old"}, 5)
 	w := testWriter(t)
 	digest := func(data []byte) []byte {

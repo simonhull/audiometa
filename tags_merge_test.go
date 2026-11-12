@@ -12,12 +12,14 @@ import (
 // TestTagsMerge_ThenWrite merges raw keys into an opened file's tags and
 // writes them: the merge must not make the write conflict, and t's values win.
 func TestTagsMerge_ThenWrite(t *testing.T) {
+	t.Parallel()
 	for path, titleKey := range map[string]string{
 		"testdata/sample.flac": "TITLE",
 		"testdata/sample.mp3":  "TIT2",
 		"testdata/sample.m4a":  "\xa9nam",
 	} {
 		t.Run(path, func(t *testing.T) {
+			t.Parallel()
 			f, err := audiometa.Open(path)
 			if err != nil {
 				t.Fatal(err)

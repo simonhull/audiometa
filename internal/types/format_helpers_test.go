@@ -8,6 +8,7 @@ func form(container, formType string) []byte {
 }
 
 func TestDetectRIFF(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		head []byte
@@ -24,6 +25,7 @@ func TestDetectRIFF(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, ok := detectRIFF(tt.head, tt.size)
 			if got != tt.want || ok != tt.ok {
 				t.Errorf("detectRIFF() = (%v, %v), want (%v, %v)", got, ok, tt.want, tt.ok)
@@ -33,6 +35,7 @@ func TestDetectRIFF(t *testing.T) {
 }
 
 func TestDetectFORM(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		head []byte
@@ -48,6 +51,7 @@ func TestDetectFORM(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, ok := detectFORM(tt.head, tt.size)
 			if got != tt.want || ok != tt.ok {
 				t.Errorf("detectFORM() = (%v, %v), want (%v, %v)", got, ok, tt.want, tt.ok)
@@ -57,6 +61,7 @@ func TestDetectFORM(t *testing.T) {
 }
 
 func TestDetectOgg_ShortFile(t *testing.T) {
+	t.Parallel()
 	// Under 36 bytes there is no room for an OpusHead packet: plain Ogg.
 	head := []byte("OggS" + "\x00\x00\x00\x00")
 	if got, ok := detectOgg(head, 8); got != FormatOgg || !ok {
@@ -68,6 +73,7 @@ func TestDetectOgg_ShortFile(t *testing.T) {
 }
 
 func TestDetectMPEGSync(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct {
 		head []byte
 		ok   bool

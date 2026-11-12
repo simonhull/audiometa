@@ -5,6 +5,7 @@ import (
 )
 
 func TestMapCodecName(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		fourCC   string
 		expected string
@@ -22,6 +23,7 @@ func TestMapCodecName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.fourCC, func(t *testing.T) {
+			t.Parallel()
 			result := mapCodecName(tt.fourCC)
 			if result != tt.expected {
 				t.Errorf("mapCodecName(%q) = %q, want %q", tt.fourCC, result, tt.expected)
@@ -31,6 +33,7 @@ func TestMapCodecName(t *testing.T) {
 }
 
 func TestAACProfiles(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		audioObjectType uint8
 		expected        string

@@ -3,6 +3,7 @@ package types
 import "testing"
 
 func TestAppendWarning(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		existing int
@@ -15,6 +16,7 @@ func TestAppendWarning(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			ws := make([]Warning, tt.existing)
 			got := AppendWarning(ws, Warning{Stage: StageMetadata, Message: "x"})
 			if len(got) != tt.want {

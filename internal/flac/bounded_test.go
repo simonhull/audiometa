@@ -16,6 +16,7 @@ func vcHead(count uint32) []byte {
 }
 
 func TestParse_CommentPastBlockIsNotRead(t *testing.T) {
+	t.Parallel()
 	leaked := "TITLE=Leaked"
 	payload := binary.LittleEndian.AppendUint32(vcHead(1), uint32(len(leaked)))
 	data := buildFLAC(
@@ -33,6 +34,7 @@ func TestParse_CommentPastBlockIsNotRead(t *testing.T) {
 }
 
 func TestParse_CommentsBeforeACutAreKept(t *testing.T) {
+	t.Parallel()
 	payload := vcHead(2)
 	payload = binary.LittleEndian.AppendUint32(payload, uint32(len("TITLE=Kept")))
 	payload = append(payload, "TITLE=Kept"...)
@@ -51,6 +53,7 @@ func TestParse_CommentsBeforeACutAreKept(t *testing.T) {
 }
 
 func TestParse_EveryVorbisCommentBlockIsRead(t *testing.T) {
+	t.Parallel()
 	data := buildFLAC(
 		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100)),
 		flacBlock(false, blockTypeVorbisComment, vorbisCommentPayload("TITLE=One")),
@@ -83,6 +86,7 @@ func TestParse_CommentCountPastBlockDoesNotAllocate(t *testing.T) {
 }
 
 func TestExtractArtwork_PictureDataPastBlockIsNotRead(t *testing.T) {
+	t.Parallel()
 	// Each PICTURE block is 32 bytes but claims 64 KiB of picture data, which
 	// lies in the blocks after it and the audio.
 	const claimed = 64 << 10

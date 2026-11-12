@@ -20,6 +20,7 @@ func id3Prefix() []byte {
 }
 
 func TestParse_ID3Prefix(t *testing.T) {
+	t.Parallel()
 	prefix := id3Prefix()
 	src := slices.Concat(prefix, pictureFLAC())
 	f := parseBytes(t, src)
@@ -37,6 +38,7 @@ func TestParse_ID3Prefix(t *testing.T) {
 }
 
 func TestWriter_KeepsID3Prefix(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	prefix, plain := id3Prefix(), pictureFLAC()
 	src := slices.Concat(prefix, plain)

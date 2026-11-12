@@ -36,6 +36,7 @@ func extractTestArtwork(t *testing.T, data []byte) []types.Artwork {
 }
 
 func TestExtractArtwork_BadLastPictureStopsScan(t *testing.T) {
+	t.Parallel()
 	bad := make([]byte, 8)
 	binary.BigEndian.PutUint32(bad[0:], 3)
 	binary.BigEndian.PutUint32(bad[4:], 4096) // MIME length runs past EOF, so picture.Decode fails
@@ -51,6 +52,7 @@ func TestExtractArtwork_BadLastPictureStopsScan(t *testing.T) {
 }
 
 func TestExtractArtwork_AllPictureTypes(t *testing.T) {
+	t.Parallel()
 	data := buildFLAC(
 		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100)),
 		flacBlock(false, blockTypePicture, picturePayload(3, "image/png", []byte{1})),
@@ -66,6 +68,7 @@ func TestExtractArtwork_AllPictureTypes(t *testing.T) {
 }
 
 func TestParse_BitrateExcludesMetadata(t *testing.T) {
+	t.Parallel()
 	data := buildFLAC(
 		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(441000)), // 10 s
 		flacBlock(false, blockTypePadding, make([]byte, 50000)),
@@ -79,6 +82,7 @@ func TestParse_BitrateExcludesMetadata(t *testing.T) {
 }
 
 func TestParse_BitrateExcludesTrailingTags(t *testing.T) {
+	t.Parallel()
 	ape := func() []byte {
 		part := func(flags uint32) []byte {
 			b := make([]byte, 32)
@@ -107,6 +111,7 @@ func TestParse_BitrateExcludesTrailingTags(t *testing.T) {
 }
 
 func TestParse_UnknownTotalSamplesWarns(t *testing.T) {
+	t.Parallel()
 	data := buildFLAC(flacBlock(true, blockTypeStreamInfo, streamInfoPayload(0)))
 	file := parseTestFLAC(t, data)
 	if file.Audio.Duration != 0 {

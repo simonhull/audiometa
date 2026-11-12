@@ -56,6 +56,7 @@ func createMinimalM4B(title, artist, album string) []byte {
 }
 
 func TestParse_Success(t *testing.T) {
+	t.Parallel()
 	data := createMinimalM4B("My Audiobook", "Author Name", "Series 1")
 
 	// Write to temp file
@@ -114,6 +115,7 @@ func TestParse_Success(t *testing.T) {
 }
 
 func TestParse_FileNotFound(t *testing.T) {
+	t.Parallel()
 	_, err := os.Open("/nonexistent/file.m4b")
 	if err == nil {
 		t.Error("expected error for nonexistent file")
@@ -121,6 +123,7 @@ func TestParse_FileNotFound(t *testing.T) {
 }
 
 func TestParse_UnknownBrand(t *testing.T) {
+	t.Parallel()
 	// Create a file with an unknown ftyp brand
 	// The parser should still work and default to M4A format
 	data := createMockAtom("ftyp", []byte("XXXX")) // Unknown brand
@@ -162,6 +165,7 @@ func TestParse_UnknownBrand(t *testing.T) {
 }
 
 func TestParse_NoMetadata(t *testing.T) {
+	t.Parallel()
 	// Create M4B with no metadata
 	data := createMinimalM4B("", "", "")
 
@@ -201,6 +205,7 @@ func TestParse_NoMetadata(t *testing.T) {
 }
 
 func TestParse_WithArtwork_Integration(t *testing.T) {
+	t.Parallel()
 	// Create M4B with both metadata and artwork
 	jpegData := []byte{
 		0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46,

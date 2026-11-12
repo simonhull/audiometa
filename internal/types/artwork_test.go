@@ -3,6 +3,7 @@ package types
 import "testing"
 
 func TestArtworkTypeFromPictureType(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		code uint32
 		want ArtworkType

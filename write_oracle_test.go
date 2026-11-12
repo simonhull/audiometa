@@ -117,6 +117,7 @@ func ffprobe(t *testing.T, tool, path string) probeResult {
 // no code with audiometa: the container must parse cleanly, keep its streams
 // and chapters, and decode end to end.
 func TestWriteOracle(t *testing.T) {
+	t.Parallel()
 	ffprobeTool := oracleTool(t, "ffprobe")
 	ffmpegTool := oracleTool(t, "ffmpeg")
 	flacTool := oracleTool(t, "flac")
@@ -140,6 +141,7 @@ func TestWriteOracle(t *testing.T) {
 			continue
 		}
 		t.Run(filepath.Base(tc.path), func(t *testing.T) {
+			t.Parallel()
 			want := ffprobe(t, ffprobeTool, tc.path)
 			for _, e := range edits {
 				t.Run(e.name, func(t *testing.T) {

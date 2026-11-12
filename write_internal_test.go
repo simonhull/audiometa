@@ -493,6 +493,7 @@ func TestArtworkEdits(t *testing.T) {
 }
 
 func TestArtworkEdits_Concurrent(t *testing.T) {
+	t.Parallel()
 	f := openSample(t, sampleFLAC)
 	pngData := tinyPNG(t)
 	var wg sync.WaitGroup
@@ -1088,6 +1089,7 @@ func TestWrite_ConcurrentDelete(t *testing.T) {
 // parsers: re-setting any raw key of a parsed corpus file to its own values
 // leaves every typed field as the parser produced it.
 func TestSetSync_MatchesParser(t *testing.T) {
+	t.Parallel()
 	paths, err := filepath.Glob("testdata/*.*")
 	if err != nil {
 		t.Fatal(err)
@@ -1101,6 +1103,7 @@ func TestSetSync_MatchesParser(t *testing.T) {
 			continue
 		}
 		t.Run(filepath.Base(path), func(t *testing.T) {
+			t.Parallel()
 			f := openSample(t, path)
 			for key, values := range f.Tags.All() {
 				tags := f.Tags.Clone()

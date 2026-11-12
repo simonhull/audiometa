@@ -20,6 +20,7 @@ import (
 )
 
 func TestWriter_Registered(t *testing.T) {
+	t.Parallel()
 	if _, ok := registry.GetWriter(types.FormatFLAC).(*writer); !ok {
 		t.Error("no FLAC writer registered")
 	}
@@ -47,6 +48,7 @@ func richFLAC() []byte {
 }
 
 func TestFBlock_VerbatimRoundTrip(t *testing.T) {
+	t.Parallel()
 	src := richFLAC()
 	m := metaOf(t, src)
 	if m.audioStart != int64(len(src)-len(audioTail)) || m.oldMetaLen != m.audioStart-4 {
@@ -62,6 +64,7 @@ func TestFBlock_VerbatimRoundTrip(t *testing.T) {
 }
 
 func TestFBlock_CorpusVerbatim(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"sample.flac", "sample_upper.flac"} {
 		src := corpusFile(t, name)
 		m := metaOf(t, src)
@@ -89,6 +92,7 @@ func grow(t *testing.T, m *fmeta, n int) {
 }
 
 func TestFBlock_PaddingAbsorbsGrowth(t *testing.T) {
+	t.Parallel()
 	m := metaOf(t, simpleFLAC(100, "TITLE=T"))
 	grow(t, m, 50)
 	out, err := m.serialize()
@@ -105,6 +109,7 @@ func TestFBlock_PaddingAbsorbsGrowth(t *testing.T) {
 }
 
 func TestFBlock_PaddingExhausted(t *testing.T) {
+	t.Parallel()
 	m := metaOf(t, simpleFLAC(10, "TITLE=T"))
 	grow(t, m, 100)
 	out, err := m.serialize()
@@ -118,6 +123,7 @@ func TestFBlock_PaddingExhausted(t *testing.T) {
 }
 
 func TestFBlock_SmallGapGrows(t *testing.T) {
+	t.Parallel()
 	// Growth leaves 1-3 bytes: too few for a PADDING header, so the
 	// metadata gets fresh padding instead.
 	for _, gap := range []int{1, 2, 3} {
@@ -135,6 +141,7 @@ func TestFBlock_SmallGapGrows(t *testing.T) {
 }
 
 func TestFBlock_ExactFitNoPadding(t *testing.T) {
+	t.Parallel()
 	m := metaOf(t, simpleFLAC(100, "TITLE=T"))
 	grow(t, m, 100) // 4 + 100 = the whole PADDING block
 	out, err := m.serialize()
@@ -154,6 +161,7 @@ func TestFBlock_ExactFitNoPadding(t *testing.T) {
 }
 
 func TestFBlock_IsLastOnlyOnFinal(t *testing.T) {
+	t.Parallel()
 	src := richFLAC()
 	// Move PADDING (the source's last block) to second place: serialize must
 	// set the is-last bit on whatever ends up last, and only there.
@@ -173,6 +181,7 @@ func TestFBlock_IsLastOnlyOnFinal(t *testing.T) {
 }
 
 func TestFBlock_Corrupted(t *testing.T) {
+	t.Parallel()
 	si := flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100))
 	tests := map[string][]byte{
 		"STREAMINFO not first": buildFLAC(flacBlock(false, blockTypeVorbisComment, vorbisCommentPayload()), flacBlock(true, blockTypeStreamInfo, streamInfoPayload(44100))),
@@ -193,6 +202,7 @@ func TestFBlock_Corrupted(t *testing.T) {
 }
 
 func TestFBlock_TooLarge(t *testing.T) {
+	t.Parallel()
 	if err := checkBlockLen(0xFFFFFF); err != nil {
 		t.Errorf("0xFFFFFF: %v", err)
 	}
@@ -213,6 +223,7 @@ func pictureFLAC() []byte {
 }
 
 func TestPicture_ReplaceFront(t *testing.T) {
+	t.Parallel()
 	src := pictureFLAC()
 	art := types.Artwork{MIMEType: "image/png", Description: "Cover ✓", Data: []byte("new front"), Type: types.ArtworkFrontCover, Width: 600, Height: 400}
 	out := writeBytes(t, src, editsFor(t, src, nil,
@@ -236,6 +247,7 @@ func TestPicture_ReplaceFront(t *testing.T) {
 }
 
 func TestPicture_RemoveByType(t *testing.T) {
+	t.Parallel()
 	src := pictureFLAC()
 	out := writeBytes(t, src, editsFor(t, src, nil, types.ArtworkOp{Kind: types.ArtworkOpRemove, Type: types.ArtworkBackCover}))
 	if got := extractTestArtwork(t, out); len(got) != 1 || got[0].Type != types.ArtworkFrontCover {
@@ -244,6 +256,7 @@ func TestPicture_RemoveByType(t *testing.T) {
 }
 
 func TestPicture_RemoveAll(t *testing.T) {
+	t.Parallel()
 	src := pictureFLAC()
 	out := writeBytes(t, src, editsFor(t, src, nil, types.ArtworkOp{Kind: types.ArtworkOpRemoveAll}))
 	if got := extractTestArtwork(t, out); len(got) != 0 {
@@ -255,6 +268,7 @@ func TestPicture_RemoveAll(t *testing.T) {
 }
 
 func TestPicture_AddPlacement(t *testing.T) {
+	t.Parallel()
 	src := richFLAC()
 	art := types.Artwork{MIMEType: "image/png", Data: []byte("img"), Type: types.ArtworkFrontCover}
 	out := writeBytes(t, src, editsFor(t, src, nil, types.ArtworkOp{Kind: types.ArtworkOpAdd, Art: art}))
@@ -276,6 +290,7 @@ func TestPicture_AddPlacement(t *testing.T) {
 }
 
 func TestPicture_InvalidRefused(t *testing.T) {
+	t.Parallel()
 	src := pictureFLAC()
 	for name, art := range map[string]types.Artwork{
 		"non-ASCII MIME": {MIMEType: "image/pngé", Data: []byte("x"), Type: types.ArtworkFrontCover},
@@ -290,6 +305,7 @@ func TestPicture_InvalidRefused(t *testing.T) {
 }
 
 func TestVC_CreatedWhenMissing(t *testing.T) {
+	t.Parallel()
 	for name, tc := range map[string]struct {
 		src  []byte
 		want []uint8
@@ -325,6 +341,7 @@ func TestVC_CreatedWhenMissing(t *testing.T) {
 }
 
 func TestVC_MultipleBlocksRefused(t *testing.T) {
+	t.Parallel()
 	src := append(buildFLAC(
 		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100)),
 		flacBlock(false, blockTypeVorbisComment, vorbisCommentPayload("TITLE=A")),
@@ -344,6 +361,7 @@ func TestVC_MultipleBlocksRefused(t *testing.T) {
 }
 
 func TestVC_MalformedBlockCorrupted(t *testing.T) {
+	t.Parallel()
 	bad := vorbisCommentPayload("TITLE=A")
 	bad[len(bad)-8] = 0xFF // comment length runs past the block
 	src := append(buildFLAC(
@@ -358,6 +376,7 @@ func TestVC_MalformedBlockCorrupted(t *testing.T) {
 }
 
 func TestWriter_AudioVerbatim(t *testing.T) {
+	t.Parallel()
 	src := simpleFLAC(8, "TITLE=T")
 	out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.Title = strings.Repeat("long ", 100) }))
 	m := metaOf(t, out)
@@ -370,6 +389,7 @@ func TestWriter_AudioVerbatim(t *testing.T) {
 }
 
 func TestWriter_Deterministic(t *testing.T) {
+	t.Parallel()
 	src := pictureFLAC()
 	edits := editsFor(t, src, func(tg *types.Tags) {
 		tg.Title = "X"
@@ -382,6 +402,7 @@ func TestWriter_Deterministic(t *testing.T) {
 }
 
 func TestWriter_InPlaceEqualsFullRewrite(t *testing.T) {
+	t.Parallel()
 	src := pictureFLAC()
 	edits := editsFor(t, src, func(tg *types.Tags) { tg.Title = "Another title" }, types.ArtworkOp{Kind: types.ArtworkOpRemoveAll})
 	full := writeBytes(t, src, edits)
@@ -401,6 +422,7 @@ func TestWriter_InPlaceEqualsFullRewrite(t *testing.T) {
 }
 
 func TestWriter_InPlaceNotOK(t *testing.T) {
+	t.Parallel()
 	src := simpleFLAC(8, "TITLE=T")
 	edits := editsFor(t, src, func(tg *types.Tags) { tg.Title = "A title that does not fit in the padding" })
 	p, err := (&writer{}).InPlacePatch(context.Background(), bytes.NewReader(src), int64(len(src)), edits)
@@ -410,6 +432,7 @@ func TestWriter_InPlaceNotOK(t *testing.T) {
 }
 
 func TestWriter_AudioDigest(t *testing.T) {
+	t.Parallel()
 	for name, tc := range map[string]struct {
 		data  []byte
 		start int64
@@ -443,6 +466,7 @@ func corpusFile(t *testing.T, name string) []byte {
 }
 
 func TestWriter_Corpus(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"sample.flac", "sample_upper.flac"} {
 		src := corpusFile(t, name)
 		if out := writeBytes(t, src, editsFor(t, src, nil)); !bytes.Equal(out, src) {
@@ -474,6 +498,7 @@ func TestWriter_Corpus(t *testing.T) {
 }
 
 func TestWriter_DeleteEveryKey(t *testing.T) {
+	t.Parallel()
 	src := corpusFile(t, "sample_upper.flac")
 	edits := editsFor(t, src, func(tg *types.Tags) {
 		var keys []string
@@ -515,6 +540,7 @@ func mustHex(s string) []byte {
 // TestWriteFile_ZeroLengthLastBlockAtEnd writes a file whose edit shrinks the last
 // PADDING block to nothing at the end of the file, then reads and writes the output again.
 func TestWriteFile_ZeroLengthLastBlockAtEnd(t *testing.T) {
+	t.Parallel()
 	src := mustHex("664c614300000000040000210e000000303030303030303030303030303001000000070000005449544c453d308100004030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030")
 	out := writeBytes(t, src, fuzzEdits())
 	metaOf(t, out)

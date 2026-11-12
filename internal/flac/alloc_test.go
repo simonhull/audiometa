@@ -6,7 +6,9 @@ import (
 )
 
 func TestParse_OversizedLengthsDoNotAllocate(t *testing.T) {
+	t.Parallel()
 	t.Run("vorbis comment length past block", func(t *testing.T) {
+		t.Parallel()
 		payload := binary.LittleEndian.AppendUint32(nil, 0) // empty vendor
 		payload = binary.LittleEndian.AppendUint32(payload, 1)
 		payload = binary.LittleEndian.AppendUint32(payload, 0xFFFFFFFF) // comment length
@@ -21,6 +23,7 @@ func TestParse_OversizedLengthsDoNotAllocate(t *testing.T) {
 	})
 
 	t.Run("picture lengths past file", func(t *testing.T) {
+		t.Parallel()
 		for _, field := range []int{4, 8, 28} { // MIME length, description length, picture data length (MIME length 0)
 			payload := make([]byte, 64)
 			binary.BigEndian.PutUint32(payload[0:], 3)

@@ -70,6 +70,7 @@ func TestParseChunkOffsets_BoundedByAtomAndSamples(t *testing.T) {
 }
 
 func TestParse_ItemValuesAreCapped(t *testing.T) {
+	t.Parallel()
 	values := slices.Repeat([]string{"a"}, 70_000)
 	data := buildMP4(false, ilstText("\xa9gen", values...))
 	f, err := (&parser{}).Parse(context.Background(), bytes.NewReader(data), int64(len(data)), "x.m4a")

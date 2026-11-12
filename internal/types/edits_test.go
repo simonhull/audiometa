@@ -9,6 +9,7 @@ import (
 )
 
 func TestDiff(t *testing.T) {
+	t.Parallel()
 	mp3Orig := func() *Tags {
 		o := boundTags(FormatMP3)
 		o.Set("TIT2", "Orig")
@@ -126,6 +127,7 @@ func TestDiff(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			orig := tc.orig()
 			cur := orig.Clone()
 			tc.mutate(cur)
@@ -154,6 +156,7 @@ func TestDiff(t *testing.T) {
 }
 
 func TestDiff_KeysSorted(t *testing.T) {
+	t.Parallel()
 	for range 20 {
 		orig := boundTags(FormatFLAC)
 		cur := orig.Clone()
@@ -171,6 +174,7 @@ func TestDiff_KeysSorted(t *testing.T) {
 }
 
 func TestEditSet_Empty(t *testing.T) {
+	t.Parallel()
 	if !(&EditSet{}).Empty() {
 		t.Error("zero EditSet must be empty")
 	}

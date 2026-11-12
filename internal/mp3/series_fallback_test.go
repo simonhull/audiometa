@@ -9,6 +9,7 @@ import (
 // TestParse_NoInference verifies tags are reported exactly as stored: Series,
 // SeriesPart and Narrator are never derived from Grouping, Composer or the path.
 func TestParse_NoInference(t *testing.T) {
+	t.Parallel()
 	txxx := func(k, v string) []byte { return id3Frame(4, "TXXX", latin1Text(k+"\x00"+v)) }
 	text := func(id, v string) []byte { return id3Frame(4, id, latin1Text(v)) }
 	tests := []struct {
@@ -29,6 +30,7 @@ func TestParse_NoInference(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			data := append(id3Tag(4, tc.frames...), mpegFrame...)
 			file, err := (&parser{}).Parse(context.Background(), bytes.NewReader(data), int64(len(data)), tc.path)
 			if err != nil {

@@ -90,6 +90,7 @@ func cdCue() []byte {
 }
 
 func TestParse_CueSheetCD(t *testing.T) {
+	t.Parallel()
 	data := buildFLAC(
 		flacBlock(false, 0, streamInfoPayload(testSamples)),
 		flacBlock(true, 5, cdCue()),
@@ -105,6 +106,7 @@ func TestParse_CueSheetCD(t *testing.T) {
 }
 
 func TestParse_CueSheetNonCDLeadOut(t *testing.T) {
+	t.Parallel()
 	cue := cueSheetPayload(false, []testTrack{
 		{0, 1, []testIndex{{0, 1}}},
 		{4410000, 2, []testIndex{{0, 1}}},
@@ -122,6 +124,7 @@ func TestParse_CueSheetNonCDLeadOut(t *testing.T) {
 }
 
 func TestCuesheetToChapters_NoLeadOut(t *testing.T) {
+	t.Parallel()
 	cs := &CueSheet{Tracks: []CueTrack{
 		{Offset: 0, Number: 1, IsAudio: true},
 		{Offset: 441000, Number: 2, IsAudio: true},
@@ -140,6 +143,7 @@ func TestCuesheetToChapters_NoLeadOut(t *testing.T) {
 }
 
 func TestParse_FLACChapterComments(t *testing.T) {
+	t.Parallel()
 	data := buildFLAC(
 		flacBlock(false, 0, streamInfoPayload(testSamples)),
 		flacBlock(true, 4, vorbisCommentPayload(chapterComments...)),
@@ -152,6 +156,7 @@ func TestParse_FLACChapterComments(t *testing.T) {
 }
 
 func TestParse_ChapterCommentsWinOverCueSheet(t *testing.T) {
+	t.Parallel()
 	data := buildFLAC(
 		flacBlock(false, 0, streamInfoPayload(testSamples)),
 		flacBlock(false, 4, vorbisCommentPayload(chapterComments...)),
@@ -164,6 +169,7 @@ func TestParse_ChapterCommentsWinOverCueSheet(t *testing.T) {
 }
 
 func TestSamplesToDuration_HostileOffsetClampsInsteadOfWrapping(t *testing.T) {
+	t.Parallel()
 	got := samplesToDuration(^uint64(0), 1)
 	if got != time.Duration(1<<63-1) {
 		t.Errorf("got %v, want clamp to MaxInt64", got)

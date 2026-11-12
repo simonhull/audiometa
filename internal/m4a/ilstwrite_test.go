@@ -35,6 +35,7 @@ func assertItemsKept(t *testing.T, before, after []byte, changed ...string) {
 }
 
 func TestIlst_TextKeyEdit(t *testing.T) {
+	t.Parallel()
 	src := buildMP4(false, ilstText("\xA9nam", "Old"), ilstText(itemArtist, "Artist"), ilstFreeform("Narrator", "N"))
 	out := writeTags(t, src, func(tg *types.Tags) { tg.Set("\xA9nam", "New") })
 	if got := parseBytes(t, out).Tags.Title; got != "New" {
@@ -47,6 +48,7 @@ func TestIlst_TextKeyEdit(t *testing.T) {
 }
 
 func TestIlst_MultiValue(t *testing.T) {
+	t.Parallel()
 	src := buildMP4(false, ilstText(itemArtist, "Old"))
 	out := writeTags(t, src, func(tg *types.Tags) { tg.Artists = []string{"A", "B"}; tg.Artist = "A" })
 	if want := ilstText(itemArtist, "A", "B"); !bytes.Equal(itemOf(t, out, itemArtist), want) {
@@ -59,6 +61,7 @@ func TestIlst_MultiValue(t *testing.T) {
 }
 
 func TestIlst_Freeform(t *testing.T) {
+	t.Parallel()
 	src := buildMP4(false, ilstText("\xA9nam", "T"), ilstFreeform("Narrator", "Old"))
 	out := writeTags(t, src, func(tg *types.Tags) { tg.Set("NARRATOR", "X") })
 	if want := ilstFreeform("Narrator", "X"); !bytes.Equal(itemOf(t, out, itemFreeform), want) {
@@ -81,6 +84,7 @@ func TestIlst_Freeform(t *testing.T) {
 }
 
 func TestIlst_FieldEdits(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		items   [][]byte
@@ -150,6 +154,7 @@ func TestIlst_FieldEdits(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			src := buildMP4(false, append([][]byte{ilstText("\xA9nam", "T")}, tc.items...)...)
 			out, err := tryTags(t, src, tc.mutate)
 			if tc.wantErr != nil {
@@ -169,6 +174,7 @@ func TestIlst_FieldEdits(t *testing.T) {
 }
 
 func TestIlst_FieldEditsReRead(t *testing.T) {
+	t.Parallel()
 	src := buildMP4(false, ilstText("\xA9nam", "T"))
 	out := writeTags(t, src, func(tg *types.Tags) {
 		tg.TrackNumber, tg.TrackTotal, tg.DiscNumber, tg.DiscTotal = 3, 12, 1, 2
@@ -186,6 +192,7 @@ func TestIlst_FieldEditsReRead(t *testing.T) {
 }
 
 func TestIlst_GenresKeepGnre(t *testing.T) {
+	t.Parallel()
 	gnre := ilstInt(keyGnre, 0, []byte{0, 18})
 	src := buildMP4(false, ilstText("\xA9nam", "T"), gnre)
 	out := writeTags(t, src, func(tg *types.Tags) { tg.Genres = []string{"Rock", "Jazz"} })
@@ -198,6 +205,7 @@ func TestIlst_GenresKeepGnre(t *testing.T) {
 }
 
 func TestIlst_GnreKey(t *testing.T) {
+	t.Parallel()
 	src := buildMP4(false, ilstText("\xA9nam", "T"), ilstInt(keyGnre, 0, []byte{0, 18}))
 	out := writeTags(t, src, func(tg *types.Tags) { tg.Set(keyGnre, "8") })
 	if want := ilstInt(keyGnre, 0, []byte{0, 9}); !bytes.Equal(itemOf(t, out, keyGnre), want) {
@@ -214,6 +222,7 @@ func TestIlst_GnreKey(t *testing.T) {
 }
 
 func TestIlst_CreatesMissingPath(t *testing.T) {
+	t.Parallel()
 	src := buildMP4With(mp4Opts{noUdta: true})
 	out := writeTags(t, src, func(tg *types.Tags) { tg.Title = "Created" })
 	meta := findPath(moovTreeOf(t, out), atomUdta, atomMeta)
@@ -238,6 +247,7 @@ func TestIlst_CreatesMissingPath(t *testing.T) {
 }
 
 func TestIlst_DeleteEveryKeyKeepsEmptyIlst(t *testing.T) {
+	t.Parallel()
 	src := buildMP4(false, ilstText("\xA9nam", "T"), ilstText(itemArtist, "A", "B"), ilstFreeform("CUSTOM", "c"),
 		ilstInt("tmpo", dataTypeBESigned, []byte{0, 90}), ilstInt(keyGnre, 0, []byte{0, 1}))
 	out := writeTags(t, src, func(tg *types.Tags) {
@@ -257,6 +267,7 @@ func TestIlst_DeleteEveryKeyKeepsEmptyIlst(t *testing.T) {
 }
 
 func TestCovr_Ops(t *testing.T) {
+	t.Parallel()
 	jpeg := covrImage{covrJPEG, []byte{0xFF, 0xD8, 0xFF, 0xE0, 1, 2}}
 	src := buildMP4(false, ilstText("\xA9nam", "T"), covrItem(jpeg))
 	pngData := testPNG(t)
@@ -308,6 +319,7 @@ func TestCovr_Ops(t *testing.T) {
 }
 
 func TestIlst_NoCrossFieldWrites(t *testing.T) {
+	t.Parallel()
 	items := [][]byte{ilstText("\xA9wrt", "C"), ilstText("\xA9grp", "Saga #5"), ilstText("\xA9nam", "Book 3")}
 	src := buildMP4(false, items...)
 
@@ -332,6 +344,7 @@ func TestIlst_NoCrossFieldWrites(t *testing.T) {
 }
 
 func TestIlst_IntegerItemEdit(t *testing.T) {
+	t.Parallel()
 	src := buildMP4(false, ilstInt("tmpo", dataTypeBESigned, []byte{0, 90}))
 	out := writeTags(t, src, func(tg *types.Tags) { tg.Set("tmpo", "120") })
 	if want := ilstInt("tmpo", dataTypeBESigned, []byte{0, 0x78}); !bytes.Equal(itemOf(t, out, "tmpo"), want) {
@@ -349,6 +362,7 @@ func TestIlst_IntegerItemEdit(t *testing.T) {
 }
 
 func TestIlst_ImplicitIntegerItemEdit(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		item     []byte
@@ -362,6 +376,7 @@ func TestIlst_ImplicitIntegerItemEdit(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			src := buildMP4(false, tt.item)
 			out := writeTags(t, src, func(tg *types.Tags) { tg.Set(tt.key, tt.set) })
 			if got := itemOf(t, out, tt.key); !bytes.Equal(got, tt.want) {
@@ -372,6 +387,7 @@ func TestIlst_ImplicitIntegerItemEdit(t *testing.T) {
 }
 
 func TestIlst_RefusedKeys(t *testing.T) {
+	t.Parallel()
 	src := buildMP4(false, ilstText("\xA9nam", "T"), covrItem(covrImage{covrJPEG, []byte{1}}),
 		atom("xyzw", dataAtom(13, []byte{1, 2})))
 	for _, key := range []string{itemTrkn, itemDisk, itemCovr, itemFreeform, "xyzw"} {

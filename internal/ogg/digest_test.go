@@ -52,6 +52,7 @@ func digestOf(t *testing.T, data []byte) []byte {
 }
 
 func TestAudioDigest_HashesOnlyAudioPackets(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		data []byte
@@ -92,6 +93,7 @@ func TestAudioDigest_HashesOnlyAudioPackets(t *testing.T) {
 	want := wantDigest(audio1, audio2, audio3)
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := digestOf(t, tt.data); !bytes.Equal(got, want) {
 				t.Errorf("digest = %x, want %x", got, want)
 			}
@@ -100,6 +102,7 @@ func TestAudioDigest_HashesOnlyAudioPackets(t *testing.T) {
 }
 
 func TestAudioDigest_PacketsSpanningPages(t *testing.T) {
+	t.Parallel()
 	big := bytes.Repeat([]byte{0xB1}, 70_000) // more than one page's 255 segments
 	tests := []struct {
 		name string
@@ -124,6 +127,7 @@ func TestAudioDigest_PacketsSpanningPages(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := digestOf(t, tt.data); !bytes.Equal(got, tt.want) {
 				t.Errorf("digest = %x, want %x", got, tt.want)
 			}
@@ -138,6 +142,7 @@ func lastPage(p pageSpec) pageSpec {
 }
 
 func TestAudioDigest_StreamEnd(t *testing.T) {
+	t.Parallel()
 	clean := buildOgg(pageOf(1, opusHead), pageOf(1, commentHeader(10)), lastPage(pageOf(1, audio1, audio2)))
 	tests := []struct {
 		name string
@@ -152,6 +157,7 @@ func TestAudioDigest_StreamEnd(t *testing.T) {
 	want := wantDigest(audio1, audio2)
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := digestOf(t, tt.data); !bytes.Equal(got, want) {
 				t.Errorf("digest = %x, want %x", got, want)
 			}
@@ -160,6 +166,7 @@ func TestAudioDigest_StreamEnd(t *testing.T) {
 }
 
 func TestAudioDigest_ChangesWithAudio(t *testing.T) {
+	t.Parallel()
 	a := buildOgg(pageOf(1, opusHead), pageOf(1, commentHeader(10)), pageOf(1, audio1, audio2))
 	b := buildOgg(pageOf(1, opusHead), pageOf(1, commentHeader(10)), pageOf(1, audio1, audio3))
 	if bytes.Equal(digestOf(t, a), digestOf(t, b)) {
@@ -168,6 +175,7 @@ func TestAudioDigest_ChangesWithAudio(t *testing.T) {
 }
 
 func TestAudioDigest_Errors(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		data        []byte
@@ -180,6 +188,7 @@ func TestAudioDigest_Errors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := digester{}.AudioDigest(t.Context(), bytes.NewReader(tt.data), int64(len(tt.data)))
 			if err == nil {
 				t.Fatal("AudioDigest succeeded, want an error")
@@ -207,6 +216,7 @@ func (r failingReader) ReadAt(p []byte, off int64) (int, error) {
 }
 
 func TestAudioDigest_ReadErrorsPassThrough(t *testing.T) {
+	t.Parallel()
 	data := buildOgg(pageOf(1, opusHead), pageOf(1, commentHeader(10)), pageOf(1, audio1))
 	src := failingReader{data: data, failAt: 10}
 	_, err := digester{}.AudioDigest(t.Context(), src, int64(len(data)))
@@ -216,6 +226,7 @@ func TestAudioDigest_ReadErrorsPassThrough(t *testing.T) {
 }
 
 func TestAudioDigest_Canceled(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	data := buildOgg(pageOf(1, opusHead), pageOf(1, commentHeader(10)), pageOf(1, audio1))
@@ -225,8 +236,10 @@ func TestAudioDigest_Canceled(t *testing.T) {
 }
 
 func TestAudioDigest_SampleFiles(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"../../testdata/sample.ogg", "../../testdata/sample.opus"} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			data, err := os.ReadFile(name)
 			if err != nil {
 				t.Fatal(err)
@@ -251,6 +264,7 @@ func TestAudioDigest_SampleFiles(t *testing.T) {
 }
 
 func TestDigesterRegistered(t *testing.T) {
+	t.Parallel()
 	for _, f := range []types.Format{types.FormatOgg, types.FormatOpus} {
 		if registry.GetDigester(f) == nil {
 			t.Errorf("no digester registered for %s", f)

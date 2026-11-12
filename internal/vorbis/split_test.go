@@ -110,6 +110,7 @@ func TestSplitCanceled(t *testing.T) {
 // from the declared count. Bytes per call are measured, since the count of allocations varies
 // under the race detector.
 func TestSplitAllocationBound(t *testing.T) {
+	t.Parallel()
 	p := append(append(le32(0), le32(1_000_000)...), 1, 2)
 	r := testing.Benchmark(func(b *testing.B) {
 		b.Helper()

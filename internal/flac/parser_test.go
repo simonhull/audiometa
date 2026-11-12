@@ -105,6 +105,7 @@ func createMinimalFLAC(title, artist, album string) []byte {
 }
 
 func TestParse_Success(t *testing.T) {
+	t.Parallel()
 	data := createMinimalFLAC("Test Song", "Test Artist", "Test Album")
 
 	// Write to temp file
@@ -193,6 +194,7 @@ func TestParse_Success(t *testing.T) {
 }
 
 func TestParse_InvalidMagic(t *testing.T) {
+	t.Parallel()
 	// Create invalid data with wrong magic bytes
 	data := []byte("INVALID")
 
@@ -233,6 +235,7 @@ func TestParse_InvalidMagic(t *testing.T) {
 }
 
 func TestExtractArtwork_NoPictures(t *testing.T) {
+	t.Parallel()
 	// Create FLAC without PICTURE blocks
 	data := createMinimalFLAC("Test", "Artist", "Album")
 
@@ -272,6 +275,7 @@ func TestExtractArtwork_NoPictures(t *testing.T) {
 }
 
 func TestParse_EmptyTags(t *testing.T) {
+	t.Parallel()
 	// Create FLAC with no tags
 	data := createMinimalFLAC("", "", "")
 

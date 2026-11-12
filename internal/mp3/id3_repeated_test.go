@@ -10,6 +10,7 @@ import (
 // Repeated single-valued text frames: the first frame wins for the typed
 // field, while the multi-valued Artists collects every value.
 func TestParse_RepeatedTextFramesFirstWins(t *testing.T) {
+	t.Parallel()
 	for _, version := range []byte{3, 4} {
 		data := append(id3Tag(version,
 			id3Frame(version, "TIT2", latin1Text("First Title")),
@@ -34,6 +35,7 @@ func TestParse_RepeatedTextFramesFirstWins(t *testing.T) {
 // still occur in files: the highest-precedence key must fill the typed field
 // whatever order the frames come in.
 func TestParse_FramePrecedenceBeatsFileOrder(t *testing.T) {
+	t.Parallel()
 	for _, version := range []byte{3, 4} {
 		data := append(id3Tag(version,
 			id3Frame(version, "TYER", latin1Text("1999")),

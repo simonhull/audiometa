@@ -12,6 +12,7 @@ import (
 // Fixtures in testdata/ are produced by internal/testcorpus/generate.sh.
 
 func TestOpen_Corpus(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		path       string
 		wantFormat audiometa.Format
@@ -30,6 +31,7 @@ func TestOpen_Corpus(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.path, func(t *testing.T) {
+			t.Parallel()
 			f, err := audiometa.Open(tc.path)
 			if err != nil {
 				t.Fatalf("Open(%s): %v", tc.path, err)
@@ -65,6 +67,7 @@ func TestOpen_Corpus(t *testing.T) {
 }
 
 func TestOpen_Corpus_Chapters(t *testing.T) {
+	t.Parallel()
 	wantTitles := []string{"Chapter One", "Chapter Two"}
 	cases := []struct {
 		path string
@@ -75,6 +78,7 @@ func TestOpen_Corpus_Chapters(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.path, func(t *testing.T) {
+			t.Parallel()
 			f, err := audiometa.Open(tc.path)
 			if err != nil {
 				t.Fatalf("Open: %v", err)
@@ -102,8 +106,10 @@ func TestOpen_Corpus_Chapters(t *testing.T) {
 // Chapters are reported for the formats that carry them; chapter-less
 // fixtures must report none.
 func TestOpen_Corpus_NoChapters(t *testing.T) {
+	t.Parallel()
 	for _, path := range []string{"testdata/sample.m4a", "testdata/sample_upper.flac"} {
 		t.Run(path, func(t *testing.T) {
+			t.Parallel()
 			f, err := audiometa.Open(path)
 			if err != nil {
 				t.Fatalf("Open: %v", err)
@@ -117,10 +123,12 @@ func TestOpen_Corpus_NoChapters(t *testing.T) {
 }
 
 func TestExtractArtwork_Corpus(t *testing.T) {
+	t.Parallel()
 	// JPEG start-of-image marker.
 	jpegMagic := []byte{0xFF, 0xD8, 0xFF}
 	for _, path := range []string{"testdata/sample.mp3", "testdata/sample.flac", "testdata/sample.m4b"} {
 		t.Run(path, func(t *testing.T) {
+			t.Parallel()
 			f, err := audiometa.Open(path)
 			if err != nil {
 				t.Fatalf("Open: %v", err)
@@ -151,8 +159,10 @@ func TestExtractArtwork_Corpus(t *testing.T) {
 }
 
 func TestExtractArtwork_NoArtwork(t *testing.T) {
+	t.Parallel()
 	for _, path := range []string{"testdata/sample.m4a", "testdata/sample_upper.flac", "testdata/sample.ogg", "testdata/sample.opus"} {
 		t.Run(path, func(t *testing.T) {
+			t.Parallel()
 			f, err := audiometa.Open(path)
 			if err != nil {
 				t.Fatalf("Open: %v", err)
@@ -172,6 +182,7 @@ func TestExtractArtwork_NoArtwork(t *testing.T) {
 // TestOpen_Corpus_MP4Strict opens every MP4-family fixture under strict
 // parsing: a well-formed file must not draw a warning.
 func TestOpen_Corpus_MP4Strict(t *testing.T) {
+	t.Parallel()
 	var paths []string
 	for _, pattern := range []string{"testdata/*.m4a", "testdata/*.m4b", "testdata/*.mp4"} {
 		matches, err := filepath.Glob(pattern)
@@ -185,6 +196,7 @@ func TestOpen_Corpus_MP4Strict(t *testing.T) {
 	}
 	for _, path := range paths {
 		t.Run(path, func(t *testing.T) {
+			t.Parallel()
 			f, err := audiometa.Open(path, audiometa.WithStrictParsing())
 			if err != nil {
 				t.Fatal(err)
@@ -197,8 +209,10 @@ func TestOpen_Corpus_MP4Strict(t *testing.T) {
 }
 
 func TestOpen_Corpus_LosslessMP4(t *testing.T) {
+	t.Parallel()
 	for _, path := range []string{"testdata/sample_alac.m4a", "testdata/sample_flac.mp4"} {
 		t.Run(path, func(t *testing.T) {
+			t.Parallel()
 			f, err := audiometa.Open(path, audiometa.WithStrictParsing())
 			if err != nil {
 				t.Fatal(err)

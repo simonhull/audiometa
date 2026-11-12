@@ -6,6 +6,7 @@ import (
 )
 
 func TestDetectFormat_Opus(t *testing.T) {
+	t.Parallel()
 	// Create minimal valid Opus header:
 	// - OggS page header (27 bytes) + segment table + OpusHead packet
 	data := createMinimalOggPage("OpusHead")
@@ -21,6 +22,7 @@ func TestDetectFormat_Opus(t *testing.T) {
 }
 
 func TestDetectFormat_Vorbis(t *testing.T) {
+	t.Parallel()
 	// Create minimal valid Vorbis header:
 	// - OggS page header + segment table + Vorbis identification packet
 	data := createMinimalOggPage("\x01vorbis")
@@ -36,6 +38,7 @@ func TestDetectFormat_Vorbis(t *testing.T) {
 }
 
 func TestDetectFormat_FLAC(t *testing.T) {
+	t.Parallel()
 	data := []byte("fLaC" + "\x00\x00\x00\x00") // fLaC magic + minimal header
 
 	r := bytes.NewReader(data)
@@ -49,6 +52,7 @@ func TestDetectFormat_FLAC(t *testing.T) {
 }
 
 func TestDetectFormat_MP3_ID3(t *testing.T) {
+	t.Parallel()
 	data := []byte("ID3\x04\x00\x00\x00\x00\x00\x00") // ID3v2.4 header
 
 	r := bytes.NewReader(data)
@@ -62,6 +66,7 @@ func TestDetectFormat_MP3_ID3(t *testing.T) {
 }
 
 func TestDetectFormat_MP3_FrameSync(t *testing.T) {
+	t.Parallel()
 	// MP3 frame sync: 0xFF 0xFB (MPEG1 Layer3)
 	data := []byte{0xFF, 0xFB, 0x90, 0x00, 0x00, 0x00, 0x00, 0x00}
 
@@ -76,6 +81,7 @@ func TestDetectFormat_MP3_FrameSync(t *testing.T) {
 }
 
 func TestDetectFormat_WAV(t *testing.T) {
+	t.Parallel()
 	for _, magic := range []string{"RIFF", "RIFX", "RF64"} {
 		data := []byte(magic + "\x00\x00\x00\x00WAVE")
 		format, err := DetectFormat(bytes.NewReader(data), int64(len(data)), "test.wav")
@@ -89,6 +95,7 @@ func TestDetectFormat_WAV(t *testing.T) {
 }
 
 func TestDetectFormat_AIFF(t *testing.T) {
+	t.Parallel()
 	for _, form := range []string{"AIFF", "AIFC"} {
 		data := []byte("FORM\x00\x00\x00\x00" + form)
 		format, err := DetectFormat(bytes.NewReader(data), int64(len(data)), "test.aiff")
@@ -102,6 +109,7 @@ func TestDetectFormat_AIFF(t *testing.T) {
 }
 
 func TestDetectFormat_TooSmall(t *testing.T) {
+	t.Parallel()
 	data := []byte("abc")
 
 	r := bytes.NewReader(data)
@@ -123,6 +131,7 @@ func (c *readCounter) ReadAt(p []byte, off int64) (int, error) {
 }
 
 func TestDetectFormat_OneSmallRead(t *testing.T) {
+	t.Parallel()
 	ftyp := func(brand string) []byte {
 		return append([]byte{0, 0, 0, 20}, []byte("ftyp"+brand+"\x00\x00\x00\x00"+brand)...)
 	}
@@ -143,6 +152,7 @@ func TestDetectFormat_OneSmallRead(t *testing.T) {
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			c := &readCounter{r: bytes.NewReader(tc.data)}
 			got, err := DetectFormat(c, int64(len(tc.data)), "x")
 			if err != nil || got != tc.want {
@@ -156,6 +166,7 @@ func TestDetectFormat_OneSmallRead(t *testing.T) {
 }
 
 func TestFormat_Extensions(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		format Format
 		want   []string

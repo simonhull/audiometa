@@ -230,6 +230,7 @@ func readTestdata(t *testing.T, path string) []byte {
 }
 
 func TestAudioDigest_MP3IgnoresTag(t *testing.T) {
+	t.Parallel()
 	data := readTestdata(t, "testdata/sample.mp3")
 	if string(data[:3]) != "ID3" {
 		t.Fatal("sample.mp3 has no ID3v2 tag")
@@ -252,6 +253,7 @@ func TestAudioDigest_MP3IgnoresTag(t *testing.T) {
 }
 
 func TestAudioDigest_FLACIgnoresMetadata(t *testing.T) {
+	t.Parallel()
 	data := readTestdata(t, "testdata/sample.flac")
 	streamInfoLen := int(data[5])<<16 | int(data[6])<<8 | int(data[7])
 	streamInfo := bytes.Clone(data[4 : 8+streamInfoLen])
@@ -277,6 +279,7 @@ func TestAudioDigest_FLACIgnoresMetadata(t *testing.T) {
 }
 
 func TestAudioDigest_M4AIgnoresMoov(t *testing.T) {
+	t.Parallel()
 	data := readTestdata(t, "testdata/sample.m4a")
 	i := bytes.Index(data, []byte("Test Title"))
 	if i < 0 {

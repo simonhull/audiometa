@@ -11,6 +11,7 @@ import (
 )
 
 func TestExtractArtworkSkipsTail(t *testing.T) {
+	t.Parallel()
 	data := ioOpus(true)
 	size := int64(len(data))
 	if size < 128<<10 {
@@ -34,6 +35,7 @@ func TestExtractArtworkSkipsTail(t *testing.T) {
 // TestExtractArtworkHugePictureLength gives the picture block a MIME length close to 4 GiB,
 // which wraps negative when converted to int on 32-bit platforms.
 func TestExtractArtworkHugePictureLength(t *testing.T) {
+	t.Parallel()
 	block := createTestPictureBlock(3, "image/jpeg", "cover", 1, 1, []byte{1, 2, 3})
 	binary.BigEndian.PutUint32(block[4:], 0xFFFFFFF0)
 	value := "METADATA_BLOCK_PICTURE=" + base64.StdEncoding.EncodeToString(block)
@@ -46,6 +48,7 @@ func TestExtractArtworkHugePictureLength(t *testing.T) {
 }
 
 func TestParseMetadataBlockPicture(t *testing.T) {
+	t.Parallel()
 	// Create a valid METADATA_BLOCK_PICTURE
 	pic := createTestPictureBlock(3, "image/jpeg", "Front Cover", 100, 100, []byte{0xFF, 0xD8, 0xFF, 0xE0})
 	base64Pic := base64.StdEncoding.EncodeToString(pic)
@@ -76,6 +79,7 @@ func TestParseMetadataBlockPicture(t *testing.T) {
 }
 
 func TestParseMetadataBlockPicture_BackCover(t *testing.T) {
+	t.Parallel()
 	pic := createTestPictureBlock(4, "image/png", "Back Cover", 200, 200, []byte{0x89, 'P', 'N', 'G'})
 	base64Pic := base64.StdEncoding.EncodeToString(pic)
 
@@ -93,6 +97,7 @@ func TestParseMetadataBlockPicture_BackCover(t *testing.T) {
 }
 
 func TestParseMetadataBlockPicture_OtherType(t *testing.T) {
+	t.Parallel()
 	// Type 0 = Other
 	pic := createTestPictureBlock(0, "image/gif", "", 50, 50, []byte{0x47, 0x49, 0x46})
 	base64Pic := base64.StdEncoding.EncodeToString(pic)
@@ -108,6 +113,7 @@ func TestParseMetadataBlockPicture_OtherType(t *testing.T) {
 }
 
 func TestParseMetadataBlockPicture_InvalidBase64(t *testing.T) {
+	t.Parallel()
 	_, err := parseMetadataBlockPicture("not valid base64!!!")
 	if err == nil {
 		t.Error("parseMetadataBlockPicture() should return error for invalid base64")
@@ -115,6 +121,7 @@ func TestParseMetadataBlockPicture_InvalidBase64(t *testing.T) {
 }
 
 func TestParseMetadataBlockPicture_TooSmall(t *testing.T) {
+	t.Parallel()
 	// Less than 32 bytes
 	data := make([]byte, 20)
 	base64Data := base64.StdEncoding.EncodeToString(data)
@@ -126,6 +133,7 @@ func TestParseMetadataBlockPicture_TooSmall(t *testing.T) {
 }
 
 func TestParseMetadataBlockPicture_InvalidMimeLength(t *testing.T) {
+	t.Parallel()
 	// Create data with MIME length that exceeds data
 	data := make([]byte, 40)
 	binary.BigEndian.PutUint32(data[0:], 3)    // picture type
@@ -139,6 +147,7 @@ func TestParseMetadataBlockPicture_InvalidMimeLength(t *testing.T) {
 }
 
 func TestParseMetadataBlockPicture_EmptyDescription(t *testing.T) {
+	t.Parallel()
 	pic := createTestPictureBlock(3, "image/jpeg", "", 100, 100, []byte{0xFF, 0xD8})
 	base64Pic := base64.StdEncoding.EncodeToString(pic)
 
@@ -201,6 +210,7 @@ func createTestPictureBlock(pictureType uint32, mimeType, description string, wi
 }
 
 func TestParseMetadataBlockPicture_ExtendedTypes(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		code uint32
 		want types.ArtworkType

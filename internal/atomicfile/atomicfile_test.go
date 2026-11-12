@@ -58,6 +58,7 @@ func assertContent(t *testing.T, path string, want []byte) {
 }
 
 func TestReplace_HappyPath(t *testing.T) {
+	t.Parallel()
 	path := writeOriginal(t, 0o640)
 	var verified bool
 	err := Replace(path, writeBytes([]byte("new")), Options{
@@ -90,6 +91,7 @@ func TestReplace_HappyPath(t *testing.T) {
 }
 
 func TestReplace_ErrorsLeaveOriginal(t *testing.T) {
+	t.Parallel()
 	boom := errors.New("boom")
 	tests := []struct {
 		name  string
@@ -102,6 +104,7 @@ func TestReplace_ErrorsLeaveOriginal(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeOriginal(t, 0o644)
 			err := Replace(path, tc.write, tc.opts)
 			if !errors.Is(err, boom) {
@@ -114,6 +117,7 @@ func TestReplace_ErrorsLeaveOriginal(t *testing.T) {
 }
 
 func TestReplace_Symlink(t *testing.T) {
+	t.Parallel()
 	target := writeOriginal(t, 0o644)
 	link := filepath.Join(filepath.Dir(target), "link")
 	if err := os.Symlink(target, link); err != nil {
@@ -133,6 +137,7 @@ func TestReplace_Symlink(t *testing.T) {
 }
 
 func TestReplace_PreserveModTime(t *testing.T) {
+	t.Parallel()
 	path := writeOriginal(t, 0o644)
 	mtime := time.Date(2001, 2, 3, 4, 5, 6, 0, time.UTC)
 	if err := os.Chtimes(path, mtime, mtime); err != nil {
@@ -151,6 +156,7 @@ func TestReplace_PreserveModTime(t *testing.T) {
 }
 
 func TestReplace_NewModTimeByDefault(t *testing.T) {
+	t.Parallel()
 	path := writeOriginal(t, 0o644)
 	mtime := time.Date(2001, 2, 3, 4, 5, 6, 0, time.UTC)
 	if err := os.Chtimes(path, mtime, mtime); err != nil {
@@ -169,12 +175,14 @@ func TestReplace_NewModTimeByDefault(t *testing.T) {
 }
 
 func TestReplace_Directory(t *testing.T) {
+	t.Parallel()
 	if err := Replace(t.TempDir(), writeBytes(nil), Options{}); err == nil {
 		t.Error("want error for a directory")
 	}
 }
 
 func TestReplace_Missing(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	if err := Replace(filepath.Join(dir, "missing"), writeBytes(nil), Options{}); err == nil {
 		t.Error("want error for a missing file")
@@ -183,6 +191,7 @@ func TestReplace_Missing(t *testing.T) {
 }
 
 func TestTempPattern(t *testing.T) {
+	t.Parallel()
 	for name, base := range map[string]string{
 		"short":           "song.mp3",
 		"exactly the cap": strings.Repeat("a", maxTempBase),
@@ -191,6 +200,7 @@ func TestTempPattern(t *testing.T) {
 		"long mixed":      strings.Repeat("é", 49) + strings.Repeat("日", 30), // 188 bytes; byte 100 is mid-rune
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			p := tempPattern(filepath.Join("dir", base))
 			if !strings.HasPrefix(p, ".") || !strings.HasSuffix(p, ".audiometa-*.tmp") {
 				t.Fatalf("pattern %q lacks the . prefix or .audiometa-*.tmp suffix", p)
@@ -210,6 +220,7 @@ func TestTempPattern(t *testing.T) {
 }
 
 func TestReplace_LongName(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, strings.Repeat("a", 246)+".mp3") // 250 bytes
 	if err := os.WriteFile(path, original, 0o600); err != nil {
@@ -232,6 +243,7 @@ func skipUnlessUnixUser(t *testing.T) {
 }
 
 func TestReplace_CreateTempFails(t *testing.T) {
+	t.Parallel()
 	skipUnlessUnixUser(t)
 	path := writeOriginal(t, 0o644)
 	dir := filepath.Dir(path)
@@ -250,6 +262,7 @@ func TestReplace_CreateTempFails(t *testing.T) {
 // TestReplace_RenameFails puts a non-empty directory where the target was, so
 // the rename fails after the temp file is complete.
 func TestReplace_RenameFails(t *testing.T) {
+	t.Parallel()
 	path := writeOriginal(t, 0o644)
 	err := Replace(path, writeBytes([]byte("new")), Options{BeforeRename: func() error {
 		if err := os.Remove(path); err != nil {
@@ -285,6 +298,7 @@ func TestReplace_SyncDirFails(t *testing.T) {
 // TestReplace_RemoveTempFails: when the temp file cannot be removed after an
 // error, both errors are reported and the original is untouched.
 func TestReplace_RemoveTempFails(t *testing.T) {
+	t.Parallel()
 	skipUnlessUnixUser(t)
 	path := writeOriginal(t, 0o644)
 	dir := filepath.Dir(path)
@@ -305,6 +319,7 @@ func TestReplace_RemoveTempFails(t *testing.T) {
 // TestReplace_PreserveModTimeFails removes the temp file before seal sets its
 // mtime.
 func TestReplace_PreserveModTimeFails(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows cannot remove an open file")
 	}

@@ -38,6 +38,7 @@ func createSimpleM4B() []byte {
 }
 
 func TestParse_M4B(t *testing.T) {
+	t.Parallel()
 	data := createSimpleM4B()
 
 	tmpFile, err := os.CreateTemp(t.TempDir(), "test*.m4b")
@@ -63,6 +64,7 @@ func TestParse_M4B(t *testing.T) {
 }
 
 func TestParse_FileNotFound(t *testing.T) {
+	t.Parallel()
 	_, err := audiometa.Open("/nonexistent/path.m4b")
 	if err == nil {
 		t.Error("expected error for nonexistent file")
@@ -70,6 +72,7 @@ func TestParse_FileNotFound(t *testing.T) {
 }
 
 func TestParse_UnsupportedFormat(t *testing.T) {
+	t.Parallel()
 	// Create a file with unsupported format
 	tmpFile, err := os.CreateTemp(t.TempDir(), "test*.xyz")
 	if err != nil {
@@ -93,6 +96,7 @@ func TestParse_UnsupportedFormat(t *testing.T) {
 }
 
 func TestOpen_MPEG2MP3Fixture(t *testing.T) {
+	t.Parallel()
 	f, err := audiometa.Open("testdata/sample_mpeg2.mp3")
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -110,6 +114,7 @@ func TestOpen_MPEG2MP3Fixture(t *testing.T) {
 }
 
 func TestOpen_MonoVBRFixture(t *testing.T) {
+	t.Parallel()
 	f, err := audiometa.Open("testdata/sample_mono_vbr.mp3")
 	if err != nil {
 		t.Fatalf("Open: %v", err)

@@ -46,6 +46,7 @@ func mp4aSampleEntry(esds []byte) []byte {
 }
 
 func TestParseESDescriptors(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		data     []byte
@@ -61,6 +62,7 @@ func TestParseESDescriptors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := parseESDescriptors(tt.data)
 			if got.objectType != tt.wantType || got.avgBitrate != tt.wantAvg {
 				t.Errorf("parseESDescriptors() = %+v, want type %d avgBitrate %d", got, tt.wantType, tt.wantAvg)
@@ -70,6 +72,7 @@ func TestParseESDescriptors(t *testing.T) {
 }
 
 func TestParseCodecDetails_AACProfile(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		asc         []byte
@@ -81,6 +84,7 @@ func TestParseCodecDetails_AACProfile(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			// The entry is the whole file, so fewer than 256 bytes follow it.
 			entry := mp4aSampleEntry(esdsPayload(0, tt.asc))
 			sr := audiobinary.NewSafeReader(bytes.NewReader(entry), int64(len(entry)), "test.m4a")

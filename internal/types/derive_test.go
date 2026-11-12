@@ -7,6 +7,7 @@ import (
 )
 
 func TestDecodeYear_M4AFourDigits(t *testing.T) {
+	t.Parallel()
 	for _, format := range []Format{FormatM4A, FormatM4B} {
 		for value, want := range map[string]int{"2021-05-01": 2021, "1850": 1850, "0099": 99, "12ab-01": 0, "199": 0, "": 0, "abcd": 0, "+199": 0} {
 			var tags Tags
@@ -18,6 +19,7 @@ func TestDecodeYear_M4AFourDigits(t *testing.T) {
 }
 
 func TestDeriveFields(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		format Format
@@ -46,6 +48,7 @@ func TestDeriveFields(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			tags := tc.before
 			for k, v := range tc.raw {
 				for _, s := range v {
@@ -62,6 +65,7 @@ func TestDeriveFields(t *testing.T) {
 
 // DeriveFields is idempotent, and BindFormat leaves what it derived alone.
 func TestDeriveFieldsIsStable(t *testing.T) {
+	t.Parallel()
 	for _, format := range bindingFormats {
 		var tags Tags
 		for _, b := range FieldBindings(format) {

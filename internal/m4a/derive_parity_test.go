@@ -13,6 +13,7 @@ import (
 // to the one derivation rule (the first non-empty value of the
 // highest-precedence decodable key); the CHANGELOG names it.
 func TestFieldParity(t *testing.T) {
+	t.Parallel()
 	text := func(f func(*types.Tags) string) func(*types.Tags) any {
 		return func(tg *types.Tags) any { return f(tg) }
 	}
@@ -76,6 +77,7 @@ func TestFieldParity(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			file := parseBytes(t, ilstFile(tt.items...))
 			types.BindFormat(&file.Tags, types.FormatM4B)
 			if got := tt.got(&file.Tags); !reflect.DeepEqual(got, tt.want) {

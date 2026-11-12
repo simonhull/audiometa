@@ -11,6 +11,7 @@ import (
 )
 
 func TestOutOfBoundsError_Error(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		err      *OutOfBoundsError
@@ -42,6 +43,7 @@ func TestOutOfBoundsError_Error(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			msg := tt.err.Error()
 			for _, substr := range tt.contains {
 				if !strings.Contains(msg, substr) {
@@ -53,6 +55,7 @@ func TestOutOfBoundsError_Error(t *testing.T) {
 }
 
 func TestUnsupportedFormatError_Error(t *testing.T) {
+	t.Parallel()
 	err := &UnsupportedFormatError{
 		Path:   "test.mp3",
 		Reason: "not an M4B/M4A file",
@@ -71,6 +74,7 @@ func TestUnsupportedFormatError_Error(t *testing.T) {
 }
 
 func TestCorruptedFileError_Error(t *testing.T) {
+	t.Parallel()
 	err := &CorruptedFileError{
 		Path:   "broken.m4b",
 		Offset: 256,
@@ -93,7 +97,9 @@ func TestCorruptedFileError_Error(t *testing.T) {
 }
 
 func TestOutOfBoundsError_ErrorsAs(t *testing.T) {
+	t.Parallel()
 	t.Run("through wrapping", func(t *testing.T) {
+		t.Parallel()
 		err := fmt.Errorf("parse: %w", &OutOfBoundsError{Path: "a.m4b", Offset: 9, Length: 4, Size: 10})
 		target, ok := errors.AsType[*OutOfBoundsError](err)
 		if !ok || target.Offset != 9 {
@@ -101,6 +107,7 @@ func TestOutOfBoundsError_ErrorsAs(t *testing.T) {
 		}
 	})
 	t.Run("from SafeReader", func(t *testing.T) {
+		t.Parallel()
 		sr := binary.NewSafeReader(bytes.NewReader(make([]byte, 4)), 4, "a.m4b")
 		_, err := sr.Read[uint32](2, "field")
 		if _, ok := errors.AsType[*OutOfBoundsError](fmt.Errorf("parse: %w", err)); !ok {
