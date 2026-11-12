@@ -13,50 +13,48 @@ output:
       print-issued-lines: true
 
 linters:
-  default: none
-  enable:
-    - bidichk
-    - bodyclose
-    - containedctx
-    - contextcheck
-    - copyloopvar
-    - durationcheck
-    - errcheck
-    - errname
-    - errorlint
-    - exhaustive
-    - fatcontext
-    - forcetypeassert
-    - goconst
-    - gocritic
-    - gocyclo
-    - godot
-    - goprintffuncname
-    - gosec
-    - govet
-    - ineffassign
-    - intrange
-    - makezero
-    - misspell
-    - modernize
-    - nakedret
-    - nestif
-    - nilerr
-    - nolintlint
-    - perfsprint
-    - predeclared
-    - recvcheck
-    - revive
-    - staticcheck
-    - testifylint
-    - thelper
-    - unconvert
-    - unparam
-    - unused
-    - usestdlibvars
-    - whitespace
+  default: all
+  # Every linter is on except these, each by maintainer decision.
+  disable:
+    - exhaustruct     # forbids the zero-value struct literals and options the code relies on
+    - wsl             # whitespace style churn, not defects (deprecated alias of wsl_v5)
+    - wsl_v5          # whitespace style churn, not defects
+    - nlreturn        # blank-line-before-return style churn
+    - varnamelen      # short names (r, sr, n, off) are idiomatic in parsers
+    - noinlineerr     # `if err := f(); err != nil` is the standard Go idiom
+    - testpackage     # in-package tests of unexported code are deliberate
+    - gosmopolitan    # non-Latin strings are test data for tag decoding
+    - lll             # long format strings and tables; gofumpt owns layout
+    - tagalign        # struct tag alignment is formatting churn
+    - exhaustruct_v5  # the exhaustruct family again (see exhaustruct)
+    - gomodguard      # deprecated upstream (replaced by gomodguard_v2, which stays on)
 
   settings:
+    depguard:
+      rules:
+        banned:
+          files:
+            - $all
+          deny:
+            - pkg: io/ioutil
+              desc: deprecated since Go 1.16; use io and os
+            - pkg: math/rand$
+              desc: use math/rand/v2
+            - pkg: github.com/pkg/errors
+              desc: use the standard errors package and fmt.Errorf with %w
+            - pkg: golang.org/x/exp
+              desc: its useful parts live in the standard library (slices, maps, cmp)
+            - pkg: encoding/json$
+              desc: use encoding/json/v2
+        no-log:
+          # Examples and godoc examples are runnable demos that report fatal errors with log.
+          files:
+            - $all
+            - "!**/examples/**"
+            - "!**/example*_test.go"
+          deny:
+            - pkg: log$
+              desc: libraries do not log; return errors or warnings
     errcheck:
       check-type-assertions: true
       check-blank: false
@@ -120,23 +118,17 @@ linters:
       - third_party$
       - builtin$
     rules:
-      # Tests have different requirements
+      # Tests are linted like production code; only these checks are relaxed for them.
+      # Tables of expected values are naturally magic numbers, test bodies are long, tests
+      # build ad-hoc errors, and tests open fixture paths from variables.
       - path: _test\.go
         linters:
-          - errcheck
-          - forcetypeassert
-          - goconst
-          - gocritic
-          - gocyclo
-          - gosec
-          - govet
-          - nestif
-          - nilerr
-          - nolintlint
-          - revive
-          - testifylint
-          - thelper
-          - unparam
+          - mnd
+          - funlen
+          - err113
+      - path: _test\.go
+        linters: [gosec]
+        text: "G304"
       - path: _test\.go
         linters:
           - staticcheck
@@ -184,8 +176,5 @@ issues:
 
 formatters:
   enable:
-    - gofmt
+    - gofumpt
     - goimports
-  settings:
-    gofmt:
-      simplify: true
