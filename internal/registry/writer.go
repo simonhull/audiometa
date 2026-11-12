@@ -36,6 +36,11 @@ type TagWriter interface {
 
 // InPlaceWriter is optionally implemented by TagWriters that can apply edits by
 // overwriting one region without changing the file size.
+//
+// An InPlaceWriter should also implement [PreservedRanger]. The write path
+// then verifies an in-place patch by structure, without reading the audio.
+// Without it, the patch is verified by digesting the whole preserved content
+// before and after, which reads the entire file twice.
 type InPlaceWriter interface {
 	// InPlacePatch returns the bytes to write over the file and where. A nil Patch
 	// and a nil error mean the edits do not fit; the caller then falls back to
@@ -61,7 +66,10 @@ func (r Range) Overlaps(o Range) bool {
 // PreservedRanger is optionally implemented by InPlaceWriters. PreservedRanges
 // returns, in file order, the byte ranges PreservedDigest hashes, computed
 // from src's structure alone. PreservedDigest must be the hash of exactly
-// these ranges, so the two cannot drift apart.
+// these ranges, so the two cannot drift apart: an in-place patch is verified
+// by checking that it lies outside these ranges and that the ranges computed
+// on the patched file are unchanged, and a writer whose ranges understate
+// what it preserves weakens that check.
 type PreservedRanger interface {
 	PreservedRanges(ctx context.Context, src io.ReaderAt, size int64) ([]Range, error)
 }

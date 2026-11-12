@@ -245,6 +245,20 @@ func checkInPlace(ctx context.Context, t *testing.T, tw registry.TagWriter, file
 	if p.Off < 0 || p.Off+int64(len(p.Data)) > int64(len(data)) {
 		t.Fatalf("%v: InPlacePatch at %d of %d bytes does not fit in %d bytes", file.Format, p.Off, len(p.Data), len(data))
 	}
+	if pr, ok := tw.(registry.PreservedRanger); ok {
+		preserved, err := safely("fuzz", func() ([]registry.Range, error) {
+			return pr.PreservedRanges(ctx, bytes.NewReader(data), int64(len(data)))
+		})
+		if err != nil {
+			t.Fatalf("%v: PreservedRanges failed after WriteToContext succeeded: %v", file.Format, err)
+		}
+		patch := registry.Range{Off: p.Off, End: p.Off + int64(len(p.Data))}
+		for _, r := range preserved {
+			if patch.Overlaps(r) {
+				t.Fatalf("%v: in-place patch %v overlaps preserved bytes %v", file.Format, patch, r)
+			}
+		}
+	}
 	patched := slices.Clone(data)
 	copy(patched[p.Off:], p.Data)
 	if !bytes.Equal(patched, out) {

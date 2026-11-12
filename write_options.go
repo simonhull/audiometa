@@ -24,6 +24,14 @@ type writeOptions struct {
 // crash mid-write can leave a damaged tag (the audio is never touched). Write
 // keeps a copy of the overwritten bytes and, if verification fails, restores
 // them and the modification time.
+//
+// An in-place write verifies the patched file by structure, without
+// re-reading the audio: the patch must stay outside the audio and the other
+// preserved bytes, and after the write the file must still parse to the same
+// format and chapters, with the preserved bytes starting and ending where they
+// did. Retagging a large audiobook in place therefore reads only its metadata.
+// The atomic rewrite still reads the result back and compares every preserved
+// byte.
 func WithInPlace() WriteOption {
 	return func(o *writeOptions) { o.inPlace = true }
 }

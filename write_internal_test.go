@@ -747,6 +747,142 @@ func TestWrite_InPlace(t *testing.T) {
 	})
 }
 
+// rangedFake is an inPlaceFake that also reports preserved ranges and counts
+// its digest calls.
+type rangedFake struct {
+	inPlaceFake
+	ranges      [][]registry.Range // returned by successive PreservedRanges calls; the last repeats
+	rangeCalls  int
+	digestCalls int
+}
+
+func (w *rangedFake) PreservedRanges(context.Context, io.ReaderAt, int64) ([]registry.Range, error) {
+	i := min(w.rangeCalls, len(w.ranges)-1)
+	w.rangeCalls++
+	return w.ranges[i], nil
+}
+
+func (w *rangedFake) PreservedDigest(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error) {
+	w.digestCalls++
+	return w.inPlaceFake.PreservedDigest(ctx, src, size)
+}
+
+// TestWrite_InPlaceRanges covers verifying an in-place patch
+// by its preserved ranges instead of by digests.
+func TestWrite_InPlaceRanges(t *testing.T) {
+	edit := func(f *File) error { f.Tags.Title = "New"; return nil }
+	mtime := time.Date(2001, 2, 3, 4, 5, 6, 0, time.UTC)
+	outside := func(off int64, n, size int) []registry.Range {
+		return []registry.Range{{Off: 0, End: off}, {Off: off + int64(n), End: int64(size)}}
+	}
+
+	t.Run("honest patch needs no digest", func(t *testing.T) {
+		path, data := copySample(t, sampleFLAC)
+		off, patch := titlePatch(t, data)
+		fw := &rangedFake{
+			off: off, patch: patch, fits: true,
+			ranges: [][]registry.Range{outside(off, len(patch), len(data))},
+		}
+		useWriter(t, fw)
+		if err := Write(path, edit, WithInPlace()); err != nil {
+			t.Fatal(err)
+		}
+		assertFileBytes(t, path, patched(data, off, patch))
+		if fw.digestCalls != 0 || fw.callCount() != 0 {
+			t.Errorf("PreservedDigest calls = %d, WriteFile calls = %d, want none", fw.digestCalls, fw.callCount())
+		}
+		if fw.rangeCalls != 2 {
+			t.Errorf("PreservedRanges calls = %d, want 2 (source and patched file)", fw.rangeCalls)
+		}
+	})
+	t.Run("overlapping patch is refused before any write", func(t *testing.T) {
+		path, data := copySample(t, sampleFLAC)
+		if err := os.Chtimes(path, mtime, mtime); err != nil {
+			t.Fatal(err)
+		}
+		off, patch := titlePatch(t, data)
+		fw := &rangedFake{
+			off: off, patch: patch, fits: true,
+			ranges: [][]registry.Range{{{Off: off + 2, End: int64(len(data))}}},
+		}
+		useWriter(t, fw)
+		if err := Write(path, edit, WithInPlace()); !errors.Is(err, ErrVerifyFailed) {
+			t.Errorf("err = %v, want ErrVerifyFailed", err)
+		}
+		assertFileBytes(t, path, data)
+		if st, _ := os.Stat(path); !st.ModTime().Equal(mtime) {
+			t.Errorf("mtime = %v, want untouched %v: something was written", st.ModTime(), mtime)
+		}
+		if fw.rangeCalls != 1 {
+			t.Errorf("PreservedRanges calls = %d, want 1 (the source only)", fw.rangeCalls)
+		}
+	})
+	t.Run("ranges that move after the patch restore", func(t *testing.T) {
+		path, data := copySample(t, sampleFLAC)
+		if err := os.Chtimes(path, mtime, mtime); err != nil {
+			t.Fatal(err)
+		}
+		off, patch := titlePatch(t, data)
+		fw := &rangedFake{
+			off: off, patch: patch, fits: true,
+			ranges: [][]registry.Range{
+				outside(off, len(patch), len(data)),
+				outside(off, len(patch)+1, len(data)),
+			},
+		}
+		useWriter(t, fw)
+		if err := Write(path, edit, WithInPlace()); !errors.Is(err, ErrVerifyFailed) {
+			t.Errorf("err = %v, want ErrVerifyFailed", err)
+		}
+		assertFileBytes(t, path, data)
+		if st, _ := os.Stat(path); !st.ModTime().Equal(mtime) {
+			t.Errorf("mtime after restore = %v, want the original %v", st.ModTime(), mtime)
+		}
+	})
+	t.Run("unparseable result restores", func(t *testing.T) {
+		path, data := copySample(t, sampleFLAC)
+		fw := &rangedFake{
+			off: 0, patch: []byte("XXXX"), fits: true,
+			ranges: [][]registry.Range{{{Off: 4, End: int64(len(data))}}},
+		}
+		useWriter(t, fw)
+		if err := Write(path, edit, WithInPlace()); !errors.Is(err, ErrVerifyFailed) {
+			t.Errorf("err = %v, want ErrVerifyFailed", err)
+		}
+		assertFileBytes(t, path, data)
+	})
+	t.Run("atomic fallback still digests", func(t *testing.T) {
+		path, data := copySample(t, sampleFLAC)
+		fw := &rangedFake{fits: false, ranges: [][]registry.Range{{}}}
+		useWriter(t, fw)
+		if err := Write(path, edit, WithInPlace()); err != nil {
+			t.Fatal(err)
+		}
+		assertFileBytes(t, path, append(slices.Clone(data), fakeTrailer...))
+		if fw.digestCalls != 2 {
+			t.Errorf("PreservedDigest calls = %d, want 2 (source and written file)", fw.digestCalls)
+		}
+	})
+	t.Run("writer without ranges keeps the digests", func(t *testing.T) {
+		path, data := copySample(t, sampleFLAC)
+		off, patch := titlePatch(t, data)
+		calls := 0
+		honest := digestOutside(off, len(patch))
+		useWriter(t, &inPlaceFake{off: off, patch: patch, fits: true,
+			preserved: func(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error) {
+				calls++
+				return honest(ctx, src, size)
+			}})
+		if err := Write(path, edit, WithInPlace()); err != nil {
+			t.Fatal(err)
+		}
+		assertFileBytes(t, path, patched(data, off, patch))
+		if calls != 2 {
+			t.Errorf("PreservedDigest calls = %d, want 2 (source and patched file)", calls)
+		}
+	})
+}
+
 func TestWrite_Canceled(t *testing.T) {
 	edit := func(f *File) error { f.Tags.Title = "New"; return nil }
 
