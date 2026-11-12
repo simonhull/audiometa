@@ -125,7 +125,7 @@ func TestExtractIlstMetadata(t *testing.T) {
 	ilstAtom, _ := readAtomHeader(sr, 0, int64(len(ilst)))
 
 	file := &types.File{}
-	err := extractIlstMetadata(context.Background(), sr, ilstAtom, file)
+	err := extractAndDerive(sr, ilstAtom, file)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestExtractIlstMetadata(t *testing.T) {
 	}
 }
 
-func TestMapTagToField(t *testing.T) {
+func TestIlstItemFillsField(t *testing.T) {
 	tests := []struct {
 		tag      string
 		value    string
@@ -163,8 +163,8 @@ func TestMapTagToField(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		file := &types.File{}
-		mapTagToField(tt.tag, tt.value, file)
+		file := runIlst(t, ilstText(tt.tag, tt.value))
+		types.DeriveFields(&file.Tags, types.FormatM4A)
 
 		got := tt.checkFn(file)
 		if got != tt.expected {
@@ -302,6 +302,14 @@ func createTypedMetadataItem(itemType []byte, typeIndicator uint32, payload []by
 	return createAtomWithType(itemType, createMockAtom("data", data.Bytes()))
 }
 
+// extractAndDerive reads the ilst atom into file and derives the typed fields
+// from the raw tags, as Parse does.
+func extractAndDerive(sr *audiobinary.SafeReader, ilstAtom *Atom, file *types.File) error {
+	err := extractIlstMetadata(context.Background(), sr, ilstAtom, file)
+	types.DeriveFields(&file.Tags, types.FormatM4A)
+	return err
+}
+
 func runIlst(t *testing.T, items ...[]byte) *types.File {
 	t.Helper()
 	ilst := createMockAtom("ilst", bytes.Join(items, nil))
@@ -311,7 +319,7 @@ func runIlst(t *testing.T, items ...[]byte) *types.File {
 		t.Fatalf("readAtomHeader: %v", err)
 	}
 	file := &types.File{}
-	if err := extractIlstMetadata(context.Background(), sr, ilstAtom, file); err != nil {
+	if err := extractAndDerive(sr, ilstAtom, file); err != nil {
 		t.Fatalf("extractIlstMetadata: %v", err)
 	}
 	return file
@@ -409,7 +417,8 @@ func TestIlstDescriptionPriority(t *testing.T) {
 		want  string
 	}{
 		{"ldes first", [][]byte{item("ldes", "long"), item("desc", "short"), createMetadataItem(des, "des")}, "long"},
-		{"des before desc", [][]byte{createMetadataItem(des, "des"), item("desc", "short")}, "des"},
+		// The binding order is ldes, desc, ©des whatever the atom order.
+		{"des before desc", [][]byte{createMetadataItem(des, "des"), item("desc", "short")}, "short"},
 		{"desc before ldes", [][]byte{item("desc", "short"), item("ldes", "long")}, "long"},
 	}
 	for _, tt := range tests {
@@ -445,7 +454,7 @@ func TestIlstSkipsCoverData(t *testing.T) {
 	}
 	rr.max = 0
 	file := &types.File{}
-	if err := extractIlstMetadata(context.Background(), sr, ilstAtom, file); err != nil {
+	if err := extractAndDerive(sr, ilstAtom, file); err != nil {
 		t.Fatal(err)
 	}
 	if file.Tags.Title != "Title" || file.Tags.AlbumArtist != "AA" {
@@ -471,7 +480,7 @@ func TestExtractIlstMetadata_RepeatedAtomsFirstWins(t *testing.T) {
 	ilstAtom, _ := readAtomHeader(sr, 0, int64(len(ilst)))
 
 	file := &types.File{}
-	if err := extractIlstMetadata(context.Background(), sr, ilstAtom, file); err != nil {
+	if err := extractAndDerive(sr, ilstAtom, file); err != nil {
 		t.Fatal(err)
 	}
 	tg := file.Tags
@@ -582,7 +591,7 @@ func TestExtractIlstMetadata_MovementIndexDataTypes(t *testing.T) {
 			}
 
 			file := &types.File{}
-			if err := extractIlstMetadata(context.Background(), sr, ilstAtom, file); err != nil {
+			if err := extractAndDerive(sr, ilstAtom, file); err != nil {
 				t.Fatal(err)
 			}
 			if file.Tags.SeriesPart != tt.want {

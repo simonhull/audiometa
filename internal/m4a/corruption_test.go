@@ -193,7 +193,7 @@ func TestParseAudiobookTags_CorruptSiblingAfterFreeformIsReported(t *testing.T) 
 		t.Fatal(err)
 	}
 	file := &types.File{}
-	err = parseAudiobookTags(t.Context(), sr, ilstAtom, file)
+	err = parseAudiobookAndDerive(t.Context(), sr, ilstAtom, file)
 	if !errors.As(err, new(*types.CorruptedFileError)) {
 		t.Errorf("err = %v, want a *types.CorruptedFileError", err)
 	}
@@ -211,7 +211,7 @@ func TestParseAudiobookTags_CorruptChildOfFreeformIsReported(t *testing.T) {
 		t.Fatal(err)
 	}
 	file := &types.File{}
-	err = parseAudiobookTags(t.Context(), sr, ilstAtom, file)
+	err = parseAudiobookAndDerive(t.Context(), sr, ilstAtom, file)
 	if !errors.As(err, new(*types.CorruptedFileError)) {
 		t.Errorf("err = %v, want a *types.CorruptedFileError", err)
 	}

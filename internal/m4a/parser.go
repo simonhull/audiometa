@@ -96,6 +96,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		if err := parseAudiobookTags(ctx, sr, ilstAtom, file); err != nil {
 			types.Warn(file, types.StageMetadata, 0, err, err.Error())
 		}
+		types.DeriveFields(&file.Tags, file.Format)
 	}
 
 	// Stages that observed cancellation record it as a warning; report it as the result.
