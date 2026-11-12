@@ -3,6 +3,7 @@ package ogg
 import (
 	"bytes"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 
@@ -12,8 +13,10 @@ import (
 // longOpus is a well-formed Opus stream of pages audio pages of 5900 bytes
 // each (an hour of 48 kb/s Opus is about 3600 of them).
 func longOpus(pages int) []byte {
-	specs := []pageSpec{{headerType: 0x02, serial: 5, lacing: lacingFor(len(opusHeadPacket())), data: opusHeadPacket()}}
-	specs = append(specs, splitAcrossPages(commentPacket("OpusTags", false, "TITLE=Old"), 0, 5)...)
+	specs := slices.Concat(
+		[]pageSpec{{headerType: 0x02, serial: 5, lacing: lacingFor(len(opusHeadPacket())), data: opusHeadPacket()}},
+		splitAcrossPages(commentPacket("OpusTags", false, "TITLE=Old"), 0, 5),
+	)
 	payload := bytes.Repeat([]byte{0x5A}, 5900)
 	for i := range pages {
 		p := pageSpec{serial: 5, granule: uint64(960 * (i + 1)), lacing: lacingFor(len(payload)), data: payload}

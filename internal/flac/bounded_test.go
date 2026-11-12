@@ -89,7 +89,8 @@ func TestExtractArtwork_PictureDataPastBlockIsNotRead(t *testing.T) {
 	pic := make([]byte, 32) // type, MIME length 0, description length 0, 4 x u32, data length
 	binary.BigEndian.PutUint32(pic[0:], 3)
 	binary.BigEndian.PutUint32(pic[28:], claimed)
-	parts := [][]byte{flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100, 44100))}
+	parts := make([][]byte, 1, 202)
+	parts[0] = flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100, 44100))
 	for i := range 200 {
 		parts = append(parts, flacBlock(i == 199, blockTypePicture, pic))
 	}

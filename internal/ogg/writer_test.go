@@ -159,8 +159,10 @@ func preserved(t testing.TB, name string, src, out []byte) {
 // a comment header holding comments, and audioPages pages of audio, the last
 // ending the stream.
 func syntheticOpus(commentComments []string, audioPages int) []byte {
-	pages := []pageSpec{{headerType: 0x02, serial: 5, lacing: lacingFor(len(opusHeadPacket())), data: opusHeadPacket()}}
-	pages = append(pages, splitAcrossPages(commentPacket("OpusTags", false, commentComments...), 0, 5)...)
+	pages := slices.Concat(
+		[]pageSpec{{headerType: 0x02, serial: 5, lacing: lacingFor(len(opusHeadPacket())), data: opusHeadPacket()}},
+		splitAcrossPages(commentPacket("OpusTags", false, commentComments...), 0, 5),
+	)
 	for i := range audioPages {
 		p := pageSpec{serial: 5, granule: uint64(960 * (i + 1)), lacing: lacingFor(100 + i), data: bytes.Repeat([]byte{byte(i + 1)}, 100+i)}
 		if i == audioPages-1 {

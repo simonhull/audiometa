@@ -1,6 +1,7 @@
 package mp3
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -104,7 +105,7 @@ func TestParseTXXXMediaMarkers(t *testing.T) {
 		return append(append([]byte{0}, desc+"\x00"...), twoMarkers...)
 	}
 	utf16 := func(desc string) []byte {
-		b := []byte{1, 0xFF, 0xFE}
+		b := slices.Grow([]byte{1, 0xFF, 0xFE}, 2*len(desc)+4+2*len(twoMarkers))
 		for _, r := range desc {
 			b = append(b, byte(r), 0)
 		}

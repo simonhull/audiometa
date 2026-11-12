@@ -34,7 +34,7 @@ func createTestM4BFile(t *testing.T) string {
 	binary.Write(buf, binary.BigEndian, uint32(8))
 	buf.WriteString("moov")
 
-	tmpFile, err := os.CreateTemp("", "test*.m4b")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test*.m4b")
 	if err != nil {
 		t.Fatal(err)
 	}

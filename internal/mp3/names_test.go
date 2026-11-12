@@ -27,7 +27,7 @@ func ufidPayload(owner, id string) []byte {
 func txxxDescriptions(t *testing.T, data []byte) []string {
 	t.Helper()
 	wt := framesOf(t, data)
-	var out []string
+	out := make([]string, 0, len(framesWithID(wt.frames, frameIDTXXX)))
 	for _, f := range framesWithID(wt.frames, frameIDTXXX) {
 		d, _ := wt.txxxDescription(f)
 		out = append(out, d)

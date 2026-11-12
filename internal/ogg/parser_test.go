@@ -239,7 +239,7 @@ func TestParse_Success(t *testing.T) {
 	data := createMinimalOgg("Test Song", "Test Artist", "Test Album")
 
 	// Write to temp file
-	tmpFile, err := os.CreateTemp("", "test*.ogg")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test*.ogg")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -333,7 +333,7 @@ func TestParse_InvalidMagic(t *testing.T) {
 	data := []byte("INVALID")
 
 	// Write to temp file
-	tmpFile, err := os.CreateTemp("", "test*.ogg")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test*.ogg")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -374,7 +374,7 @@ func TestParse_EmptyTags(t *testing.T) {
 	data := createMinimalOgg("", "", "")
 
 	// Write to temp file
-	tmpFile, err := os.CreateTemp("", "test*.ogg")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test*.ogg")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -422,7 +422,7 @@ func TestParseOpus_Success(t *testing.T) {
 	data := createMinimalOpus("Opus Song", "Opus Artist", "Opus Album")
 
 	// Write to temp file
-	tmpFile, err := os.CreateTemp("", "test*.opus")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test*.opus")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -512,7 +512,7 @@ func TestParseOpus_BitrateEstimation(t *testing.T) {
 	data := createMinimalOpus("Test", "Test", "Test")
 
 	// Write to temp file
-	tmpFile, err := os.CreateTemp("", "test*.opus")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test*.opus")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -573,7 +573,7 @@ func TestOggParser_BothCodecs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Write to temp file
-			tmpFile, err := os.CreateTemp("", "test*.ogg")
+			tmpFile, err := os.CreateTemp(t.TempDir(), "test*.ogg")
 			if err != nil {
 				t.Fatal(err)
 			}

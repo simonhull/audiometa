@@ -33,7 +33,7 @@ func TestLeadingID3v2Size(t *testing.T) {
 func TestDetectFormat_ID3Prefix(t *testing.T) {
 	tag := func(version, flags byte, body int) []byte {
 		h := []byte{'I', 'D', '3', version, 0, flags, 0, 0, byte(body >> 7 & 0x7F), byte(body & 0x7F)}
-		return append(h, make([]byte, body)...)
+		return slices.Concat(h, make([]byte, body))
 	}
 	footer := []byte{'3', 'D', 'I', 4, 0, 0x10, 0, 0, 0, 20}
 	frames := []byte{0xFF, 0xFB, 0x90, 0x00, 0, 0, 0, 0}

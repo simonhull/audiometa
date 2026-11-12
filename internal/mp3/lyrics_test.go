@@ -29,7 +29,7 @@ func usltUTF16Payload(lang, desc, text string) []byte {
 func usltFrames(t *testing.T, data []byte) []langText {
 	t.Helper()
 	wt := framesOf(t, data)
-	var out []langText
+	out := make([]langText, 0, len(framesWithID(wt.frames, frameIDUSLT)))
 	for _, f := range framesWithID(wt.frames, frameIDUSLT) {
 		c, ok := wt.frameLangText(f)
 		if !ok {

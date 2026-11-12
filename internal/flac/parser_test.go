@@ -108,7 +108,7 @@ func TestParse_Success(t *testing.T) {
 	data := createMinimalFLAC("Test Song", "Test Artist", "Test Album")
 
 	// Write to temp file
-	tmpFile, err := os.CreateTemp("", "test*.flac")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test*.flac")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +198,7 @@ func TestParse_InvalidMagic(t *testing.T) {
 	data := []byte("INVALID")
 
 	// Write to temp file
-	tmpFile, err := os.CreateTemp("", "test*.flac")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test*.flac")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +239,7 @@ func TestExtractArtwork_NoPictures(t *testing.T) {
 	data := createMinimalFLAC("Test", "Artist", "Album")
 
 	// Write to temp file
-	tmpFile, err := os.CreateTemp("", "test*.flac")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test*.flac")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -279,7 +279,7 @@ func TestParse_EmptyTags(t *testing.T) {
 	data := createMinimalFLAC("", "", "")
 
 	// Write to temp file
-	tmpFile, err := os.CreateTemp("", "test*.flac")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test*.flac")
 	if err != nil {
 		t.Fatal(err)
 	}

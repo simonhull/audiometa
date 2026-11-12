@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"io"
+	"slices"
 	"testing"
 )
 
@@ -41,8 +42,10 @@ func ioOpus(cover bool) []byte {
 		comments = append(comments, "METADATA_BLOCK_PICTURE="+base64.StdEncoding.EncodeToString(block))
 	}
 	head := opusHeadPacket()
-	pages := []pageSpec{{headerType: 0x02, serial: 1, lacing: lacingFor(len(head)), data: head}}
-	pages = append(pages, splitAcrossPages(commentPacket("OpusTags", false, comments...), 0, 1)...)
+	pages := slices.Concat(
+		[]pageSpec{{headerType: 0x02, serial: 1, lacing: lacingFor(len(head)), data: head}},
+		splitAcrossPages(commentPacket("OpusTags", false, comments...), 0, 1),
+	)
 	const audioPages, audioSize = 240, 17_000
 	payload := bytes.Repeat([]byte{0x7E}, audioSize)
 	for i := range audioPages {

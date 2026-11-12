@@ -44,7 +44,7 @@ func preserved(t *testing.T, format types.Format, data []byte) []byte {
 func TestWriteFile_ManyChunksIsLinear(t *testing.T) {
 	t.Parallel()
 	le := binary.LittleEndian
-	chunks := []string{"fmt ", pcmFmt(le)}
+	chunks := slices.Grow([]string{"fmt ", pcmFmt(le)}, 2*(maxChunks-2)+2)
 	for range maxChunks - 2 {
 		chunks = append(chunks, "JUNK", "")
 	}

@@ -33,7 +33,7 @@ func dataAtom(dataType uint32, value []byte) []byte {
 
 // ilstText builds an ilst item with one UTF-8 data atom per value.
 func ilstText(typ string, values ...string) []byte {
-	var data [][]byte
+	data := make([][]byte, 0, len(values))
 	for _, v := range values {
 		data = append(data, dataAtom(dataTypeUTF8, []byte(v)))
 	}
@@ -47,7 +47,8 @@ func ilstInt(typ string, dataType uint32, value []byte) []byte {
 
 // ilstFreeform builds a ---- item with mean com.apple.iTunes.
 func ilstFreeform(name string, values ...string) []byte {
-	parts := [][]byte{atom("mean", []byte{0, 0, 0, 0}, []byte(freeformMean)), atom("name", []byte{0, 0, 0, 0}, []byte(name))}
+	parts := make([][]byte, 0, 2+len(values))
+	parts = append(parts, atom("mean", []byte{0, 0, 0, 0}, []byte(freeformMean)), atom("name", []byte{0, 0, 0, 0}, []byte(name)))
 	for _, v := range values {
 		parts = append(parts, dataAtom(dataTypeUTF8, []byte(v)))
 	}
@@ -62,7 +63,7 @@ type covrImage struct {
 
 // covrItem builds a covr item with one data atom per image.
 func covrItem(images ...covrImage) []byte {
-	var data [][]byte
+	data := make([][]byte, 0, len(images))
 	for _, img := range images {
 		data = append(data, dataAtom(img.code, img.data))
 	}
@@ -193,7 +194,7 @@ func topAtoms(t *testing.T, data []byte) []topAtom {
 // topTypes lists data's top-level atom types.
 func topTypes(t *testing.T, data []byte) []string {
 	t.Helper()
-	var types []string
+	types := make([]string, 0, len(topAtoms(t, data)))
 	for _, a := range topAtoms(t, data) {
 		types = append(types, a.typ)
 	}
@@ -251,7 +252,7 @@ func ilstItems(t *testing.T, data []byte) [][]byte {
 	if ilst == nil {
 		t.Fatal("no ilst")
 	}
-	var out [][]byte
+	out := make([][]byte, 0, len(ilst.children()))
 	for _, c := range ilst.children() {
 		out = append(out, c.appendTo(nil))
 	}

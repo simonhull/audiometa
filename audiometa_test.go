@@ -40,7 +40,7 @@ func createSimpleM4B() []byte {
 func TestParse_M4B(t *testing.T) {
 	data := createSimpleM4B()
 
-	tmpFile, err := os.CreateTemp("", "test*.m4b")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test*.m4b")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestParse_FileNotFound(t *testing.T) {
 
 func TestParse_UnsupportedFormat(t *testing.T) {
 	// Create a file with unsupported format
-	tmpFile, err := os.CreateTemp("", "test*.xyz")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test*.xyz")
 	if err != nil {
 		t.Fatal(err)
 	}

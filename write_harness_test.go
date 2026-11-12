@@ -237,7 +237,7 @@ func TestAudioDigest_MP3IgnoresTag(t *testing.T) {
 	tagEnd := 10 + synchsafe(data[6:10])
 
 	// A different ID3v2.4 tag: a 10-byte header and 20 zero bytes of body.
-	replaced := []byte{'I', 'D', '3', 4, 0, 0, 0, 0, 0, 20}
+	replaced := slices.Grow([]byte{'I', 'D', '3', 4, 0, 0, 0, 0, 0, 20}, 20+len(data)-tagEnd)
 	replaced = append(replaced, make([]byte, 20)...)
 	replaced = append(replaced, data[tagEnd:]...)
 

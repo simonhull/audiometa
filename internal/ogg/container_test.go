@@ -451,9 +451,11 @@ func pictureComment(image []byte) string {
 }
 
 func multiPageFile(idPacket, commentPkt []byte, serial uint32, tail pageSpec) []byte {
-	pages := []pageSpec{{headerType: 0x02, serial: serial, lacing: lacingFor(len(idPacket)), data: idPacket}}
-	pages = append(pages, splitAcrossPages(commentPkt, 0, serial)...)
-	pages = append(pages, tail)
+	pages := slices.Concat(
+		[]pageSpec{{headerType: 0x02, serial: serial, lacing: lacingFor(len(idPacket)), data: idPacket}},
+		splitAcrossPages(commentPkt, 0, serial),
+		[]pageSpec{tail},
+	)
 	return buildOgg(pages...)
 }
 

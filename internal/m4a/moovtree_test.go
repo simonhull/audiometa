@@ -77,7 +77,7 @@ func TestMAtom_SizesFixedUp(t *testing.T) {
 	data := buildMP4(false, ilstText("\xA9nam", "Title"))
 	before := moovTreeOf(t, data)
 	sizes := func(root *matom) []uint64 {
-		var out []uint64
+		out := make([]uint64, 0, len([][]string{{}, {atomUdta}, {atomUdta, atomMeta}, {atomUdta, atomMeta, atomIlst}}))
 		for _, path := range [][]string{{}, {atomUdta}, {atomUdta, atomMeta}, {atomUdta, atomMeta, atomIlst}} {
 			out = append(out, findPath(root, path...).size())
 		}

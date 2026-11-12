@@ -61,8 +61,8 @@ func TestParse_UnsupportedID3VersionSkipsTag(t *testing.T) {
 }
 
 func v22Tag(extra ...[]byte) []byte {
-	pic := []byte{0x00, 'J', 'P', 'G', 0x03, 0x00}
-	pic = append(pic, 0xFF, 0xD8, 0xFF, 0xE0, 0, 0, 0xFF, 0xFB, 0x50, 0x00) // false sync inside the picture
+	// The picture ends in a false sync.
+	pic := []byte{0x00, 'J', 'P', 'G', 0x03, 0x00, 0xFF, 0xD8, 0xFF, 0xE0, 0, 0, 0xFF, 0xFB, 0x50, 0x00}
 	frames := [][]byte{
 		id3v22Frame("TT2", latin1Text("Title")),
 		id3v22Frame("TP1", utf16Text("Artist")),
@@ -72,7 +72,7 @@ func v22Tag(extra ...[]byte) []byte {
 		id3v22Frame("COM", []byte("\x00eng\x00note")),
 		id3v22Frame("PIC", pic),
 	}
-	return id3Tag(2, append(frames, extra...)...)
+	return id3Tag(2, slices.Concat(frames, extra)...)
 }
 
 func TestParse_ID3v22(t *testing.T) {

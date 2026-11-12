@@ -114,10 +114,7 @@ func TestExtractIlstMetadata(t *testing.T) {
 	artistItem := createMetadataItem([]byte{0xA9, 'A', 'R', 'T'}, "Author Name") // ©ART
 	albumItem := createMetadataItem([]byte{0xA9, 'a', 'l', 'b'}, "Album Name")   // ©alb
 
-	var ilstData []byte
-	ilstData = append(ilstData, titleItem...)
-	ilstData = append(ilstData, artistItem...)
-	ilstData = append(ilstData, albumItem...)
+	ilstData := slices.Concat(titleItem, artistItem, albumItem)
 
 	ilst := createMockAtom("ilst", ilstData)
 
@@ -466,8 +463,7 @@ func TestIlstSkipsCoverData(t *testing.T) {
 }
 
 func TestExtractIlstMetadata_RepeatedAtomsFirstWins(t *testing.T) {
-	var ilstData []byte
-	for _, it := range []struct{ tag, val string }{
+	items := []struct{ tag, val string }{
 		{"\xA9ART", "Artist A"},
 		{"\xA9ART", "Artist B"},
 		{"\xA9nam", "Title 1"},
@@ -477,7 +473,9 @@ func TestExtractIlstMetadata_RepeatedAtomsFirstWins(t *testing.T) {
 		{"desc", "short"},
 		{"ldes", "long 1"},
 		{"ldes", "long 2"},
-	} {
+	}
+	ilstData := make([]byte, 0, 32*len(items))
+	for _, it := range items {
 		ilstData = append(ilstData, createMetadataItem([]byte(it.tag), it.val)...)
 	}
 	ilst := createMockAtom("ilst", ilstData)
@@ -499,7 +497,7 @@ func TestExtractIlstMetadata_RepeatedAtomsFirstWins(t *testing.T) {
 
 // multiValueItem builds an ilst item with one UTF-8 data atom per value.
 func multiValueItem(itemType string, values ...string) []byte {
-	var body []byte
+	body := make([]byte, 0, len(values))
 	for _, v := range values {
 		body = append(body, createDataAtom(v)...)
 	}

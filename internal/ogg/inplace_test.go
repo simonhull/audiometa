@@ -94,9 +94,11 @@ func TestInPlacePatchOfNoChange(t *testing.T) {
 // pages and edits bytes on the third page only.
 func TestInPlacePatchCoversOnlyChangedPages(t *testing.T) {
 	filler := strings.Repeat("f", 1000)
-	specs := []pageSpec{{headerType: 0x02, serial: 5, lacing: lacingFor(len(opusHeadPacket())), data: opusHeadPacket()}}
-	specs = append(specs, smallPages(commentPacket("OpusTags", false, "A="+filler, "B="+filler, "E="+filler, "C=x", "D="+filler, "F="+filler, "G="+filler), 5)...)
-	specs = append(specs, audioTail(5, 960))
+	specs := slices.Concat(
+		[]pageSpec{{headerType: 0x02, serial: 5, lacing: lacingFor(len(opusHeadPacket())), data: opusHeadPacket()}},
+		smallPages(commentPacket("OpusTags", false, "A="+filler, "B="+filler, "E="+filler, "C=x", "D="+filler, "F="+filler, "G="+filler), 5),
+		[]pageSpec{audioTail(5, 960)},
+	)
 	src := withCRCs(buildOgg(specs...))
 	pages := mustPages(t, src)
 	if len(pages) < 6 {

@@ -136,10 +136,10 @@ func TestReadLayoutCanceled(t *testing.T) {
 
 func TestScanStreams(t *testing.T) {
 	head, comment := opusHeadPacket(), commentPacket("OpusTags", false, "TITLE=x")
-	one := []pageSpec{
+	one := slices.Grow([]pageSpec{
 		{headerType: 0x02, serial: 1, lacing: lacingFor(len(head)), data: head},
 		pageOf(1, comment), audioTail(1, 960), audioTail(1, 1920),
-	}
+	}, 1)
 	file := buildOgg(one...)
 	if err := scanStreams(t.Context(), bytes.NewReader(file), int64(len(file)), 0, 1); err != nil {
 		t.Errorf("single stream: %v", err)

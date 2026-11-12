@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"slices"
 	"testing"
 )
 
@@ -202,8 +203,7 @@ func TestDetectFormat_MP3_WithID3(t *testing.T) {
 
 func TestDetectFormat_MP3_WithoutID3(t *testing.T) {
 	// MP3 frame sync: 0xFF 0xFB (common MP3 header)
-	data := []byte{0xFF, 0xFB, 0x00, 0x00}
-	data = append(data, make([]byte, 100)...) // Add some padding
+	data := slices.Concat([]byte{0xFF, 0xFB, 0x00, 0x00}, make([]byte, 100)) // Add some padding
 
 	format, err := DetectFormat(bytes.NewReader(data), int64(len(data)), "test.mp3")
 	if err != nil {

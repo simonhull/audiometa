@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -66,14 +67,16 @@ func eachFile(
 type row struct{ label, value string }
 
 func writeInspectText(p *printer, f *audiometa.File) {
-	rows := []row{
-		{"Path", f.Path},
-		{"Format", f.Format.String()},
-		{"Audio", f.Audio.String()},
-		{"Duration", formatTime(f.Audio.Duration)},
-	}
-	rows = append(rows, tagRows(&f.Tags)...)
-	rows = append(rows, row{"Chapters", strconv.Itoa(len(f.Chapters))})
+	rows := slices.Concat(
+		[]row{
+			{"Path", f.Path},
+			{"Format", f.Format.String()},
+			{"Audio", f.Audio.String()},
+			{"Duration", formatTime(f.Audio.Duration)},
+		},
+		tagRows(&f.Tags),
+		[]row{{"Chapters", strconv.Itoa(len(f.Chapters))}},
+	)
 	for _, r := range rows {
 		if r.value != "" {
 			p.printf("%-14s %s\n", r.label+":", cleanText(r.value))

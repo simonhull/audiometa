@@ -14,7 +14,7 @@ func TestParse_ValidMP3(t *testing.T) {
 	// Create a minimal valid MP3 with ID3v2 tag
 	data := createMinimalMP3WithID3()
 
-	tmpFile, err := os.CreateTemp("", "test*.mp3")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test*.mp3")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestParse_FileNotFound(t *testing.T) {
 }
 
 func TestParse_EmptyFile(t *testing.T) {
-	tmpFile, err := os.CreateTemp("", "test*.mp3")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test*.mp3")
 	if err != nil {
 		t.Fatal(err)
 	}

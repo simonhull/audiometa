@@ -39,7 +39,7 @@ func createMinimalM4B(title, artist, album string) []byte {
 
 	// meta atom contains ilst
 	// meta atom has 4 bytes of version+flags before the data
-	metaData := make([]byte, 4)
+	metaData := make([]byte, 4, 4+len(ilstAtom))
 	binary.BigEndian.PutUint32(metaData, 0) // version=0, flags=0
 	metaData = append(metaData, ilstAtom...)
 	metaAtom := createMockAtom("meta", metaData)
@@ -59,7 +59,7 @@ func TestParse_Success(t *testing.T) {
 	data := createMinimalM4B("My Audiobook", "Author Name", "Series 1")
 
 	// Write to temp file
-	tmpFile, err := os.CreateTemp("", "test*.m4b")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test*.m4b")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestParse_UnknownBrand(t *testing.T) {
 	// The parser should still work and default to M4A format
 	data := createMockAtom("ftyp", []byte("XXXX")) // Unknown brand
 
-	tmpFile, err := os.CreateTemp("", "test*.m4b")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test*.m4b")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func TestParse_NoMetadata(t *testing.T) {
 	// Create M4B with no metadata
 	data := createMinimalM4B("", "", "")
 
-	tmpFile, err := os.CreateTemp("", "test*.m4b")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test*.m4b")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +210,7 @@ func TestParse_WithArtwork_Integration(t *testing.T) {
 	// Use modified helper that includes both metadata and artwork
 	fileData := createM4BWithMetadataAndCover("Test Book", "Test Author", jpegData)
 
-	tmpFile, err := os.CreateTemp("", "test-integration-*.m4b")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test-integration-*.m4b")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,7 +298,7 @@ func createM4BWithMetadataAndCover(title, artist string, coverData []byte) []byt
 	ilstAtom := createMockAtom("ilst", ilstData)
 
 	// meta → udta → moov
-	metaData := make([]byte, 4)
+	metaData := make([]byte, 4, 4+len(ilstAtom))
 	binary.BigEndian.PutUint32(metaData, 0)
 	metaData = append(metaData, ilstAtom...)
 

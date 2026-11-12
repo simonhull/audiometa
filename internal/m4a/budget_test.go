@@ -14,7 +14,7 @@ import (
 
 func TestParse_RepeatedItemsAreLinear(t *testing.T) {
 	const n = 5000
-	var items [][]byte
+	items := make([][]byte, 0, 2*n)
 	for range n {
 		items = append(items, ilstFreeform("X", "v"), ilstText("\xa9nam", "t"))
 	}

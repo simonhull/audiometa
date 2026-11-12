@@ -477,7 +477,7 @@ func TestArtworkNameCollision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var inputs []string
+	inputs := make([]string, 0, len([]string{"a", "b"}))
 	for _, sub := range []string{"a", "b"} {
 		p := filepath.Join(root, sub, "song.mp3")
 		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {

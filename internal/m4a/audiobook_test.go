@@ -150,11 +150,12 @@ func TestParseAudiobookTags_Series(t *testing.T) {
 
 func TestParseAudiobookTags_MultipleFields(t *testing.T) {
 	// Create ilst with multiple custom atoms
-	var ilstData []byte
-	ilstData = append(ilstData, createCustomAtom("com.apple.iTunes", "Narrator", "Andy Serkis")...)
-	ilstData = append(ilstData, createCustomAtom("com.apple.iTunes", "Publisher", "Hachette Audio")...)
-	ilstData = append(ilstData, createCustomAtom("com.apple.iTunes", "Series", "Lord of the Rings")...)
-	ilstData = append(ilstData, createCustomAtom("com.apple.iTunes", "Series Part", "1")...)
+	ilstData := slices.Concat(
+		createCustomAtom("com.apple.iTunes", "Narrator", "Andy Serkis"),
+		createCustomAtom("com.apple.iTunes", "Publisher", "Hachette Audio"),
+		createCustomAtom("com.apple.iTunes", "Series", "Lord of the Rings"),
+		createCustomAtom("com.apple.iTunes", "Series Part", "1"),
+	)
 
 	ilst := createMockAtom("ilst", ilstData)
 

@@ -172,7 +172,7 @@ func TestPaginateSpansPages(t *testing.T) {
 		file.Write(appendPage(nil, p))
 	}
 	read := rawPagesOf(t, file.Bytes())
-	var got []*oggPage
+	got := make([]*oggPage, 0, len(read))
 	for _, p := range read {
 		got = append(got, p.page)
 	}

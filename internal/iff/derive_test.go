@@ -2,6 +2,7 @@ package iff
 
 import (
 	"encoding/binary"
+	"slices"
 	"testing"
 
 	"github.com/simonhull/audiometa/internal/types"
@@ -19,7 +20,7 @@ func id3v23(pairs ...string) string {
 	}
 	size := len(body)
 	tag := []byte{'I', 'D', '3', 3, 0, 0, byte(size >> 21 & 0x7F), byte(size >> 14 & 0x7F), byte(size >> 7 & 0x7F), byte(size & 0x7F)}
-	return string(append(tag, body...))
+	return string(slices.Concat(tag, body))
 }
 
 // A WAV's ID3 frames outrank its native text tags, whatever the chunk order,

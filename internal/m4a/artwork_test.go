@@ -22,7 +22,7 @@ func TestExtractArtwork_WithJPEGCover(t *testing.T) {
 	fileData := createM4BWithCover(jpegData, 0x0D) // 0x0D = JPEG flag
 
 	// Write to temp file
-	tmpFile, err := os.CreateTemp("", "test-artwork-*.m4b")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test-artwork-*.m4b")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func createM4BWithCover(imageData []byte, flags byte) []byte {
 	ilstAtom := createMockAtom("ilst", covrAtom)
 
 	// meta contains ilst (with 4-byte version/flags header)
-	metaData := make([]byte, 4)
+	metaData := make([]byte, 4, 4+len(ilstAtom))
 	binary.BigEndian.PutUint32(metaData, 0)
 	metaData = append(metaData, ilstAtom...)
 	metaAtom := createMockAtom("meta", metaData)
@@ -139,7 +139,7 @@ func TestExtractArtwork_WithPNGCover(t *testing.T) {
 
 	fileData := createM4BWithCover(pngData, 0x0E) // 0x0E = PNG flag
 
-	tmpFile, err := os.CreateTemp("", "test-png-*.m4b")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test-png-*.m4b")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +194,7 @@ func TestExtractArtwork_MultipleImages(t *testing.T) {
 
 	fileData := createM4BWithMultipleCovers([][]byte{jpegData1, jpegData2})
 
-	tmpFile, err := os.CreateTemp("", "test-multi-*.m4b")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test-multi-*.m4b")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +246,7 @@ func createM4BWithMultipleCovers(images [][]byte) []byte {
 	buf.Write(ftypAtom)
 
 	// Build multiple data atoms
-	var dataAtoms []byte
+	dataAtoms := make([]byte, 0, len(images))
 	for _, img := range images {
 		dataAtomData := &bytes.Buffer{}
 		dataAtomData.WriteByte(0)
@@ -261,7 +261,7 @@ func createM4BWithMultipleCovers(images [][]byte) []byte {
 	covrAtom := createMockAtom("covr", dataAtoms)
 	ilstAtom := createMockAtom("ilst", covrAtom)
 
-	metaData := make([]byte, 4)
+	metaData := make([]byte, 4, 4+len(ilstAtom))
 	binary.BigEndian.PutUint32(metaData, 0)
 	metaData = append(metaData, ilstAtom...)
 	metaAtom := createMockAtom("meta", metaData)
@@ -277,7 +277,7 @@ func TestExtractArtwork_NoArtwork(t *testing.T) {
 	// File with metadata but no covr atom
 	fileData := createMinimalM4B("Test", "Artist", "Album")
 
-	tmpFile, err := os.CreateTemp("", "test-no-art-*.m4b")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test-no-art-*.m4b")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -312,7 +312,7 @@ func TestExtractArtwork_NoMoovAtom(t *testing.T) {
 	// Minimal file with just ftyp (corrupted/incomplete)
 	fileData := createMockAtom("ftyp", []byte("M4B \x00\x00\x00\x00M4B "))
 
-	tmpFile, err := os.CreateTemp("", "test-no-moov-*.m4b")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test-no-moov-*.m4b")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -350,7 +350,7 @@ func TestExtractArtwork_CorruptedImageData(t *testing.T) {
 
 	fileData := createM4BWithCover(invalidData, 0x0D)
 
-	tmpFile, err := os.CreateTemp("", "test-corrupt-*.m4b")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test-corrupt-*.m4b")
 	if err != nil {
 		t.Fatal(err)
 	}
