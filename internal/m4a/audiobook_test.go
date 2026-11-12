@@ -191,7 +191,6 @@ func TestParseAudiobookTags_NoCustomAtoms(t *testing.T) {
 
 	file := &types.File{}
 	err := parseAudiobookAndDerive(context.Background(), sr, ilstAtom, file)
-
 	// Should not error, just no audiobook tags extracted
 	if err != nil {
 		t.Errorf("expected no error, got %v", err)

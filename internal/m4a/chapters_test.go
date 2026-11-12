@@ -17,7 +17,8 @@ import (
 func createChplAtom(chapters []struct {
 	time  int64
 	title string
-}) []byte {
+},
+) []byte {
 	return createChplAtomVersion(1, chapters)
 }
 
@@ -25,7 +26,8 @@ func createChplAtom(chapters []struct {
 func createChplAtomVersion(version byte, chapters []struct {
 	time  int64
 	title string
-}) []byte {
+},
+) []byte {
 	buf := &bytes.Buffer{}
 
 	// chpl structure:

@@ -27,8 +27,10 @@ func TestLimit(t *testing.T) {
 
 func TestForCoversEveryFormat(t *testing.T) {
 	for _, op := range []Op{Read, Write} {
-		for _, f := range []types.Format{types.FormatMP3, types.FormatFLAC, types.FormatM4A, types.FormatM4B,
-			types.FormatOgg, types.FormatOpus, types.FormatWAV, types.FormatAIFF, types.FormatUnknown} {
+		for _, f := range []types.Format{
+			types.FormatMP3, types.FormatFLAC, types.FormatM4A, types.FormatM4B,
+			types.FormatOgg, types.FormatOpus, types.FormatWAV, types.FormatAIFF, types.FormatUnknown,
+		} {
 			if b := For(op, f); b.PerByte == 0 || b.Fixed == 0 {
 				t.Errorf("For(%v, %v) = %+v, want a non-zero budget", op, f, b)
 			}

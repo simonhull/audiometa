@@ -355,22 +355,38 @@ type releaseField struct {
 }
 
 var releaseFields = []releaseField{
-	{"MusicBrainzAlbumID", "f3c0fd5e-ba3e-4a2c-8fd3-6e4a6f0c1b2d",
-		func(t *audiometa.Tags, v string) { t.MusicBrainzAlbumID = v }, func(t *audiometa.Tags) string { return t.MusicBrainzAlbumID }},
-	{"MusicBrainzArtistID", "5b11f4ce-a62d-471e-81fc-a69a8278c7da",
-		func(t *audiometa.Tags, v string) { t.MusicBrainzArtistID = v }, func(t *audiometa.Tags) string { return t.MusicBrainzArtistID }},
-	{"MusicBrainzTrackID", "8f3471b5-7e6a-48da-86a9-c1c07a0f47ae",
-		func(t *audiometa.Tags, v string) { t.MusicBrainzTrackID = v }, func(t *audiometa.Tags) string { return t.MusicBrainzTrackID }},
-	{"ISRC", "USRC17607839",
-		func(t *audiometa.Tags, v string) { t.ISRC = v }, func(t *audiometa.Tags) string { return t.ISRC }},
-	{"Barcode", "0123456789012",
-		func(t *audiometa.Tags, v string) { t.Barcode = v }, func(t *audiometa.Tags) string { return t.Barcode }},
-	{"CatalogNumber", "CAT-001",
-		func(t *audiometa.Tags, v string) { t.CatalogNumber = v }, func(t *audiometa.Tags) string { return t.CatalogNumber }},
-	{"Copyright", "(C) 2001 Example",
-		func(t *audiometa.Tags, v string) { t.Copyright = v }, func(t *audiometa.Tags) string { return t.Copyright }},
-	{"Label", "Example Records",
-		func(t *audiometa.Tags, v string) { t.Label = v }, func(t *audiometa.Tags) string { return t.Label }},
+	{
+		"MusicBrainzAlbumID", "f3c0fd5e-ba3e-4a2c-8fd3-6e4a6f0c1b2d",
+		func(t *audiometa.Tags, v string) { t.MusicBrainzAlbumID = v }, func(t *audiometa.Tags) string { return t.MusicBrainzAlbumID },
+	},
+	{
+		"MusicBrainzArtistID", "5b11f4ce-a62d-471e-81fc-a69a8278c7da",
+		func(t *audiometa.Tags, v string) { t.MusicBrainzArtistID = v }, func(t *audiometa.Tags) string { return t.MusicBrainzArtistID },
+	},
+	{
+		"MusicBrainzTrackID", "8f3471b5-7e6a-48da-86a9-c1c07a0f47ae",
+		func(t *audiometa.Tags, v string) { t.MusicBrainzTrackID = v }, func(t *audiometa.Tags) string { return t.MusicBrainzTrackID },
+	},
+	{
+		"ISRC", "USRC17607839",
+		func(t *audiometa.Tags, v string) { t.ISRC = v }, func(t *audiometa.Tags) string { return t.ISRC },
+	},
+	{
+		"Barcode", "0123456789012",
+		func(t *audiometa.Tags, v string) { t.Barcode = v }, func(t *audiometa.Tags) string { return t.Barcode },
+	},
+	{
+		"CatalogNumber", "CAT-001",
+		func(t *audiometa.Tags, v string) { t.CatalogNumber = v }, func(t *audiometa.Tags) string { return t.CatalogNumber },
+	},
+	{
+		"Copyright", "(C) 2001 Example",
+		func(t *audiometa.Tags, v string) { t.Copyright = v }, func(t *audiometa.Tags) string { return t.Copyright },
+	},
+	{
+		"Label", "Example Records",
+		func(t *audiometa.Tags, v string) { t.Label = v }, func(t *audiometa.Tags) string { return t.Label },
+	},
 }
 
 // id3v23Paths are the corpus files whose ID3v2 tag is version 2.3.

@@ -40,7 +40,7 @@ func main() {
 	}
 
 	// Create output directory if it doesn't exist
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		log.Fatalf("Failed to create output directory: %v", err)
 	}
 
@@ -92,7 +92,7 @@ func main() {
 		outputPath := filepath.Join(outputDir, filename)
 
 		// Save artwork
-		if err := os.WriteFile(outputPath, art.Data, 0644); err != nil {
+		if err := os.WriteFile(outputPath, art.Data, 0o644); err != nil {
 			log.Printf("Warning: Failed to save %s: %v", outputPath, err)
 			continue
 		}

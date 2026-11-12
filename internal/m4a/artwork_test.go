@@ -334,7 +334,6 @@ func TestExtractArtwork_NoMoovAtom(t *testing.T) {
 
 	p := &parser{}
 	artwork, err := p.ExtractArtwork(context.Background(), f, stat.Size(), tmpFile.Name())
-
 	// Should not error - graceful degradation
 	if err != nil {
 		t.Errorf("should not error on missing moov: %v", err)
@@ -373,7 +372,6 @@ func TestExtractArtwork_CorruptedImageData(t *testing.T) {
 
 	p := &parser{}
 	artwork, err := p.ExtractArtwork(context.Background(), f, stat.Size(), tmpFile.Name())
-
 	// Should extract successfully (we don't validate image format)
 	if err != nil {
 		t.Fatalf("ExtractArtwork failed: %v", err)

@@ -100,7 +100,6 @@ func TestParseTechnicalInfo_NoMvhd(t *testing.T) {
 
 	file := &types.File{}
 	err := parseTechnicalInfo(context.Background(), sr, moovAtom, file)
-
 	// Should not error, just leave duration as 0
 	if err != nil {
 		t.Errorf("expected no error for missing mvhd, got %v", err)

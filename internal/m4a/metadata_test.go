@@ -468,10 +468,15 @@ func TestIlstSkipsCoverData(t *testing.T) {
 func TestExtractIlstMetadata_RepeatedAtomsFirstWins(t *testing.T) {
 	var ilstData []byte
 	for _, it := range []struct{ tag, val string }{
-		{"\xA9ART", "Artist A"}, {"\xA9ART", "Artist B"},
-		{"\xA9nam", "Title 1"}, {"\xA9nam", "Title 2"},
-		{"\xA9alb", "Album 1"}, {"\xA9alb", "Album 2"},
-		{"desc", "short"}, {"ldes", "long 1"}, {"ldes", "long 2"},
+		{"\xA9ART", "Artist A"},
+		{"\xA9ART", "Artist B"},
+		{"\xA9nam", "Title 1"},
+		{"\xA9nam", "Title 2"},
+		{"\xA9alb", "Album 1"},
+		{"\xA9alb", "Album 2"},
+		{"desc", "short"},
+		{"ldes", "long 1"},
+		{"ldes", "long 2"},
 	} {
 		ilstData = append(ilstData, createMetadataItem([]byte(it.tag), it.val)...)
 	}

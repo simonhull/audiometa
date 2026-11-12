@@ -183,8 +183,12 @@ func TestApply_OriginalDate(t *testing.T) {
 		{"v2.3 refuses a value with no year", id3Tag(3, text(3, "TORY", "1999")), set("May 2001"), nil, nil, true},
 		{"v2.3 refuses a short year", id3Tag(3, text(3, "TIT2", "T")), set("99"), nil, nil, true},
 		{"v2.2 source writes TDOR", id3Tag(2, id3v22Frame("TOR", latin1Text("1999"))), set("2001-05-03"), []string{"2001-05-03"}, nil, false},
-		{"v2.2 source: raw TORY edit becomes TDOR", id3Tag(2, id3v22Frame("TOR", latin1Text("1999"))),
-			func(tg *types.Tags) { tg.Set("TORY", "2000") }, []string{"2000"}, nil, false},
+		{
+			"v2.2 source: raw TORY edit becomes TDOR", id3Tag(2, id3v22Frame("TOR", latin1Text("1999"))),
+			func(tg *types.Tags) { tg.Set("TORY", "2000") },
+			[]string{"2000"},
+			nil, false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

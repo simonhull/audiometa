@@ -97,8 +97,10 @@ func TestVC_FieldEdits(t *testing.T) {
 		{"disc total added", nil, func(tg *types.Tags) { tg.DiscTotal = 2 }, []string{"DISCTOTAL=2"}},
 		{"track total via TOTALTRACKS", []string{"TOTALTRACKS=5"}, func(tg *types.Tags) { tg.TrackTotal = 9 }, []string{"TOTALTRACKS=9"}},
 		{
-			"track total with both keys", []string{"TRACKTOTAL=5", "TOTALTRACKS=5"},
-			func(tg *types.Tags) { tg.TrackTotal = 9 }, []string{"TRACKTOTAL=9", "TOTALTRACKS=5"},
+			"track total with both keys",
+			[]string{"TRACKTOTAL=5", "TOTALTRACKS=5"},
+			func(tg *types.Tags) { tg.TrackTotal = 9 },
+			[]string{"TRACKTOTAL=9", "TOTALTRACKS=5"},
 		},
 		{"track total cleared removes both", []string{"TRACKTOTAL=5", "TITLE=T", "TOTALTRACKS=5"}, func(tg *types.Tags) { tg.TrackTotal = 0 }, []string{"TITLE=T"}},
 		{"track number keeps its suffix total", []string{"TRACKNUMBER=3/12"}, func(tg *types.Tags) { tg.TrackNumber = 4 }, []string{"TRACKNUMBER=4/12"}},
@@ -116,13 +118,17 @@ func TestVC_FieldEdits(t *testing.T) {
 		{"musicbrainz track", nil, func(tg *types.Tags) { tg.MusicBrainzTrackID = "id" }, []string{"MUSICBRAINZ_TRACKID=id"}},
 		{"genres", []string{"GENRE=Old"}, func(tg *types.Tags) { tg.Genres = []string{"A", "B"} }, []string{"GENRE=A", "GENRE=B"}},
 		{
-			"artist only keeps the other artists", []string{"ARTIST=X", "ARTIST=Y"},
-			func(tg *types.Tags) { tg.Artist = "Z" }, []string{"ARTIST=Z", "ARTIST=Y"},
+			"artist only keeps the other artists",
+			[]string{"ARTIST=X", "ARTIST=Y"},
+			func(tg *types.Tags) { tg.Artist = "Z" },
+			[]string{"ARTIST=Z", "ARTIST=Y"},
 		},
 		{"artist cleared", []string{"ARTIST=X", "TITLE=T"}, func(tg *types.Tags) { tg.Artist, tg.Artists = "", nil }, []string{"TITLE=T"}},
 		{
-			"artists", []string{"ARTIST=X"},
-			func(tg *types.Tags) { tg.Artist, tg.Artists = "A", []string{"A", "B"} }, []string{"ARTIST=A", "ARTIST=B"},
+			"artists",
+			[]string{"ARTIST=X"},
+			func(tg *types.Tags) { tg.Artist, tg.Artists = "A", []string{"A", "B"} },
+			[]string{"ARTIST=A", "ARTIST=B"},
 		},
 	}
 	for _, tt := range tests {

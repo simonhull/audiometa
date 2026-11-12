@@ -346,8 +346,11 @@ func TestParse_ReleaseFields(t *testing.T) {
 			"Barcode": "0123", "CatalogNumber": "CAT-1", "Label": "Lbl", "Copyright": "(c) 2001",
 		}},
 		{"lower-case name", [][]byte{ilstFreeform("isrc", "USRC17607839")}, map[string]string{"ISRC": "USRC17607839"}},
-		{"repeated item first wins", [][]byte{ilstFreeform("BARCODE", "111"), ilstFreeform("BARCODE", "222")},
-			map[string]string{"Barcode": "111"}},
+		{
+			"repeated item first wins",
+			[][]byte{ilstFreeform("BARCODE", "111"), ilstFreeform("BARCODE", "222")},
+			map[string]string{"Barcode": "111"},
+		},
 		{"empty first value is skipped", [][]byte{ilstFreeform("LABEL", "", "Lbl")}, map[string]string{"Label": "Lbl"}},
 		{"no original date", [][]byte{ilstFreeform("ORIGINALDATE", "1999")}, map[string]string{}},
 	}

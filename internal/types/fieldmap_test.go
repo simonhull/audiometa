@@ -227,10 +227,15 @@ func TestFieldBindings_ReleaseFields(t *testing.T) {
 		format Format
 		field  Field
 	}{
-		{FormatMP3, FieldLabel}, {FormatMP3, FieldPerformers}, {FormatMP3, FieldDate},
-		{FormatWAV, FieldLabel}, {FormatAIFF, FieldLabel},
-		{FormatM4A, FieldOriginalDate}, {FormatM4A, FieldPerformers},
-		{FormatM4B, FieldOriginalDate}, {FormatM4B, FieldPerformers},
+		{FormatMP3, FieldLabel},
+		{FormatMP3, FieldPerformers},
+		{FormatMP3, FieldDate},
+		{FormatWAV, FieldLabel},
+		{FormatAIFF, FieldLabel},
+		{FormatM4A, FieldOriginalDate},
+		{FormatM4A, FieldPerformers},
+		{FormatM4B, FieldOriginalDate},
+		{FormatM4B, FieldPerformers},
 	}
 	for _, u := range unbound {
 		if got := keysOf(u.format, u.field); got != nil {

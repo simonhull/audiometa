@@ -261,12 +261,21 @@ func TestWriteTo_EditSets(t *testing.T) {
 		wantKeys   []types.KeyEdit
 		wantFields []types.FieldEdit
 	}{
-		{"typed field", func(f *File) { f.Tags.Title = "New" },
-			nil, []types.FieldEdit{{Field: types.FieldTitle, Values: []string{"New"}}}},
-		{"raw key", func(f *File) { f.Tags.Set("TITLE", "New") },
-			[]types.KeyEdit{{Key: "TITLE", Values: []string{"New"}}}, nil},
-		{"delete key", func(f *File) { f.Tags.Delete("TITLE") },
-			[]types.KeyEdit{{Key: "TITLE", Values: nil}}, nil},
+		{
+			"typed field", func(f *File) { f.Tags.Title = "New" },
+			nil,
+			[]types.FieldEdit{{Field: types.FieldTitle, Values: []string{"New"}}},
+		},
+		{
+			"raw key", func(f *File) { f.Tags.Set("TITLE", "New") },
+			[]types.KeyEdit{{Key: "TITLE", Values: []string{"New"}}},
+			nil,
+		},
+		{
+			"delete key", func(f *File) { f.Tags.Delete("TITLE") },
+			[]types.KeyEdit{{Key: "TITLE", Values: nil}},
+			nil,
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -871,11 +880,13 @@ func TestWrite_InPlaceRanges(t *testing.T) {
 		off, patch := titlePatch(t, data)
 		calls := 0
 		honest := digestOutside(off, len(patch))
-		useWriter(t, &inPlaceFake{off: off, patch: patch, fits: true,
+		useWriter(t, &inPlaceFake{
+			off: off, patch: patch, fits: true,
 			preserved: func(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error) {
 				calls++
 				return honest(ctx, src, size)
-			}})
+			},
+		})
 		if err := Write(path, edit, WithInPlace()); err != nil {
 			t.Fatal(err)
 		}
@@ -925,14 +936,16 @@ func TestWrite_Canceled(t *testing.T) {
 		off, patch := titlePatch(t, data)
 		calls := 0
 		honest := digestOutside(off, len(patch))
-		useWriter(t, &inPlaceFake{off: off, patch: patch, fits: true,
+		useWriter(t, &inPlaceFake{
+			off: off, patch: patch, fits: true,
 			preserved: func(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error) {
 				if calls++; calls == 2 { // the first call digests the source, the second verifies
 					cancel()
 					return nil, ctx.Err()
 				}
 				return honest(ctx, src, size)
-			}})
+			},
+		})
 		err := WriteContext(ctx, path, edit, WithInPlace())
 		if !errors.Is(err, context.Canceled) || !errors.Is(err, ErrVerifyFailed) {
 			t.Errorf("err = %v, want context.Canceled and ErrVerifyFailed", err)

@@ -928,10 +928,14 @@ func TestParse_ReplayGain(t *testing.T) {
 		data []byte
 		want types.ReplayGainInfo
 	}{
-		{"vorbis", createMinimalOgg("T", "A", "B", "replaygain_track_gain=-6.50 dB", "REPLAYGAIN_TRACK_PEAK=0.5"),
-			types.ReplayGainInfo{TrackGain: -6.5, TrackPeak: 0.5}},
-		{"opus R128", createMinimalOpus("T", "A", "B", "R128_TRACK_GAIN=-1280", "REPLAYGAIN_TRACK_GAIN=-3 dB"),
-			types.ReplayGainInfo{TrackGain: 0}},
+		{
+			"vorbis", createMinimalOgg("T", "A", "B", "replaygain_track_gain=-6.50 dB", "REPLAYGAIN_TRACK_PEAK=0.5"),
+			types.ReplayGainInfo{TrackGain: -6.5, TrackPeak: 0.5},
+		},
+		{
+			"opus R128", createMinimalOpus("T", "A", "B", "R128_TRACK_GAIN=-1280", "REPLAYGAIN_TRACK_GAIN=-3 dB"),
+			types.ReplayGainInfo{TrackGain: 0},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

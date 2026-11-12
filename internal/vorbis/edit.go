@@ -151,10 +151,16 @@ type numberKeys struct {
 }
 
 var (
-	trackKeys = numberKeys{"TRACKNUMBER", []string{"TRACKTOTAL", "TOTALTRACKS"},
-		func(t *types.Tags) (int, int) { return t.TrackNumber, t.TrackTotal }}
-	discKeys = numberKeys{"DISCNUMBER", []string{"DISCTOTAL", "TOTALDISCS"},
-		func(t *types.Tags) (int, int) { return t.DiscNumber, t.DiscTotal }}
+	trackKeys = numberKeys{
+		"TRACKNUMBER",
+		[]string{"TRACKTOTAL", "TOTALTRACKS"},
+		func(t *types.Tags) (int, int) { return t.TrackNumber, t.TrackTotal },
+	}
+	discKeys = numberKeys{
+		"DISCNUMBER",
+		[]string{"DISCTOTAL", "TOTALDISCS"},
+		func(t *types.Tags) (int, int) { return t.DiscNumber, t.DiscTotal },
+	}
 )
 
 // numberKeysFor returns the keys of a track or disc field and whether f is

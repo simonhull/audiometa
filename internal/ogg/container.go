@@ -135,8 +135,11 @@ func (s *pageStream) header(off int64) (fixed [27]byte, err error) {
 		what      string
 		at, bytes int
 	}{
-		{"header type", 5, 1}, {"granule position", 6, 8}, {"serial number", 14, 4},
-		{"sequence number", 18, 4}, {"segment count", 26, 1},
+		{"header type", 5, 1},
+		{"granule position", 6, 8},
+		{"serial number", 14, 4},
+		{"sequence number", 18, 4},
+		{"segment count", 26, 1},
 	} {
 		if err := s.check(f.what, off+int64(f.at), f.bytes); err != nil {
 			return fixed, err

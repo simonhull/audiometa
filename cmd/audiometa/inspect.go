@@ -101,14 +101,26 @@ func tagRows(t *audiometa.Tags) []row {
 		return fmt.Sprintf("%d/%d", n, total)
 	}
 	return []row{
-		{"Title", t.Title}, {"Subtitle", t.Subtitle},
-		{"Artist", t.Artist}, {"Album", t.Album}, {"Album Artist", t.AlbumArtist},
-		{"Narrator", t.Narrator}, {"Composers", strings.Join(t.Composers, ", ")},
-		{"Genres", strings.Join(t.Genres, ", ")}, {"Year", num(t.Year)}, {"Date", t.Date},
-		{"Track", of(t.TrackNumber, t.TrackTotal)}, {"Disc", of(t.DiscNumber, t.DiscTotal)},
-		{"Series", t.Series}, {"Series Part", t.SeriesPart}, {"Grouping", t.Grouping},
-		{"Publisher", t.Publisher}, {"Language", t.Language},
-		{"ISBN", t.ISBN}, {"ASIN", t.ASIN}, {"Comment", t.Comment},
+		{"Title", t.Title},
+		{"Subtitle", t.Subtitle},
+		{"Artist", t.Artist},
+		{"Album", t.Album},
+		{"Album Artist", t.AlbumArtist},
+		{"Narrator", t.Narrator},
+		{"Composers", strings.Join(t.Composers, ", ")},
+		{"Genres", strings.Join(t.Genres, ", ")},
+		{"Year", num(t.Year)},
+		{"Date", t.Date},
+		{"Track", of(t.TrackNumber, t.TrackTotal)},
+		{"Disc", of(t.DiscNumber, t.DiscTotal)},
+		{"Series", t.Series},
+		{"Series Part", t.SeriesPart},
+		{"Grouping", t.Grouping},
+		{"Publisher", t.Publisher},
+		{"Language", t.Language},
+		{"ISBN", t.ISBN},
+		{"ASIN", t.ASIN},
+		{"Comment", t.Comment},
 	}
 }
 
