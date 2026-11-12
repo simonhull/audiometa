@@ -22,7 +22,8 @@ func TestDimensions(t *testing.T) {
 		{"png IHDR", png, "image/png", 512, 384},
 		{"png bad signature", append([]byte{0x00}, png[1:]...), "image/png", 0, 0},
 		{"png truncated", png[:20], "image/png", 0, 0},
-		{"gif has no dimensions", []byte("GIF89a\x01\x00\x01\x00"), "image/gif", 0, 0},
+		{"gif logical screen", []byte("GIF89a\x03\x00\x02\x00"), "image/gif", 3, 2},
+		{"gif truncated", []byte("GIF89a\x01\x00"), "image/gif", 0, 0},
 		{"empty", nil, "image/jpeg", 0, 0},
 	}
 	for _, tc := range tests {

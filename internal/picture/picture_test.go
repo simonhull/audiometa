@@ -86,7 +86,7 @@ func TestDecodeClampsDimensions(t *testing.T) {
 func TestEncodeRoundTrip(t *testing.T) {
 	t.Parallel()
 	for _, a := range []types.Artwork{
-		{Type: types.ArtworkFrontCover, MIMEType: "image/jpeg", Data: []byte{0xFF, 0xD8}, Width: 10, Height: 20},
+		{Type: types.ArtworkFrontCover, MIMEType: "image/png", Data: rgbPNG(), Width: 10, Height: 20},
 		{Type: types.ArtworkPublisherLogotype, MIMEType: "image/png", Description: "logo é", Data: []byte("png")},
 		{Type: types.ArtworkOther, Data: nil},
 	} {
