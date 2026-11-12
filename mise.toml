@@ -48,7 +48,7 @@ description = "govulncheck at the pinned version (needs network)"
 run = "govulncheck ./..."
 
 [tasks.write-gate]
-description = "Write gate: corpus round-trip, external oracles (ffmpeg, ffprobe, flac) and 120 s write fuzzing"
+description = "Write gate: corpus round-trip, external oracles (ffmpeg, ffprobe, flac; ogginfo and opusinfo when installed) and 120 s write fuzzing"
 env = { AUDIOMETA_REQUIRE_ORACLES = "1" }
 run = [
   "go test -race -count=1 -run 'WriteRoundTrip|AudioDigest|Example' .",

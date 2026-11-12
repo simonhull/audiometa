@@ -123,11 +123,15 @@ jobs:
     - name: Install tools
       uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5.2.7
 
+    # ogginfo and opusinfo check page sequence numbers and checksums, which ffmpeg does
+    # not; apt installs them because mise has no pinned build of vorbis-tools or opus-tools.
     - name: Install oracles
-      run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg flac
+      run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg flac vorbis-tools opus-tools
 
     - name: Write gate
       run: mise run write-gate
+      env:
+        AUDIOMETA_REQUIRE_OGG_ORACLES: "1"
 
     - name: Upload fuzz crashers
       if: failure()

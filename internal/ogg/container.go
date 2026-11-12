@@ -1,10 +1,11 @@
-// Package ogg parses Ogg Vorbis and Opus files.
+// Package ogg parses and rewrites the tags of Ogg Vorbis and Opus files.
 //
 // It walks Ogg pages, reassembles the identification and comment header
 // packets, reads Vorbis comments (including CHAPTER comments and
 // METADATA_BLOCK_PICTURE artwork) and derives duration from the last granule
 // position of the first logical stream. It registers itself for
-// [types.FormatOgg] and [types.FormatOpus].
+// [types.FormatOgg] and [types.FormatOpus], as a parser, an audio digester and
+// a tag writer that replaces the comment header and re-pages it.
 package ogg
 
 import (
