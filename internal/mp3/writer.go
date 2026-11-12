@@ -49,26 +49,6 @@ func (w *writer) WithID3v1(mode registry.ID3v1Mode) registry.TagWriter {
 	return &c
 }
 
-// trailer returns the ID3v1 trailer a write puts after the audio ending at
-// end, and whether that differs from the trailer src has there: nil, true for
-// ID3v1Remove, the rewritten trailer for ID3v1Update, the existing one
-// otherwise. Without edits.Final, ID3v1Update keeps the trailer.
-func (w *writer) trailer(sr *binutil.SafeReader, end int64, edits *types.EditSet) (out []byte, changed bool, err error) {
-	var old [id3v1Size]byte
-	if err := sr.ReadAt(old[:], end, "ID3v1 tag"); err != nil {
-		return nil, false, err
-	}
-	switch {
-	case w.id3v1 == registry.ID3v1Remove:
-		return nil, true, nil
-	case w.id3v1 == registry.ID3v1Update && edits.Final != nil:
-		enc := encodeID3v1(edits.Final, old)
-		return enc[:], enc != old, nil
-	default:
-		return old[:], false, nil
-	}
-}
-
 // ChangesTrailer reports whether WriteFile would write a different ID3v1
 // trailer than src has.
 func (w *writer) ChangesTrailer(ctx context.Context, src io.ReaderAt, size int64, edits *types.EditSet) (bool, error) {
@@ -197,6 +177,26 @@ func (w *writer) InPlacePatch(ctx context.Context, src io.ReaderAt, size int64, 
 		return nil, nil
 	}
 	return &registry.Patch{Data: tag}, nil
+}
+
+// trailer returns the ID3v1 trailer a write puts after the audio ending at
+// end, and whether that differs from the trailer src has there: nil, true for
+// ID3v1Remove, the rewritten trailer for ID3v1Update, the existing one
+// otherwise. Without edits.Final, ID3v1Update keeps the trailer.
+func (w *writer) trailer(sr *binutil.SafeReader, end int64, edits *types.EditSet) (out []byte, changed bool, err error) {
+	var old [id3v1Size]byte
+	if err := sr.ReadAt(old[:], end, "ID3v1 tag"); err != nil {
+		return nil, false, err
+	}
+	switch {
+	case w.id3v1 == registry.ID3v1Remove:
+		return nil, true, nil
+	case w.id3v1 == registry.ID3v1Update && edits.Final != nil:
+		enc := encodeID3v1(edits.Final, old)
+		return enc[:], enc != old, nil
+	default:
+		return old[:], false, nil
+	}
 }
 
 // buildTag reads the source tag, refuses DRM, applies edits and serializes

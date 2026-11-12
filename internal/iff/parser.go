@@ -25,21 +25,6 @@ type parser struct {
 	format types.Format
 }
 
-// open walks the container and checks that it holds the parser's format.
-func (p *parser) open(ctx context.Context, r io.ReaderAt, size int64, path string) (*container, error) {
-	sr := binutil.NewSafeReader(r, size, path)
-	c, err := walk(ctx, sr, size)
-	if err != nil {
-		return nil, err
-	}
-	wav := c.formType == formWAVE && c.magic != magicFORM
-	aiff := (c.formType == formAIFF || c.formType == formAIFC) && c.magic == magicFORM
-	if (p.format == types.FormatWAV && !wav) || (p.format == types.FormatAIFF && !aiff) {
-		return nil, corrupted(sr, 0, fmt.Sprintf("%s %s is not a %s file", c.magic, c.formType, p.format))
-	}
-	return c, nil
-}
-
 // id3 returns a reader over the payload of the ID3v2 chunk, and its size.
 // WAV files use "id3 " or "ID3 ", AIFF files "ID3 ".
 func (c *container) id3(r io.ReaderAt) (*io.SectionReader, bool) {
@@ -72,14 +57,6 @@ func (c *container) hasText() bool {
 		return c.infoIndex() >= 0
 	}
 	return slices.ContainsFunc(c.chunks, func(ch chunk) bool { return isAIFFText(ch.id) })
-}
-
-// textKind is the kind of the native text tags of the parser's format.
-func (p *parser) textKind() types.TagKind {
-	if p.format == types.FormatAIFF {
-		return types.TagAIFFText
-	}
-	return types.TagRIFFInfo
 }
 
 // Parse reads the audio properties and the tags.
@@ -133,6 +110,29 @@ func (p *parser) ExtractArtwork(ctx context.Context, r io.ReaderAt, size int64, 
 		return nil, nil
 	}
 	return mp3.EmbeddedArtwork(ctx, tag, tag.Size(), path)
+}
+
+// open walks the container and checks that it holds the parser's format.
+func (p *parser) open(ctx context.Context, r io.ReaderAt, size int64, path string) (*container, error) {
+	sr := binutil.NewSafeReader(r, size, path)
+	c, err := walk(ctx, sr, size)
+	if err != nil {
+		return nil, err
+	}
+	wav := c.formType == formWAVE && c.magic != magicFORM
+	aiff := (c.formType == formAIFF || c.formType == formAIFC) && c.magic == magicFORM
+	if (p.format == types.FormatWAV && !wav) || (p.format == types.FormatAIFF && !aiff) {
+		return nil, corrupted(sr, 0, fmt.Sprintf("%s %s is not a %s file", c.magic, c.formType, p.format))
+	}
+	return c, nil
+}
+
+// textKind is the kind of the native text tags of the parser's format.
+func (p *parser) textKind() types.TagKind {
+	if p.format == types.FormatAIFF {
+		return types.TagAIFFText
+	}
+	return types.TagRIFFInfo
 }
 
 func init() {

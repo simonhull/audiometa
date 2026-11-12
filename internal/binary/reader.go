@@ -131,25 +131,6 @@ func (sr *SafeReader) ReadAt(b []byte, off int64, what string) error {
 	return nil
 }
 
-// fill loads the window starting at off. It reports false (and leaves the window
-// empty) on any error or short read, so the caller can fall back to a direct read.
-func (sr *SafeReader) fill(off int64) bool {
-	if sr.win == nil {
-		sr.win = make([]byte, windowSize)
-	}
-	n := int64(windowSize)
-	if rest := sr.size - off; rest < n {
-		n = rest
-	}
-	got, err := sr.r.ReadAt(sr.win[:n], off)
-	if (err != nil && !errors.Is(err, io.EOF)) || int64(got) < n {
-		sr.winLen = 0
-		return false
-	}
-	sr.winOff, sr.winLen = off, got
-	return true
-}
-
 // MaxAllocBytes is the absolute ceiling on any single length/count-driven
 // allocation, regardless of file size. Real audio metadata blocks are far
 // smaller; this rejects crafted files that declare implausible sizes.
@@ -185,4 +166,23 @@ type Integer interface {
 //	size, err := sr.Read[uint32](offset, "atom size")
 func (sr *SafeReader) Read[T Integer](off int64, what string) (T, error) {
 	return sr.ReadEndian[T](off, what, BigEndian)
+}
+
+// fill loads the window starting at off. It reports false (and leaves the window
+// empty) on any error or short read, so the caller can fall back to a direct read.
+func (sr *SafeReader) fill(off int64) bool {
+	if sr.win == nil {
+		sr.win = make([]byte, windowSize)
+	}
+	n := int64(windowSize)
+	if rest := sr.size - off; rest < n {
+		n = rest
+	}
+	got, err := sr.r.ReadAt(sr.win[:n], off)
+	if (err != nil && !errors.Is(err, io.EOF)) || int64(got) < n {
+		sr.winLen = 0
+		return false
+	}
+	sr.winOff, sr.winLen = off, got
+	return true
 }

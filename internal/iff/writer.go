@@ -70,56 +70,6 @@ func (w *writer) WriteFile(ctx context.Context, out io.Writer, src io.ReaderAt, 
 	return rw.emit(ctx, out, src)
 }
 
-// open walks src and refuses a container a rewrite could damage.
-func (w *writer) open(ctx context.Context, src io.ReaderAt, size int64) (*container, error) {
-	c, err := (&parser{format: w.format}).open(ctx, src, size, "")
-	if err != nil {
-		return nil, err
-	}
-	if c.broken {
-		return nil, corrupted(c.sr, 0, "chunks are cut short or unreadable; the file cannot be rewritten safely")
-	}
-	return c, nil
-}
-
-// plan applies edits to the source's tags.
-func (w *writer) plan(ctx context.Context, c *container, src io.ReaderAt, edits *types.EditSet) (*rewrite, error) {
-	text, _, err := c.text()
-	if err != nil {
-		return nil, err
-	}
-	rw := newRewrite(c)
-	id3Edits := &types.EditSet{Fields: edits.Fields, Artwork: edits.Artwork, Orig: edits.Orig, Final: edits.Final}
-	textKeys := map[string]bool{}
-	for _, e := range edits.Keys {
-		if !w.isTextKey(e.Key, text) {
-			id3Edits.Keys = append(id3Edits.Keys, e)
-			continue
-		}
-		if err := checkText(e.Key, e.Values); err != nil {
-			return nil, err
-		}
-		var changed bool
-		text, changed = setEntries(text, e.Key, e.Values)
-		rw.textEdited = rw.textEdited || changed
-		textKeys[e.Key] = true
-	}
-
-	if err := rw.editID3(ctx, src, id3Edits); err != nil {
-		return nil, err
-	}
-	if rw.textAt >= 0 && len(edits.Fields) > 0 {
-		if text, err = rw.mirror(ctx, w.format, text, edits.Fields, textKeys); err != nil {
-			return nil, err
-		}
-	}
-	if rw.textEdited && c.infoDamaged {
-		return nil, corrupted(c.sr, 0, "LIST/INFO chunk holds an unreadable subchunk; its text cannot be rewritten without losing it")
-	}
-	rw.text = text
-	return rw, nil
-}
-
 // newRewrite locates the tag chunks of c.
 func newRewrite(c *container) *rewrite {
 	rw := &rewrite{c: c, id3ID: idID3WAV, id3At: -1, textAt: -1, infoAt: c.infoIndex()}
@@ -164,14 +114,6 @@ func (rw *rewrite) isText(i int) bool {
 		return isAIFFText(rw.c.chunks[i].id)
 	}
 	return i == rw.infoAt
-}
-
-// isTextKey reports whether a raw key edit goes to the native text tags.
-func (w *writer) isTextKey(key string, text []entry) bool {
-	if w.format == types.FormatAIFF {
-		return isAIFFText(key)
-	}
-	return infoIDs[key] || has(text, key)
 }
 
 // checkText refuses a native text value a reader would cut short.
@@ -510,4 +452,62 @@ func (w *writer) PreservedDigest(ctx context.Context, src io.ReaderAt, size int6
 		return nil, err
 	}
 	return h.Sum(nil), nil
+}
+
+// open walks src and refuses a container a rewrite could damage.
+func (w *writer) open(ctx context.Context, src io.ReaderAt, size int64) (*container, error) {
+	c, err := (&parser{format: w.format}).open(ctx, src, size, "")
+	if err != nil {
+		return nil, err
+	}
+	if c.broken {
+		return nil, corrupted(c.sr, 0, "chunks are cut short or unreadable; the file cannot be rewritten safely")
+	}
+	return c, nil
+}
+
+// plan applies edits to the source's tags.
+func (w *writer) plan(ctx context.Context, c *container, src io.ReaderAt, edits *types.EditSet) (*rewrite, error) {
+	text, _, err := c.text()
+	if err != nil {
+		return nil, err
+	}
+	rw := newRewrite(c)
+	id3Edits := &types.EditSet{Fields: edits.Fields, Artwork: edits.Artwork, Orig: edits.Orig, Final: edits.Final}
+	textKeys := map[string]bool{}
+	for _, e := range edits.Keys {
+		if !w.isTextKey(e.Key, text) {
+			id3Edits.Keys = append(id3Edits.Keys, e)
+			continue
+		}
+		if err := checkText(e.Key, e.Values); err != nil {
+			return nil, err
+		}
+		var changed bool
+		text, changed = setEntries(text, e.Key, e.Values)
+		rw.textEdited = rw.textEdited || changed
+		textKeys[e.Key] = true
+	}
+
+	if err := rw.editID3(ctx, src, id3Edits); err != nil {
+		return nil, err
+	}
+	if rw.textAt >= 0 && len(edits.Fields) > 0 {
+		if text, err = rw.mirror(ctx, w.format, text, edits.Fields, textKeys); err != nil {
+			return nil, err
+		}
+	}
+	if rw.textEdited && c.infoDamaged {
+		return nil, corrupted(c.sr, 0, "LIST/INFO chunk holds an unreadable subchunk; its text cannot be rewritten without losing it")
+	}
+	rw.text = text
+	return rw, nil
+}
+
+// isTextKey reports whether a raw key edit goes to the native text tags.
+func (w *writer) isTextKey(key string, text []entry) bool {
+	if w.format == types.FormatAIFF {
+		return isAIFFText(key)
+	}
+	return infoIDs[key] || has(text, key)
 }
