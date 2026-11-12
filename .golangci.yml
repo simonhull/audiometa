@@ -164,6 +164,15 @@ linters:
       # an upper bound, not a length guarantee.
       - linters: [makezero]
         path: _test\.go
+      # The examples are CLI demos whose output is fmt.Print*.
+      - linters: [forbidigo]
+        path: ^examples/
+      # InPlacePatch returns (nil, nil) for "this edit does not fit in place, rewrite instead"
+      # on purpose (plan 074, Decision 5): a nil plan is not an error, and a sentinel would
+      # make every caller unwrap it again.
+      - linters: [nilnil]
+        path: ^internal/(flac|m4a|mp3|ogg)/writer\.go$
+        source: 'return nil, nil'
       # Map keys with trailing spaces are part of the audio format spec (4-char atom names)
       - linters: [gocritic]
         text: "mapKey: suspicious whitespace"
