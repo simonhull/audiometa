@@ -142,5 +142,5 @@ func parseDigits(s string, width int) (int, error) {
 			return 0, errNotDigits
 		}
 	}
-	return strconv.Atoi(s)
+	return strconv.Atoi(s) //nolint:wrapcheck // strconv.Atoi names the input it rejected
 }

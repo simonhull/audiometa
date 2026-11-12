@@ -204,7 +204,7 @@ func WriteContext(ctx context.Context, path string, edit func(f *File) error, op
 
 // withID3v1Mode returns tw set to apply mode to an ID3v1 trailer, or tw itself
 // when its format has none.
-func withID3v1Mode(tw registry.TagWriter, mode ID3v1Mode) registry.TagWriter {
+func withID3v1Mode(tw registry.TagWriter, mode ID3v1Mode) registry.TagWriter { //nolint:ireturn // the seam returns the registered implementation
 	if c, ok := tw.(registry.ID3v1Configurer); ok {
 		return c.WithID3v1(mode)
 	}
@@ -482,7 +482,7 @@ func verifyParsed(ctx context.Context, r io.ReaderAt, size int64, labelPath stri
 
 // writerFor returns the registered writer for format, or an error wrapping
 // ErrUnsupportedWrite.
-func writerFor(format Format) (registry.TagWriter, error) {
+func writerFor(format Format) (registry.TagWriter, error) { //nolint:ireturn // the seam returns the registered implementation
 	tw := lookupWriter(format)
 	if tw == nil {
 		return nil, fmt.Errorf("%w: no writer for %s files", ErrUnsupportedWrite, format)

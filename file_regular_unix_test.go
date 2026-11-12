@@ -78,7 +78,7 @@ func TestOpenFlags_DoNotBlockOnFIFO(t *testing.T) {
 		if err == nil {
 			_ = f.Close()
 		}
-		return err
+		return err //nolint:wrapcheck // test helper returns the error for the test to report
 	})
 	if err != nil {
 		t.Errorf("open with openFlags: %v", err)

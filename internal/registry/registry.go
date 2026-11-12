@@ -40,7 +40,7 @@ func Register(format types.Format, parser FormatParser) {
 
 // Get returns the parser for a given format.
 // Returns nil if no parser is registered for the format.
-func Get(format types.Format) FormatParser {
+func Get(format types.Format) FormatParser { //nolint:ireturn // the seam returns the registered implementation
 	mu.RLock()
 	defer mu.RUnlock()
 	return parsers[format]

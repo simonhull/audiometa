@@ -68,7 +68,7 @@ linters:
     funlen:
       # Binary-format parsers read many fields in sequence; the defaults (60 lines, 40
       # statements) split them into fragments that read worse than the sequence.
-      lines: 80
+      lines: 100
       statements: 50
     gocritic:
       disabled-checks:
@@ -120,6 +120,13 @@ linters:
         - errors.Join(
         - (context.Context).Err()
         - .Err()
+        # io.Reader, io.ReaderAt, io.Writer and io.Closer wrappers and fakes must pass io.EOF
+        # and the underlying error through unchanged; callers compare them with errors.Is.
+        - .ReadAt(
+        - .Write(
+        - .WriteAt(
+        - .Close()
+        - .Sync()
     revive:
       enable-all-rules: false
       rules:
@@ -198,6 +205,14 @@ linters:
       # an upper bound, not a length guarantee.
       - linters: [makezero]
         path: _test\.go
+      # The CLI is the program edge: it prints the error it receives, and wrapping would change
+      # the text users and scripts see.
+      - linters: [wrapcheck]
+        path: ^cmd/audiometa/
+      # Chapter's JSON tags are part of its public encoding, and the oracle test decodes
+      # ffprobe's snake_case output; neither can follow a case convention.
+      - linters: [tagliatelle]
+        path: ^(internal/types/chapter\.go|write_oracle_test\.go)$
       # The CLI's JSON field names are its output format: renaming them to satisfy a case
       # convention would change what scripts parse.
       - linters: [tagliatelle]

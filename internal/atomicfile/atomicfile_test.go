@@ -253,10 +253,10 @@ func TestReplace_RenameFails(t *testing.T) {
 	path := writeOriginal(t, 0o644)
 	err := Replace(path, writeBytes([]byte("new")), Options{BeforeRename: func() error {
 		if err := os.Remove(path); err != nil {
-			return err
+			return err //nolint:wrapcheck // test helper returns the error for the test to report
 		}
 		if err := os.Mkdir(path, 0o755); err != nil {
-			return err
+			return err //nolint:wrapcheck // test helper returns the error for the test to report
 		}
 		return os.WriteFile(filepath.Join(path, "x"), nil, 0o644)
 	}})
@@ -292,7 +292,7 @@ func TestReplace_RemoveTempFails(t *testing.T) {
 	boom := errors.New("boom")
 	err := Replace(path, func(io.Writer) error {
 		if err := os.Chmod(dir, 0o555); err != nil {
-			return err
+			return err //nolint:wrapcheck // test helper returns the error for the test to report
 		}
 		return boom
 	}, Options{})

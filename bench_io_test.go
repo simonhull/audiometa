@@ -70,12 +70,12 @@ func ioFixtures(tb testing.TB) []ioFixture {
 func openForBench(path string) (*parsedFile, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, err //nolint:wrapcheck // test helper returns the error for the test to report
 	}
 	defer f.Close()
 	st, err := f.Stat()
 	if err != nil {
-		return nil, err
+		return nil, err //nolint:wrapcheck // test helper returns the error for the test to report
 	}
 	return openReader(context.Background(), f, st.Size(), path)
 }

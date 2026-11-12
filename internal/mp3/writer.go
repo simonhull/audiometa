@@ -43,7 +43,7 @@ type writer struct {
 
 // WithID3v1 returns a copy of w that applies mode to an existing ID3v1
 // trailer.
-func (w *writer) WithID3v1(mode registry.ID3v1Mode) registry.TagWriter {
+func (w *writer) WithID3v1(mode registry.ID3v1Mode) registry.TagWriter { //nolint:ireturn // the seam returns the registered implementation
 	c := *w
 	c.id3v1 = mode
 	return &c

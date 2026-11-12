@@ -502,7 +502,7 @@ type ArtworkExtractor = registry.ArtworkExtractor
 // findParser returns the parser for a given format.
 //
 // Returns nil if no parser is registered for the format.
-func findParser(format types.Format) FormatParser {
+func findParser(format types.Format) FormatParser { //nolint:ireturn // the seam returns the registered implementation
 	return registry.Get(format)
 }
 
