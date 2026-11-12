@@ -57,3 +57,5 @@ changelog:
   filters:
     exclude:
       - '^(📝|:memo:|✅|:white_check_mark:|👷|:construction_worker:|🔧|🤖|docs:|test:|ci:|chore:)'
+      - '^(🔖|:bookmark:)'
+      - '^Merge (pull request|branch)'

@@ -4,9 +4,10 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/simonhull/audiometa)](https://goreportcard.com/report/github.com/simonhull/audiometa)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-audiometa is a fast, format-agnostic audio metadata reader for Go. One call reads tags,
+audiometa is a fast, format-agnostic audio metadata library for Go. One call reads tags,
 technical audio properties, chapters and embedded artwork from FLAC, MP3, M4A/M4B,
-Ogg Vorbis, Opus, WAV and AIFF files, with first-class support for audiobooks.
+Ogg Vorbis, Opus, WAV and AIFF files, and it writes tags and artwork back to every one of
+those formats except Ogg Vorbis and Opus, with first-class support for audiobooks.
 
 ## Why audiometa?
 There are several really great tagging libraries for Go. With special thanks to David Howden and his excellent [Tag](https://github.com/dhowden/tag) Library.
@@ -21,6 +22,9 @@ AudioMeta includes the following:
 - **💪 Robust**: graceful degradation with warnings; bounds-checked reads, allocation caps and panic recovery for hostile files
 - **📦 Format Support**: FLAC, MP3, M4A/M4B, Ogg Vorbis, Opus, WAV, AIFF
 - **🔍 Complete Metadata**: tags, raw tags, technical info, artwork and chapters in every supported format
+- **✍️ Writing**: edit tags and artwork with `Write` (verified atomic replace, or in place with `WithInPlace`) or stream an edited copy with `File.WriteTo`
+- **🔐 Audio digest**: a SHA-256 of the audio alone that survives retagging and renames
+- **🔊 ReplayGain**: track and album gain and peak from every format's tags, including Opus R128
 
 ## Quick Start
 
@@ -118,12 +122,12 @@ with `errors.Is` / `errors.As` (or `errors.AsType`):
 | Error | When |
 |-------|------|
 | `*os.PathError` (e.g. `fs.ErrNotExist`) | the file cannot be opened |
-| `*audiometa.UnsupportedFormatError` | unknown format or unreadable header |
+| `*audiometa.UnsupportedFormatError` | unknown format, unreadable header, or a path that is not a regular file |
 | `*audiometa.CorruptedFileError` | invalid container structure, or a recovered parser panic |
 | `*audiometa.OutOfBoundsError` | a required read runs past the end of the file (truncation, corrupt length) |
 | `context.Canceled` / `context.DeadlineExceeded` | the context passed to `OpenContext` / `OpenMany` is done |
 
-### Options
+### Open options
 
 ```go
 file, err := audiometa.Open("song.flac",
@@ -138,6 +142,8 @@ file, err := audiometa.Open("song.flac",
 | `WithIgnoreWarnings()` | discard warnings (`file.Warnings` stays empty) |
 | `WithArtworkPreload()` | read artwork during `Open` instead of on first `ExtractArtwork` |
 | `WithMaxArtworkSize(n)` | drop images larger than `n` bytes from `ExtractArtwork`, with a warning |
+
+Write options are listed under [Write options](#write-options).
 
 ### Cancellation and Batches
 
@@ -172,6 +178,7 @@ file.Audio.SampleRate
 file.Audio.BitDepth
 file.Audio.Bitrate
 file.Audio.Lossless
+file.Audio.Container // "MP4", "Ogg", "FLAC", "MP3", "WAV", "RF64", "AIFF" or "AIFF-C"
 file.Audio.ReplayGain // *ReplayGainInfo, nil if absent
 
 // Audiobook-specific (filled only from explicit tags, never inferred)
@@ -292,6 +299,34 @@ f.Tags.Series = "The Stormlight Archive"
 _, err := f.WriteTo(w) // any io.Writer; WriteToContext takes a context
 ```
 
+`WriteContext` and `File.WriteToContext` are the same calls bounded by a `context`: when it is
+done they stop and return an error wrapping `ctx.Err()`, and the original file is untouched.
+`Write` and `Open` refuse anything but a regular file.
+
+### Write options
+
+| Option | Effect |
+|--------|--------|
+| `WithInPlace()` | overwrite the metadata region of the file when the edit fits the space already reserved for it (for example ID3v2 or FLAC padding), instead of rewriting the whole file; a hint that falls back to the atomic rewrite when the edit does not fit, the format cannot patch in place, or the file is read-only; not crash-atomic (the audio is never touched), and a failed verification restores the overwritten bytes and the modification time |
+| `WithPreserveModTime()` | keep the file's modification time instead of setting the time of the write |
+
+### Write errors
+
+Match these with `errors.Is`; they are always wrapped with detail.
+
+| Error | When |
+|-------|------|
+| `ErrUnsupportedWrite` | the format has no writer (Ogg Vorbis, Opus), an edit cannot be represented in the format, or chapters were changed |
+| `ErrDRMProtected` | the file is encrypted or DRM-protected; such files are never rewritten |
+| `ErrTagTooLarge` | the metadata would exceed a limit of the format (16 MiB for a FLAC metadata block, 256 MiB for an ID3v2 tag) |
+| `ErrConflictingEdits` | a typed field and the raw key it is read from were changed to different values, `Artist` disagrees with the first of `Artists`, or `Year` disagrees with the year of `Date` |
+| `ErrInvalidArtwork` | `AddArtwork` or `ReplaceArtwork` got an image with no data, an invalid type or description, or an undetectable MIME type |
+| `ErrConcurrentModification` | the file changed on disk between `Write` opening it and replacing it |
+| `ErrVerifyFailed` | the new file did not pass verification (it must parse, with identical audio and chapters); the original is left as it was |
+
+`WriteContext`, `File.WriteToContext` and `File.AudioDigestContext` return errors wrapping
+`ctx.Err()` (`context.Canceled` or `context.DeadlineExceeded`) when their context is done.
+
 - **Only what you change is written.** audiometa never infers one field from another, on
   read or on write: only the keys and fields you set or delete change. Writing `Narrator`
   leaves the composer alone, and setting `Series` does not rewrite the grouping.
@@ -303,14 +338,16 @@ _, err := f.WriteTo(w) // any io.Writer; WriteToContext takes a context
   byte for byte.
 - **Chapters** are preserved but not editable: they stay as they are, and an edit that
   targets chapter data returns `ErrUnsupportedWrite`.
-- **ID3.** v2.3 stays v2.3, v2.4 stays v2.4, and v2.2 or untagged files get v2.4. An existing
+- **ID3.** A `Year` outside 1900-2100 is refused with `ErrUnsupportedWrite` (an ID3 tag cannot
+  hold it, and it would read back as 0). v2.3 stays v2.3, v2.4 stays v2.4, and v2.2 or untagged files get v2.4. An existing
   ID3v1 trailer is copied verbatim: it is never updated, added or removed. After deleting
   `TIT2`, a reader that falls back to ID3v1 can show the stale ID3v1 title. v2.3 accepts the
   sort frames `TSOT`, `TSOA` and `TSOP`, as iTunes writes them; other v2.4-only frames are
   refused there.
 - **Editing.** Change `f.Tags` fields directly, or use `Tags.Set` and `Tags.Delete` with
   format-native keys. Editing a field and its native key to different values returns
-  `ErrConflictingEdits`. An empty key returns `ErrUnsupportedWrite`, and so does an MP3 key
+  `ErrConflictingEdits`. `Tags.Merge` fills the gaps in a `Tags` from another and never
+  overwrites a value the file already has. An empty key returns `ErrUnsupportedWrite`, and so does an MP3 key
   naming an ID3v2 frame that is not a writable text frame (`APIC`, `COMM`, `USLT`, lower-case
   `tit2`), unless the file already has a `TXXX` of that description. Write lyrics through
   `Tags.Lyrics`: on MP3 that keeps the frame's language and description, and a new frame gets
@@ -345,7 +382,7 @@ Typed fields a format has no native place for return `ErrUnsupportedWrite`:
 
 Every writable format is gated in CI: a round-trip over the test corpus (audio bit-identical,
 untouched tags unchanged), an external check of edited files with `ffprobe`, `ffmpeg` and
-`flac -t`, and a fuzz target that applies random edits.
+`flac -t`, and fuzz targets that apply random edits (`FuzzWriteRoundTrip`, `FuzzWriteFLAC`).
 
 ## Robustness
 
@@ -359,14 +396,17 @@ The parsers are written to read untrusted files:
   only up to 1 MiB;
 - a panic inside a parser is recovered and returned as a `*CorruptedFileError`;
 - parse loops check the `context`, so `OpenContext` and `OpenMany` stop promptly;
-- every parser, the writers, format detection and the CLI atom walker have fuzz targets
-  that check results and allocation budgets, and CI fuzzes each on every push.
+- every parser, the writers, format detection, trailing-tag detection and the CLI atom walker
+  have fuzz targets that check results and allocation budgets
+  (`FuzzParseMP3`, `FuzzParseFLAC`, `FuzzParseM4A`, `FuzzParseOgg`, `FuzzParseIFF`,
+  `FuzzWriteRoundTrip`, `FuzzWriteFLAC`, `FuzzDetectFormat`, `FuzzStart`, `FuzzWalkAtoms`),
+  and CI fuzzes each on every push.
 
 ## Examples
 
 Runnable examples with verified output are rendered on
 [pkg.go.dev](https://pkg.go.dev/github.com/simonhull/audiometa#pkg-examples) (source in
-[`example_test.go`](example_test.go)). The [`examples/`](examples/) directory has complete
+[`example_test.go`](example_test.go) and [`example_write_test.go`](example_write_test.go)). The [`examples/`](examples/) directory has complete
 programs:
 
 - **[basic](examples/basic/)**: Simple metadata reading
@@ -378,15 +418,17 @@ programs:
 
 Measured with `go test -run '^$' -bench 'BenchmarkParse|BenchmarkOpenFile' -benchmem -count 6 .`
 on an AMD Ryzen 9 5950X (Linux, Go 1.27.3). The fixtures in `testdata/bench/` are
-10-second audiobook files with a full tag set and 50 chapters. Medians of six runs; the memory column is `Open` on a real file (`BenchmarkOpenFile`):
+10-second audiobook files with a full tag set and 50 chapters. Medians of six runs. The `Open` and memory columns come from `BenchmarkOpenFile`;
+the parse-only and `ReadAt` columns come from `BenchmarkParse`:
 
 | Fixture | `Open` (real file) | Parse only (in memory) | `ReadAt` calls | Memory / allocs per open |
 |---------|-------------------:|-----------------------:|---------------:|-------------------------:|
-| `book.flac` | 22 µs | 11 µs | 1 | 39 KiB / 109 |
-| `book.m4b`  | 27 µs | 21 µs | 1 | 44 KiB / 543 |
-| `book.mp3`  | 43 µs | 33 µs | 4 | 98 KiB / 440 |
-| `book.opus` | 58 µs | 49 µs | 1 | 85 KiB / 444 |
+| `book.flac` | 19 µs | 12 µs | 1 | 39 KiB / 108 |
+| `book.m4b`  | 26 µs | 19 µs | 1 | 45 KiB / 543 |
+| `book.mp3`  | 39 µs | 30 µs | 4 | 98 KiB / 440 |
+| `book.opus` | 58 µs | 50 µs | 1 | 86 KiB / 440 |
 
+The fixtures carry modest tags, so a file with larger tags can need more `ReadAt` calls.
 Numbers depend on the machine and on the files, so treat them as an order of magnitude and
 run the benchmarks on your own hardware. Artwork is not included: it is read only by
 `ExtractArtwork`.
@@ -444,17 +486,27 @@ Requires **Go 1.27+** (the `go` directive in `go.mod`). The only dependency is
 ```
 audiometa/
 ├── *.go              # Public API (file.go, options.go, tags.go, ...)
-├── example_test.go   # Runnable godoc examples
+├── example_test.go   # Runnable godoc examples for reading
+├── example_write_test.go # Runnable godoc examples for writing
 ├── internal/         # Private implementation
+│   ├── atomicfile/   # Atomic temp-file replace
 │   ├── binary/       # Bounds-checked binary reading (SafeReader)
 │   ├── registry/     # Format parser registry
 │   ├── types/        # Shared data types (Tags, AudioInfo, Chapter, ...)
-│   ├── flac/         # FLAC parser
-│   ├── mp3/          # MP3 parser (ID3v2, ID3v1, MPEG frames)
-│   ├── m4a/          # M4A/M4B parser
+│   ├── flac/         # FLAC parser and writer
+│   ├── mp3/          # MP3 parser and writer (ID3v2, ID3v1, MPEG frames)
+│   ├── iff/          # WAV and AIFF parser and writer
+│   ├── m4a/          # M4A/M4B parser and writer
 │   ├── ogg/          # Ogg Vorbis/Opus parser
 │   ├── vorbis/       # Shared Vorbis comment and chapter parsing
-│   └── imagemeta/    # Image type and dimension sniffing
+│   ├── imagemeta/    # Image type and dimension sniffing
+│   ├── picture/      # FLAC PICTURE block encoding and decoding
+│   ├── replaygain/   # ReplayGain values from raw tags
+│   ├── trailer/      # Trailing APEv2, Lyrics3 and ID3v1 tag detection
+│   ├── writeutil/    # Helpers shared by the format writers
+│   ├── testbudget/   # Allocation budgets for tests and fuzz targets
+│   ├── testcorpus/   # Test corpus generator scripts
+│   └── testctx/      # Contexts for testing cancellation
 ├── cmd/audiometa/    # Command-line tool
 ├── examples/         # Example programs
 └── testdata/         # Sample files and benchmark fixtures
@@ -483,11 +535,14 @@ than an optional dependency, following the same pattern as Go's `image` package.
 git clone https://github.com/simonhull/audiometa.git
 cd audiometa
 
-# Install the pinned toolchain (Go, golangci-lint, stringer, goimports)
+# Install the pinned toolchain (Go, golangci-lint, stringer, goimports, govulncheck, goreleaser)
 mise install
 
-# Everything CI checks: build, race tests, lint, vet, gofmt
+# Fast gate: build, race and 32-bit tests, lint, vet, gofmt, tidy, generated code
 mise run check
+
+# Everything CI runs (needs network, ffmpeg, ffprobe and flac)
+mise run ci
 
 # Run all tests (including the godoc examples)
 go test ./...

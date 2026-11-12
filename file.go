@@ -45,8 +45,8 @@ import (
 //
 // [File.ExtractArtwork], [File.ExtractArtworkContext], [File.AudioDigest],
 // [File.AudioDigestContext] and the artwork edit methods are safe for
-// concurrent use. The exported fields are not
-// synchronized; do not modify them while other goroutines use the File.
+// concurrent use. The exported fields are not synchronized; do not modify
+// them while other goroutines use the File.
 type File struct {
 	types.File
 
@@ -483,12 +483,18 @@ func OpenMany(ctx context.Context, paths ...string) ([]*File, error) {
 //
 // It is exported only for backwards compatibility: it refers to internal
 // types, so code outside this module cannot implement it usefully.
+//
+// Deprecated: the built-in parsers are internal; external code cannot
+// implement this interface usefully.
 type FormatParser = registry.FormatParser
 
 // ArtworkExtractor is the optional interface of format parsers that can read
 // embedded artwork.
 //
 // It is exported only for backwards compatibility; see [FormatParser].
+//
+// Deprecated: the built-in parsers are internal; external code cannot
+// implement this interface usefully. See [FormatParser].
 type ArtworkExtractor = registry.ArtworkExtractor
 
 // findParser returns the parser for a given format.

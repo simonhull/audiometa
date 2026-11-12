@@ -268,11 +268,11 @@ var roundTripIFFEdits = []tagEdit{
 	{
 		// A native key is written as native text, never as an ID3 TXXX frame.
 		name:    "set native copyright",
-		apply:   func(f *audiometa.File) error { f.Tags.Set(nativeCopyright[f.Format], "(C) Kitsune"); return nil },
+		apply:   func(f *audiometa.File) error { f.Tags.Set(nativeCopyright[f.Format], "(C) Example"); return nil },
 		formats: iffFormats,
 		check: func(t *testing.T, f *audiometa.File) {
 			key := nativeCopyright[f.Format]
-			if !slices.Equal(f.Tags.Get(key), []string{"(C) Kitsune"}) {
+			if !slices.Equal(f.Tags.Get(key), []string{"(C) Example"}) {
 				t.Errorf("%q = %q", key, f.Tags.Get(key))
 			}
 		},
