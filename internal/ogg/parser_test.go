@@ -17,7 +17,8 @@ func createMinimalOgg(title, artist, album string, extra ...string) []byte {
 	buf := &bytes.Buffer{}
 
 	// Helper to create Ogg page
-	createPage := func(headerType byte, granule int64, serial uint32, sequence uint32, data []byte) {
+	const serial uint32 = 12345
+	createPage := func(headerType byte, granule int64, sequence uint32, data []byte) {
 		// OggS magic
 		buf.WriteString("OggS")
 
@@ -75,7 +76,7 @@ func createMinimalOgg(title, artist, album string, extra ...string) []byte {
 	idHeader.WriteByte(0xB8)                                    // Blocksize info
 	idHeader.WriteByte(0x01)                                    // Framing flag
 
-	createPage(0x02, 0, 12345, 0, idHeader.Bytes()) // BOS flag
+	createPage(0x02, 0, 0, idHeader.Bytes()) // BOS flag
 
 	// Page 1: Comment header
 	commentHeader := &bytes.Buffer{}
@@ -112,7 +113,7 @@ func createMinimalOgg(title, artist, album string, extra ...string) []byte {
 	// Framing bit
 	commentHeader.WriteByte(0x01)
 
-	createPage(0x00, 0, 12345, 1, commentHeader.Bytes())
+	createPage(0x00, 0, 1, commentHeader.Bytes())
 
 	// Page 2: Setup header (empty for test purposes)
 	setupHeader := &bytes.Buffer{}
@@ -120,13 +121,13 @@ func createMinimalOgg(title, artist, album string, extra ...string) []byte {
 	setupHeader.WriteString("vorbis") // Magic
 	setupHeader.WriteByte(0x01)       // Framing
 
-	createPage(0x00, 0, 12345, 2, setupHeader.Bytes())
+	createPage(0x00, 0, 2, setupHeader.Bytes())
 
 	// Page 3: Last page with granule position for duration (1 second at 44.1kHz)
 	lastPage := &bytes.Buffer{}
 	lastPage.Write(make([]byte, 100)) // Dummy audio data
 
-	createPage(0x04, 44100, 12345, 3, lastPage.Bytes()) // EOS flag
+	createPage(0x04, 44100, 3, lastPage.Bytes()) // EOS flag
 
 	return buf.Bytes()
 }

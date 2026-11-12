@@ -40,7 +40,7 @@ func TestExtractArtwork_BadLastPictureStopsScan(t *testing.T) {
 	binary.BigEndian.PutUint32(bad[0:], 3)
 	binary.BigEndian.PutUint32(bad[4:], 4096) // MIME length runs past EOF, so picture.Decode fails
 	data := buildFLAC(
-		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100, 44100)),
+		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100)),
 		flacBlock(true, blockTypePicture, bad),
 		// "Audio" that happens to look like a valid PICTURE block:
 		flacBlock(true, blockTypePicture, picturePayload(3, "image/png", []byte{1, 2, 3})),
@@ -52,7 +52,7 @@ func TestExtractArtwork_BadLastPictureStopsScan(t *testing.T) {
 
 func TestExtractArtwork_AllPictureTypes(t *testing.T) {
 	data := buildFLAC(
-		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100, 44100)),
+		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100)),
 		flacBlock(false, blockTypePicture, picturePayload(3, "image/png", []byte{1})),
 		flacBlock(true, blockTypePicture, picturePayload(8, "image/jpeg", []byte{2})),
 	)
@@ -67,7 +67,7 @@ func TestExtractArtwork_AllPictureTypes(t *testing.T) {
 
 func TestParse_BitrateExcludesMetadata(t *testing.T) {
 	data := buildFLAC(
-		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100, 441000)), // 10 s
+		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(441000)), // 10 s
 		flacBlock(false, blockTypePadding, make([]byte, 50000)),
 		flacBlock(true, blockTypeVorbisComment, vorbisCommentPayload("TITLE=x")),
 		make([]byte, 10000), // "audio"
@@ -93,7 +93,7 @@ func TestParse_BitrateExcludesTrailingTags(t *testing.T) {
 	id3v1 := make([]byte, 128)
 	copy(id3v1, "TAG")
 	data := buildFLAC(
-		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100, 441000)), // 10 s
+		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(441000)), // 10 s
 		flacBlock(false, blockTypePadding, make([]byte, 50000)),
 		flacBlock(true, blockTypeVorbisComment, vorbisCommentPayload("TITLE=x")),
 		make([]byte, 10000), // "audio"
@@ -107,7 +107,7 @@ func TestParse_BitrateExcludesTrailingTags(t *testing.T) {
 }
 
 func TestParse_UnknownTotalSamplesWarns(t *testing.T) {
-	data := buildFLAC(flacBlock(true, blockTypeStreamInfo, streamInfoPayload(44100, 0)))
+	data := buildFLAC(flacBlock(true, blockTypeStreamInfo, streamInfoPayload(0)))
 	file := parseTestFLAC(t, data)
 	if file.Audio.Duration != 0 {
 		t.Errorf("Duration = %v, want 0", file.Audio.Duration)

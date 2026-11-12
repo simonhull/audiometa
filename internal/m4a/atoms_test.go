@@ -290,7 +290,7 @@ func TestDecodeAtomHeader(t *testing.T) {
 }
 
 func TestParse_TopLevelMoovWithSizeZeroRunsToEnd(t *testing.T) {
-	moov := createMockAtom("moov", createMvhdAtom(0, 1000, 10000))
+	moov := createMockAtom("moov", createMvhdAtom(1000, 10000))
 	copy(moov, u32be(0)) // the size field of the last top-level atom, as the format allows
 
 	file := parseBytes(t, append(m4bFtyp(), moov...))

@@ -28,7 +28,7 @@ func TestParse_NoInference(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			data := buildFLAC(
-				flacBlock(false, 0, streamInfoPayload(44100, 44100*10)),
+				flacBlock(false, 0, streamInfoPayload(44100*10)),
 				flacBlock(true, 4, vorbisCommentPayload(tc.comments...)),
 			)
 			file, err := (&parser{}).Parse(context.Background(), bytes.NewReader(data), int64(len(data)), tc.path)

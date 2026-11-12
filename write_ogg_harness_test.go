@@ -23,15 +23,16 @@ type oggPage struct {
 }
 
 // oggPages splits data into pages the way RFC 3533 describes them. It stops at
-// the first byte that does not start a whole page and returns what follows.
-func oggPages(data []byte) (pages []oggPage, tail []byte) { //nolint:nonamedreturns // the names document the results
+// the first byte that does not start a whole page.
+func oggPages(data []byte) []oggPage {
+	var pages []oggPage
 	for off := 0; off < len(data); {
 		if len(data)-off < 27 || string(data[off:off+4]) != "OggS" || data[off+4] != 0 {
-			return pages, data[off:]
+			return pages
 		}
 		n := int(data[off+26])
 		if len(data)-off < 27+n {
-			return pages, data[off:]
+			return pages
 		}
 		lacing := data[off+27 : off+27+n]
 		body := 0
@@ -40,7 +41,7 @@ func oggPages(data []byte) (pages []oggPage, tail []byte) { //nolint:nonamedretu
 		}
 		end := off + 27 + n + body
 		if end > len(data) {
-			return pages, data[off:]
+			return pages
 		}
 		pages = append(pages, oggPage{
 			start: off, end: end, flags: data[off+5],
@@ -49,7 +50,7 @@ func oggPages(data []byte) (pages []oggPage, tail []byte) { //nolint:nonamedretu
 		})
 		off = end
 	}
-	return pages, nil
+	return pages
 }
 
 // oggCRC is the Ogg page checksum, bit by bit: polynomial 0x04C11DB7, most
@@ -79,7 +80,7 @@ func chainedOgg(t *testing.T, path string) []byte {
 	t.Helper()
 	data := readTestdata(t, path)
 	second := bytes.Clone(data)
-	pages, _ := oggPages(second)
+	pages := oggPages(second)
 	for _, p := range pages {
 		binary.LittleEndian.PutUint32(second[p.start+14:], 0xC0FFEE)
 		binary.LittleEndian.PutUint32(second[p.start+22:], oggCRC(second[p.start:p.end]))
@@ -91,7 +92,7 @@ func chainedOgg(t *testing.T, path string) []byte {
 // header packets (three for Vorbis, two for Opus).
 func oggAudioDigest(t *testing.T, data []byte) [32]byte {
 	t.Helper()
-	pages, _ := oggPages(data)
+	pages := oggPages(data)
 	if len(pages) == 0 {
 		t.Fatal("ogg: no pages")
 	}
@@ -130,7 +131,7 @@ func oggAudioDigest(t *testing.T, data []byte) [32]byte {
 // without a gap, BOS is on the first page only and EOS on the last only.
 func checkOggPages(t *testing.T, data []byte) {
 	t.Helper()
-	pages, _ := oggPages(data)
+	pages := oggPages(data)
 	for i, p := range pages {
 		if got := oggCRC(data[p.start:p.end]); got != p.crc {
 			t.Errorf("ogg page %d: crc %#x, stored %#x", i, got, p.crc)

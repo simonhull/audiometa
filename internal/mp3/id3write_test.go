@@ -42,7 +42,7 @@ func TestWTag_VerbatimRoundTrip(t *testing.T) {
 			id3Frame(v, "TXXX", txxxPayload(0, "Narrator", "Someone")),
 			id3Frame(v, "XYZW", []byte{1, 2, 3, 4}),
 			id3Frame(v, "PRIV", []byte("owner\x00secret")),
-			id3Frame(v, "CHAP", chapFrameBody("ch0", 0, 1000, id3Frame(v, "TIT2", latin1Text("One")))),
+			id3Frame(v, "CHAP", chapFrameBody("ch0", id3Frame(v, "TIT2", latin1Text("One")))),
 			id3Frame(v, "CTOC", ctoc),
 			id3Frame(v, "APIC", apicPayload("image/jpeg", 3, "", []byte{0xFF, 0xD8, 0xFF, 0xE0})),
 		)
@@ -553,7 +553,7 @@ func TestApply_MediaMarkersRefused(t *testing.T) {
 // Maintainer addendum: any key can be deleted; chapters are never touched.
 func TestApply_DeleteKeys(t *testing.T) {
 	for _, v := range []byte{3, 4} {
-		chap := id3Frame(v, "CHAP", chapFrameBody("ch0", 0, 1000, id3Frame(v, "TIT2", latin1Text("One"))))
+		chap := id3Frame(v, "CHAP", chapFrameBody("ch0", id3Frame(v, "TIT2", latin1Text("One"))))
 		ctoc := id3Frame(v, "CTOC", append([]byte("toc\x00\x03\x01"), "ch0\x00"...))
 		apic := id3Frame(v, "APIC", apicPayload("image/jpeg", 3, "", []byte{0xFF, 0xD8, 0xFF, 0xE0}))
 		src := file(id3Tag(v,

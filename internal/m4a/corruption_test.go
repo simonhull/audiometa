@@ -41,7 +41,7 @@ func TestParse_CorruptMovieHeaderKeepsTrackInfo(t *testing.T) {
 }
 
 func TestParse_CorruptSampleTableKeepsDuration(t *testing.T) {
-	moov := createMockAtom("moov", append(createMvhdAtom(0, 1000, 10000), trakWithStbl("soun", corruptAtom)...))
+	moov := createMockAtom("moov", append(createMvhdAtom(1000, 10000), trakWithStbl(corruptAtom)...))
 
 	file := parseBytes(t, append(m4bFtyp(), moov...))
 
@@ -121,7 +121,7 @@ func TestParse_UnreadableEsdsWarns(t *testing.T) {
 	entry := mp4aSampleEntry(esdsPayload(0, []byte{0x12, 0x10}))
 	binary.BigEndian.PutUint32(entry, 1000) // the entry claims to run past the end of the file
 	stsd := fullAtom("stsd", append(u32be(1), entry...))
-	moov := createMockAtom("moov", append(createMvhdAtom(0, 1000, 10000), trakWithStbl("soun", stsd)...))
+	moov := createMockAtom("moov", append(createMvhdAtom(1000, 10000), trakWithStbl(stsd)...))
 
 	file := parseBytes(t, append(m4bFtyp(), moov...))
 
@@ -135,7 +135,7 @@ func TestParse_TruncatedSttsKeepsChaptersAndWarns(t *testing.T) {
 	sttsThreeClaimedTwoPresent := fullAtom("stts", u32be(3, 1, 1000, 1, 1000))
 	base := uint32(len(m4bFtyp())) // the chapter text sits after the ftyp atom
 	payload := slices.Concat(textSample("One"), textSample("Two"))
-	data, _ := buildQTChapterFile(1000, payload,
+	data, _ := buildQTChapterFile(payload,
 		stszAtom(0, 2, 5, 5),
 		stscAtom([3]uint32{1, 1, 1}),
 		stcoAtom(base+8, base+13),
@@ -149,7 +149,7 @@ func TestParse_TruncatedSttsKeepsChaptersAndWarns(t *testing.T) {
 }
 
 func TestParse_CorruptUdtaWarnsAboutChapters(t *testing.T) {
-	moov := createMockAtom("moov", append(createMvhdAtom(0, 1000, 10000), createMockAtom("udta", corruptAtom)...))
+	moov := createMockAtom("moov", append(createMvhdAtom(1000, 10000), createMockAtom("udta", corruptAtom)...))
 
 	file := parseBytes(t, append(m4bFtyp(), moov...))
 
@@ -186,7 +186,7 @@ func TestParse_ChapterTrackWithoutMdhdUsesDefaultTimescale(t *testing.T) {
 }
 
 func TestParseAudiobookTags_CorruptSiblingAfterFreeformIsReported(t *testing.T) {
-	ilst := createMockAtom("ilst", append(createCustomAtom("com.apple.iTunes", "Narrator", "Wil Wheaton"), corruptAtom...))
+	ilst := createMockAtom("ilst", append(createCustomAtom("Narrator", "Wil Wheaton"), corruptAtom...))
 	sr := audiobinary.NewSafeReader(bytes.NewReader(ilst), int64(len(ilst)), "t.m4b")
 	ilstAtom, err := readAtomHeader(sr, 0, int64(len(ilst)))
 	if err != nil {
@@ -203,7 +203,7 @@ func TestParseAudiobookTags_CorruptSiblingAfterFreeformIsReported(t *testing.T) 
 }
 
 func TestParseAudiobookTags_CorruptChildOfFreeformIsReported(t *testing.T) {
-	freeform := createMockAtom("----", append(createCustomAtom("com.apple.iTunes", "Narrator", "Wil Wheaton")[8:], corruptAtom...))
+	freeform := createMockAtom("----", append(createCustomAtom("Narrator", "Wil Wheaton")[8:], corruptAtom...))
 	ilst := createMockAtom("ilst", freeform)
 	sr := audiobinary.NewSafeReader(bytes.NewReader(ilst), int64(len(ilst)), "t.m4b")
 	ilstAtom, err := readAtomHeader(sr, 0, int64(len(ilst)))

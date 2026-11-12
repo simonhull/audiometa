@@ -272,7 +272,8 @@ func tkhdAtom(id uint32) []byte {
 
 // buildQTChapterFile returns a file laid out as [mdat(payload)][moov] and the moov offset.
 // Payload byte k is at absolute file offset 8+k.
-func buildQTChapterFile(timescale uint32, payload []byte, stblChildren ...[]byte) ([]byte, int64) {
+func buildQTChapterFile(payload []byte, stblChildren ...[]byte) ([]byte, int64) {
+	const timescale uint32 = 1000
 	mdat := createMockAtom("mdat", payload)
 	trak1 := createMockAtom("trak", append(tkhdAtom(1), createMockAtom("tref", createMockAtom("chap", u32be(2)))...))
 	stbl := createMockAtom("stbl", bytes.Join(stblChildren, nil))
@@ -315,7 +316,7 @@ func checkChapters(t *testing.T, got []types.Chapter, titles []string, starts []
 
 func TestQTChapters_OneSamplePerChunk(t *testing.T) {
 	payload := slices.Concat(textSample("Intro"), textSample("Middle"), textSample("End"))
-	data, moovOff := buildQTChapterFile(1000, payload,
+	data, moovOff := buildQTChapterFile(payload,
 		sttsAtom([2]uint32{3, 1000}),
 		stszAtom(0, 3, 7, 8, 5),
 		stscAtom([3]uint32{1, 1, 1}),
@@ -333,7 +334,7 @@ func TestQTChapters_OneSamplePerChunk(t *testing.T) {
 
 func TestQTChapters_StszDefaultSize(t *testing.T) {
 	payload := slices.Concat(textSample("Ch 1"), textSample("Ch 2"), textSample("Ch 3"))
-	data, moovOff := buildQTChapterFile(1000, payload,
+	data, moovOff := buildQTChapterFile(payload,
 		sttsAtom([2]uint32{3, 1000}),
 		stszAtom(6, 3),
 		stscAtom([3]uint32{1, 3, 1}),
@@ -345,7 +346,7 @@ func TestQTChapters_StszDefaultSize(t *testing.T) {
 
 func TestQTChapters_MultipleSamplesPerChunk(t *testing.T) {
 	payload := slices.Concat(textSample("A"), textSample("Bb"), make([]byte, 9), textSample("Ccc"), textSample("Dddd"))
-	data, moovOff := buildQTChapterFile(1000, payload,
+	data, moovOff := buildQTChapterFile(payload,
 		sttsAtom([2]uint32{4, 1000}),
 		stszAtom(0, 4, 3, 4, 5, 6),
 		stscAtom([3]uint32{1, 2, 1}),
@@ -392,7 +393,7 @@ func TestParseChapters_ChplVersion0(t *testing.T) {
 }
 
 func TestQTChapters_HugeSttsCountIsBounded(t *testing.T) {
-	data, moovOff := buildQTChapterFile(1000, textSample("Only"),
+	data, moovOff := buildQTChapterFile(textSample("Only"),
 		sttsAtom([2]uint32{0xFFFFFFFF, 1000}),
 		stszAtom(0, 1, 6),
 		stcoAtom(8),
@@ -417,7 +418,7 @@ func TestQTChapters_TimingsBoundedByTheSamplesTheFileHolds(t *testing.T) {
 		{"uniform", stszAtom(10, 1<<20), stscAtom([3]uint32{1, 3, 1}), stcoAtom(8), false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			data, moovOff := buildQTChapterFile(1000, payload,
+			data, moovOff := buildQTChapterFile(payload,
 				sttsAtom([2]uint32{1 << 20, 1000}), tc.stsz, tc.stsc, tc.stco)
 			var chapters []types.Chapter
 			alloc := testbudget.Allocated(func() {
@@ -512,7 +513,7 @@ func TestParseChapterTimings_HugeAccumulationDoesNotWrap(t *testing.T) {
 func TestQTChapters_UTF16Titles(t *testing.T) {
 	be := textSample(string([]byte{0xFE, 0xFF, 0x00, 'C', 0x00, 'h', 0x00, 0xE9}))
 	le := textSample(string([]byte{0xFF, 0xFE, 'C', 0x00, 'h', 0x00}))
-	data, moovOff := buildQTChapterFile(1000, slices.Concat(be, le),
+	data, moovOff := buildQTChapterFile(slices.Concat(be, le),
 		sttsAtom([2]uint32{2, 1000}),
 		stszAtom(0, 2, uint32(len(be)), uint32(len(le))),
 		stscAtom([3]uint32{1, 1, 1}),
@@ -524,7 +525,7 @@ func TestQTChapters_UTF16Titles(t *testing.T) {
 
 func TestQTChapters_IndexesStayConsecutive(t *testing.T) {
 	payload := slices.Concat(textSample("Intro"), textSample("End"))
-	data, moovOff := buildQTChapterFile(1000, payload,
+	data, moovOff := buildQTChapterFile(payload,
 		sttsAtom([2]uint32{3, 1000}),
 		stszAtom(0, 3, 7, 0, 5),
 		stscAtom([3]uint32{1, 1, 1}),

@@ -19,7 +19,7 @@ func TestParse_CommentPastBlockIsNotRead(t *testing.T) {
 	leaked := "TITLE=Leaked"
 	payload := binary.LittleEndian.AppendUint32(vcHead(1), uint32(len(leaked)))
 	data := buildFLAC(
-		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100, 44100)),
+		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100)),
 		flacBlock(true, blockTypeVorbisComment, payload), // the comment's bytes are not in the block
 		[]byte(leaked), // audio that happens to look like the comment
 	)
@@ -38,7 +38,7 @@ func TestParse_CommentsBeforeACutAreKept(t *testing.T) {
 	payload = append(payload, "TITLE=Kept"...)
 	payload = binary.LittleEndian.AppendUint32(payload, 100) // second comment: no bytes
 	data := buildFLAC(
-		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100, 44100)),
+		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100)),
 		flacBlock(true, blockTypeVorbisComment, payload),
 	)
 	file := parseTestFLAC(t, data)
@@ -52,7 +52,7 @@ func TestParse_CommentsBeforeACutAreKept(t *testing.T) {
 
 func TestParse_EveryVorbisCommentBlockIsRead(t *testing.T) {
 	data := buildFLAC(
-		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100, 44100)),
+		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100)),
 		flacBlock(false, blockTypeVorbisComment, vorbisCommentPayload("TITLE=One")),
 		flacBlock(true, blockTypeVorbisComment, vorbisCommentPayload("ARTIST=Two")),
 	)
@@ -68,7 +68,7 @@ func TestParse_CommentCountPastBlockDoesNotAllocate(t *testing.T) {
 	audio := make([]byte, 400_000)
 	build := func(count uint32) []byte {
 		return buildFLAC(
-			flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100, 44100)),
+			flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100)),
 			flacBlock(true, blockTypeVorbisComment, vcHead(count)),
 			audio,
 		)
@@ -90,7 +90,7 @@ func TestExtractArtwork_PictureDataPastBlockIsNotRead(t *testing.T) {
 	binary.BigEndian.PutUint32(pic[0:], 3)
 	binary.BigEndian.PutUint32(pic[28:], claimed)
 	parts := make([][]byte, 1, 202)
-	parts[0] = flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100, 44100))
+	parts[0] = flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100))
 	for i := range 200 {
 		parts = append(parts, flacBlock(i == 199, blockTypePicture, pic))
 	}

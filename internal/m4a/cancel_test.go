@@ -29,7 +29,7 @@ func TestParse_CancelInsideAtomWalk(t *testing.T) {
 
 func TestParseChapters_CancelInsideTables(t *testing.T) {
 	payload := append(textSample("A"), textSample("B")...)
-	data, moovOff := buildQTChapterFile(1000, payload,
+	data, moovOff := buildQTChapterFile(payload,
 		sttsAtom([2]uint32{2, 1000}),
 		stszAtom(0, 2, 3, 3),
 		stcoAtom(8),

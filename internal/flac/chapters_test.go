@@ -91,7 +91,7 @@ func cdCue() []byte {
 
 func TestParse_CueSheetCD(t *testing.T) {
 	data := buildFLAC(
-		flacBlock(false, 0, streamInfoPayload(testRate, testSamples)),
+		flacBlock(false, 0, streamInfoPayload(testSamples)),
 		flacBlock(true, 5, cdCue()),
 	)
 	file := parseTestFLAC(t, data)
@@ -111,7 +111,7 @@ func TestParse_CueSheetNonCDLeadOut(t *testing.T) {
 		{26460000, 255, nil},
 	})
 	data := buildFLAC(
-		flacBlock(false, 0, streamInfoPayload(testRate, testSamples)),
+		flacBlock(false, 0, streamInfoPayload(testSamples)),
 		flacBlock(true, 5, cue),
 	)
 	file := parseTestFLAC(t, data)
@@ -141,7 +141,7 @@ func TestCuesheetToChapters_NoLeadOut(t *testing.T) {
 
 func TestParse_FLACChapterComments(t *testing.T) {
 	data := buildFLAC(
-		flacBlock(false, 0, streamInfoPayload(testRate, testSamples)),
+		flacBlock(false, 0, streamInfoPayload(testSamples)),
 		flacBlock(true, 4, vorbisCommentPayload(chapterComments...)),
 	)
 	file := parseTestFLAC(t, data)
@@ -153,7 +153,7 @@ func TestParse_FLACChapterComments(t *testing.T) {
 
 func TestParse_ChapterCommentsWinOverCueSheet(t *testing.T) {
 	data := buildFLAC(
-		flacBlock(false, 0, streamInfoPayload(testRate, testSamples)),
+		flacBlock(false, 0, streamInfoPayload(testSamples)),
 		flacBlock(false, 4, vorbisCommentPayload(chapterComments...)),
 		flacBlock(true, 5, cdCue()),
 	)

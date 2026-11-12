@@ -13,7 +13,7 @@ type mockParser struct {
 	name string
 }
 
-func (m *mockParser) Parse(ctx context.Context, r io.ReaderAt, size int64, path string) (*types.File, error) {
+func (m *mockParser) Parse(_ context.Context, _ io.ReaderAt, _ int64, _ string) (*types.File, error) {
 	return &types.File{Path: m.name}, nil
 }
 
@@ -72,7 +72,7 @@ type mockArtworkExtractor struct {
 	mockParser
 }
 
-func (m *mockArtworkExtractor) ExtractArtwork(ctx context.Context, r io.ReaderAt, size int64, path string) ([]types.Artwork, error) {
+func (m *mockArtworkExtractor) ExtractArtwork(_ context.Context, _ io.ReaderAt, _ int64, _ string) ([]types.Artwork, error) {
 	return []types.Artwork{{Type: types.ArtworkFrontCover}}, nil
 }
 

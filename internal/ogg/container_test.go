@@ -55,7 +55,8 @@ func lacingFor(n int) []byte {
 
 // splitAcrossPages builds pages that carry one packet, at most 255 segments each.
 // The first page gets firstType; later pages are continuations.
-func splitAcrossPages(packet []byte, firstType byte, serial uint32) []pageSpec {
+func splitAcrossPages(packet []byte, serial uint32) []pageSpec {
+	const firstType byte = 0
 	lacing := lacingFor(len(packet))
 	var out []pageSpec
 	for len(lacing) > 0 {
@@ -259,7 +260,7 @@ func pagesOf(t testing.TB, data []byte) []*oggPage {
 
 func TestSplitPacketsAllocs(t *testing.T) {
 	packet := bytes.Repeat([]byte{7}, 300_000)
-	pages := pagesOf(t, buildOgg(splitAcrossPages(packet, 0, 1)...))
+	pages := pagesOf(t, buildOgg(splitAcrossPages(packet, 1)...))
 	if len(pages) < 2 {
 		t.Fatalf("pages = %d, want a packet spanning several", len(pages))
 	}
@@ -453,7 +454,7 @@ func pictureComment(image []byte) string {
 func multiPageFile(idPacket, commentPkt []byte, serial uint32, tail pageSpec) []byte {
 	pages := slices.Concat(
 		[]pageSpec{{headerType: 0x02, serial: serial, lacing: lacingFor(len(idPacket)), data: idPacket}},
-		splitAcrossPages(commentPkt, 0, serial),
+		splitAcrossPages(commentPkt, serial),
 		[]pageSpec{tail},
 	)
 	return buildOgg(pages...)

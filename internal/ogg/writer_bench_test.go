@@ -15,7 +15,7 @@ import (
 func longOpus(pages int) []byte {
 	specs := slices.Concat(
 		[]pageSpec{{headerType: 0x02, serial: 5, lacing: lacingFor(len(opusHeadPacket())), data: opusHeadPacket()}},
-		splitAcrossPages(commentPacket("OpusTags", false, "TITLE=Old"), 0, 5),
+		splitAcrossPages(commentPacket("OpusTags", false, "TITLE=Old"), 5),
 	)
 	payload := bytes.Repeat([]byte{0x5A}, 5900)
 	for i := range pages {

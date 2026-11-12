@@ -44,7 +44,7 @@ func ioOpus(cover bool) []byte {
 	head := opusHeadPacket()
 	pages := slices.Concat(
 		[]pageSpec{{headerType: 0x02, serial: 1, lacing: lacingFor(len(head)), data: head}},
-		splitAcrossPages(commentPacket("OpusTags", false, comments...), 0, 1),
+		splitAcrossPages(commentPacket("OpusTags", false, comments...), 1),
 	)
 	const audioPages, audioSize = 240, 17_000
 	payload := bytes.Repeat([]byte{0x7E}, audioSize)

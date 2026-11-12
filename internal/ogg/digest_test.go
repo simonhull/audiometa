@@ -108,7 +108,7 @@ func TestAudioDigest_PacketsSpanningPages(t *testing.T) {
 	}{
 		{"audio packet continued across pages", buildOgg(slices.Concat(
 			[]pageSpec{pageOf(1, opusHead), pageOf(1, commentHeader(10))},
-			splitAcrossPages(big, 0, 1),
+			splitAcrossPages(big, 1),
 			[]pageSpec{pageOf(1, audio1)},
 		)...), wantDigest(big, audio1)},
 		{"header packet ended by a dropped continuation", buildOgg(
@@ -118,7 +118,7 @@ func TestAudioDigest_PacketsSpanningPages(t *testing.T) {
 		), wantDigest(audio1, audio2)},
 		{"header packet continued across pages", buildOgg(slices.Concat(
 			[]pageSpec{pageOf(1, opusHead)},
-			splitAcrossPages(commentHeader(70_000), 0, 1),
+			splitAcrossPages(commentHeader(70_000), 1),
 			[]pageSpec{pageOf(1, audio1, audio2)},
 		)...), wantDigest(audio1, audio2)},
 	}

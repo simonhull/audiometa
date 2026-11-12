@@ -35,5 +35,5 @@ func TestFillChapterEndTimes(t *testing.T) {
 			t.Errorf("end = %v", ch[0].EndTime)
 		}
 	})
-	t.Run("empty", func(t *testing.T) { FillChapterEndTimes(nil, sec(5)) })
+	t.Run("empty", func(*testing.T) { FillChapterEndTimes(nil, sec(5)) })
 }

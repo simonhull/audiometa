@@ -422,7 +422,7 @@ func TestTags_Filter_NilRaw(t *testing.T) {
 	tags := &Tags{}
 
 	count := 0
-	for range tags.Filter(func(k string) bool { return true }) {
+	for range tags.Filter(func(string) bool { return true }) {
 		count++
 	}
 

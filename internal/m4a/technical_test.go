@@ -22,23 +22,16 @@ func parseTechnicalInfo(ctx context.Context, sr *audiobinary.SafeReader, moovAto
 }
 
 // createMvhdAtom creates a movie header atom with duration.
-func createMvhdAtom(version byte, timescale, duration uint32) []byte {
+func createMvhdAtom(timescale, duration uint32) []byte {
 	buf := &bytes.Buffer{}
 
-	// mvhd data
-	buf.WriteByte(version)              // version
-	buf.Write([]byte{0x00, 0x00, 0x00}) // flags
+	// mvhd data: version 0 (the 32-bit layout) and flags
+	buf.Write([]byte{0x00, 0x00, 0x00, 0x00})
 
-	if version == 1 {
-		// 64-bit version (not implementing for now)
-		panic("64-bit mvhd not implemented in test")
-	} else {
-		// 32-bit version
-		binary.Write(buf, binary.BigEndian, uint32(0)) // creation time
-		binary.Write(buf, binary.BigEndian, uint32(0)) // modification time
-		binary.Write(buf, binary.BigEndian, timescale)
-		binary.Write(buf, binary.BigEndian, duration)
-	}
+	binary.Write(buf, binary.BigEndian, uint32(0)) // creation time
+	binary.Write(buf, binary.BigEndian, uint32(0)) // modification time
+	binary.Write(buf, binary.BigEndian, timescale)
+	binary.Write(buf, binary.BigEndian, duration)
 
 	return createMockAtom("mvhd", buf.Bytes())
 }
@@ -46,7 +39,7 @@ func createMvhdAtom(version byte, timescale, duration uint32) []byte {
 func TestParseTechnicalInfo_Duration(t *testing.T) {
 	// Create moov with mvhd
 	// Duration: 10 seconds at 1000 Hz timescale = 10000 units
-	mvhdAtom := createMvhdAtom(0, 1000, 10000)
+	mvhdAtom := createMvhdAtom(1000, 10000)
 	moovData := mvhdAtom
 	moov := createMockAtom("moov", moovData)
 
@@ -67,7 +60,7 @@ func TestParseTechnicalInfo_Duration(t *testing.T) {
 
 func TestParseTechnicalInfo_NonStandardTimescale(t *testing.T) {
 	// Duration: 5.5 seconds at 44100 Hz timescale = 242550 units
-	mvhdAtom := createMvhdAtom(0, 44100, 242550)
+	mvhdAtom := createMvhdAtom(44100, 242550)
 	moovData := mvhdAtom
 	moov := createMockAtom("moov", moovData)
 
@@ -178,7 +171,7 @@ func trakWith(handler string, stsd []byte) []byte {
 
 func parseMoovTech(t *testing.T, children ...[]byte) *types.File {
 	t.Helper()
-	moovBody := createMvhdAtom(0, 1000, 10000)
+	moovBody := createMvhdAtom(1000, 10000)
 	for _, c := range children {
 		moovBody = append(moovBody, c...)
 	}
@@ -241,7 +234,8 @@ func TestParseTechnicalInfo_UnknownSoundEntryVersionLeavesUnset(t *testing.T) {
 }
 
 // trakWithStbl is trakWith with extra stbl children after the stsd.
-func trakWithStbl(handler string, stbl ...[]byte) []byte {
+func trakWithStbl(stbl ...[]byte) []byte {
+	const handler string = "soun"
 	var mdiaChildren []byte
 	if handler != "" {
 		mdiaChildren = append(mdiaChildren, fullAtom("hdlr", append(append(u32be(0), handler...), make([]byte, 12)...))...)
@@ -259,10 +253,10 @@ func TestParseTechnicalInfo_BitrateIgnoresFileSize(t *testing.T) {
 		trak []byte
 		want int
 	}{
-		{"esds avgBitrate wins", trakWithStbl("soun", mp4aStsd, stsz), 128000},
-		{"stsz sum without esds", trakWithStbl("soun", stsdFor("alac", sampleEntryV01(0, 2, 44100)), stsz), 128000},
-		{"constant sample size", trakWithStbl("soun", stsdFor("alac", sampleEntryV01(0, 2, 44100)), stszAtom(40000, 4)), 128000},
-		{"no stsz: unknown", trakWithStbl("soun", stsdFor("alac", sampleEntryV01(0, 2, 44100))), 0},
+		{"esds avgBitrate wins", trakWithStbl(mp4aStsd, stsz), 128000},
+		{"stsz sum without esds", trakWithStbl(stsdFor("alac", sampleEntryV01(0, 2, 44100)), stsz), 128000},
+		{"constant sample size", trakWithStbl(stsdFor("alac", sampleEntryV01(0, 2, 44100)), stszAtom(40000, 4)), 128000},
+		{"no stsz: unknown", trakWithStbl(stsdFor("alac", sampleEntryV01(0, 2, 44100))), 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

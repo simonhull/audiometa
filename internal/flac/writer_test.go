@@ -37,7 +37,7 @@ func richFLAC() []byte {
 		cue[i] = byte(i * 7)
 	}
 	return append(buildFLAC(
-		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100, 44100)),
+		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100)),
 		flacBlock(false, blockTypeSeekTable, []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x10, 0}),
 		flacBlock(false, blockTypeApplication, []byte("TEST\x01\x02\x03\x04")),
 		flacBlock(false, blockTypeCueSheet, cue),
@@ -173,9 +173,9 @@ func TestFBlock_IsLastOnlyOnFinal(t *testing.T) {
 }
 
 func TestFBlock_Corrupted(t *testing.T) {
-	si := flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100, 44100))
+	si := flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100))
 	tests := map[string][]byte{
-		"STREAMINFO not first": buildFLAC(flacBlock(false, blockTypeVorbisComment, vorbisCommentPayload()), flacBlock(true, blockTypeStreamInfo, streamInfoPayload(44100, 44100))),
+		"STREAMINFO not first": buildFLAC(flacBlock(false, blockTypeVorbisComment, vorbisCommentPayload()), flacBlock(true, blockTypeStreamInfo, streamInfoPayload(44100))),
 		"truncated chain":      append(buildFLAC(si, flacBlock(false, blockTypePadding, make([]byte, 8))), 0x01, 0x00),
 		"no last block":        buildFLAC(si, flacBlock(false, blockTypePadding, make([]byte, 8))),
 		"block past EOF":       buildFLAC(si, flacBlock(true, blockTypePadding, make([]byte, 8)))[:50],
@@ -204,7 +204,7 @@ func TestFBlock_TooLarge(t *testing.T) {
 // pictureFLAC has a front and a back cover, a VORBIS_COMMENT and padding.
 func pictureFLAC() []byte {
 	return append(buildFLAC(
-		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100, 44100)),
+		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100)),
 		flacBlock(false, blockTypePicture, picturePayload(3, "image/png", []byte("front"))),
 		flacBlock(false, blockTypePicture, picturePayload(4, "image/jpeg", []byte("back"))),
 		flacBlock(false, blockTypeVorbisComment, vorbisCommentPayload("TITLE=T")),
@@ -296,7 +296,7 @@ func TestVC_CreatedWhenMissing(t *testing.T) {
 	}{
 		"after STREAMINFO": {
 			src: append(buildFLAC(
-				flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100, 44100)),
+				flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100)),
 				flacBlock(false, blockTypeApplication, []byte("TEST")),
 				flacBlock(true, blockTypePadding, make([]byte, 64)),
 			), audioTail...),
@@ -304,7 +304,7 @@ func TestVC_CreatedWhenMissing(t *testing.T) {
 		},
 		"after SEEKTABLE": {
 			src: append(buildFLAC(
-				flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100, 44100)),
+				flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100)),
 				flacBlock(true, blockTypeSeekTable, make([]byte, 18)),
 			), audioTail...),
 			want: []uint8{blockTypeStreamInfo, blockTypeSeekTable, blockTypeVorbisComment, blockTypePadding},
@@ -326,7 +326,7 @@ func TestVC_CreatedWhenMissing(t *testing.T) {
 
 func TestVC_MultipleBlocksRefused(t *testing.T) {
 	src := append(buildFLAC(
-		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100, 44100)),
+		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100)),
 		flacBlock(false, blockTypeVorbisComment, vorbisCommentPayload("TITLE=A")),
 		flacBlock(false, blockTypeVorbisComment, vorbisCommentPayload("ALBUM=B")),
 		flacBlock(true, blockTypePadding, make([]byte, 64)),
@@ -347,7 +347,7 @@ func TestVC_MalformedBlockCorrupted(t *testing.T) {
 	bad := vorbisCommentPayload("TITLE=A")
 	bad[len(bad)-8] = 0xFF // comment length runs past the block
 	src := append(buildFLAC(
-		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100, 44100)),
+		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100)),
 		flacBlock(true, blockTypeVorbisComment, bad),
 	), audioTail...)
 	edits := &types.EditSet{Keys: []types.KeyEdit{{Key: "TITLE", Values: []string{"X"}}}, Orig: &types.Tags{}, Final: &types.Tags{}}

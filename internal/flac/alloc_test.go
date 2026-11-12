@@ -11,7 +11,7 @@ func TestParse_OversizedLengthsDoNotAllocate(t *testing.T) {
 		payload = binary.LittleEndian.AppendUint32(payload, 1)
 		payload = binary.LittleEndian.AppendUint32(payload, 0xFFFFFFFF) // comment length
 		data := buildFLAC(
-			flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100, 44100)),
+			flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100)),
 			flacBlock(true, blockTypeVorbisComment, payload),
 		)
 		file := parseTestFLAC(t, data)
@@ -26,7 +26,7 @@ func TestParse_OversizedLengthsDoNotAllocate(t *testing.T) {
 			binary.BigEndian.PutUint32(payload[0:], 3)
 			binary.BigEndian.PutUint32(payload[field:], 0xFFFFFFFF)
 			data := buildFLAC(
-				flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100, 44100)),
+				flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100)),
 				flacBlock(true, blockTypePicture, payload),
 			)
 			if art := extractTestArtwork(t, data); len(art) != 0 {

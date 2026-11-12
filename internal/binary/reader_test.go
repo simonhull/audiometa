@@ -284,7 +284,7 @@ type failingReader struct {
 	short int // bytes to return with nil error when err == nil
 }
 
-func (f failingReader) ReadAt(p []byte, _ int64) (int, error) {
+func (f failingReader) ReadAt(_ []byte, _ int64) (int, error) {
 	if f.err != nil {
 		return 0, f.err
 	}

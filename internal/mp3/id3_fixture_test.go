@@ -50,11 +50,12 @@ func utf16Text(s string) []byte {
 	return out
 }
 
-// chapFrameBody builds a CHAP payload: elementID\0, start/end ms, 0xFFFFFFFF offsets, subframes.
-func chapFrameBody(elementID string, startMS, endMS uint32, subframes ...[]byte) []byte {
+// chapFrameBody builds a CHAP payload: elementID\0, a chapter from 0 to 1000 ms, 0xFFFFFFFF
+// offsets, subframes.
+func chapFrameBody(elementID string, subframes ...[]byte) []byte {
 	b := append([]byte(elementID), 0)
-	b = binary.BigEndian.AppendUint32(b, startMS)
-	b = binary.BigEndian.AppendUint32(b, endMS)
+	b = binary.BigEndian.AppendUint32(b, 0)
+	b = binary.BigEndian.AppendUint32(b, 1000)
 	b = append(b, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF)
 	return append(b, bytes.Join(subframes, nil)...)
 }

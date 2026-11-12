@@ -48,7 +48,7 @@ func TestParse_ChapterTitles(t *testing.T) {
 	long := strings.Repeat("x", 200)
 	sub := func(v byte, id string, payload []byte) []byte { return id3Frame(v, id, payload) }
 	chap := func(v byte, id string, subs ...[]byte) []byte {
-		return id3Frame(v, "CHAP", chapFrameBody(id, 0, 1000, subs...))
+		return id3Frame(v, "CHAP", chapFrameBody(id, subs...))
 	}
 	trunc := sub(3, "TIT2", latin1Text("abc"))
 	trunc[7] = 0xFF // declared size far exceeds remaining bytes

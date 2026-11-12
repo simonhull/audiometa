@@ -8,7 +8,7 @@ import (
 )
 
 func TestParse_UnterminatedChainWarns(t *testing.T) {
-	streamInfo := flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100, 44100))
+	streamInfo := flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100))
 	tests := []struct {
 		name string
 		data []byte
