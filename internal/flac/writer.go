@@ -244,7 +244,7 @@ func (m *fmeta) applyTags(ctx context.Context, edits *types.EditSet) error {
 	if len(at) > 1 {
 		return fmt.Errorf("%w: file has %d VORBIS_COMMENT blocks", types.ErrUnsupportedWrite, len(at))
 	}
-	v := &vcomment{vorbis.Comments{Vendor: []byte("audiometa")}}
+	v := vorbis.NewEditor(types.FormatFLAC, vorbis.Comments{Vendor: []byte("audiometa")})
 	if len(at) == 1 {
 		b := m.blocks[at[0]]
 		c, err := vorbis.Split(ctx, b.payload)
@@ -254,15 +254,15 @@ func (m *fmeta) applyTags(ctx context.Context, edits *types.EditSet) error {
 			}
 			return corrupted(m.path, b.off, "malformed VORBIS_COMMENT block: "+err.Error())
 		}
-		v = &vcomment{c}
+		v = vorbis.NewEditor(types.FormatFLAC, c)
 	}
 	for _, e := range edits.Keys {
-		if err := v.applyKey(e.Key, e.Values); err != nil {
+		if err := v.ApplyKey(e.Key, e.Values); err != nil {
 			return err
 		}
 	}
 	for _, e := range edits.Fields {
-		if err := v.applyField(e, edits); err != nil {
+		if err := v.ApplyField(e, edits); err != nil {
 			return err
 		}
 	}

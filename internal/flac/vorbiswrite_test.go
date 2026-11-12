@@ -144,9 +144,9 @@ func TestVC_SuffixTotalsReadBack(t *testing.T) {
 
 func TestVC_EveryFieldWritable(t *testing.T) {
 	for f := range types.AllFields() {
-		v := &vcomment{}
+		v := vorbis.NewEditor(types.FormatFLAC, vorbis.Comments{})
 		edits := &types.EditSet{Orig: &types.Tags{}, Final: &types.Tags{Artist: "a", Artists: []string{"a"}}}
-		if err := v.applyField(types.FieldEdit{Field: f, Values: []string{"1"}}, edits); err != nil || len(v.Entries) == 0 {
+		if err := v.ApplyField(types.FieldEdit{Field: f, Values: []string{"1"}}, edits); err != nil || len(v.Entries) == 0 {
 			t.Errorf("%s: err %v, %d comments", f, err, len(v.Entries))
 		}
 	}

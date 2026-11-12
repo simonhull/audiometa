@@ -92,7 +92,7 @@ func writeBytes(t *testing.T, src []byte, edits *types.EditSet) []byte {
 }
 
 // commentsOf returns the raw comments of data's only VORBIS_COMMENT block.
-func commentsOf(t *testing.T, data []byte) *vcomment {
+func commentsOf(t *testing.T, data []byte) *vorbis.Editor {
 	t.Helper()
 	vcs := blocksOfType(metaOf(t, data).blocks, blockTypeVorbisComment)
 	if len(vcs) != 1 {
@@ -102,7 +102,7 @@ func commentsOf(t *testing.T, data []byte) *vcomment {
 	if err != nil {
 		t.Fatalf("vorbis.Split: %v", err)
 	}
-	return &vcomment{c}
+	return vorbis.NewEditor(types.FormatFLAC, c)
 }
 
 // strs converts raw comments to strings.

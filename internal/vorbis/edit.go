@@ -1,4 +1,4 @@
-package flac
+package vorbis
 
 import (
 	"bytes"
@@ -9,14 +9,22 @@ import (
 	"unicode/utf8"
 
 	"github.com/simonhull/audiometa/internal/types"
-	"github.com/simonhull/audiometa/internal/vorbis"
 )
 
-// vcomment is a VORBIS_COMMENT block being rewritten: its vendor string and
-// tail are copied verbatim, its entries are the raw "KEY=VALUE" comments in
-// file order.
-type vcomment struct {
-	vorbis.Comments
+// Editor applies tag edits to a Vorbis comment header being rewritten: a FLAC
+// VORBIS_COMMENT block, an Ogg Vorbis comment packet or an OpusTags packet.
+// The vendor string and tail are copied verbatim; the entries are the raw
+// "KEY=VALUE" comments in file order. Typed-field edits follow the binding
+// table of the Editor's format.
+type Editor struct {
+	Comments
+	format types.Format
+}
+
+// NewEditor returns an Editor that rewrites c for a file of format. The
+// vendor and tail bytes alias c.
+func NewEditor(format types.Format, c Comments) *Editor {
+	return &Editor{Comments: c, format: format}
 }
 
 // commentKey returns the key of a raw comment (the text before the first
@@ -26,14 +34,14 @@ func commentKey(c []byte) (key string, ok bool) {
 	return string(k), ok
 }
 
-// has reports whether any comment has key (case-insensitively).
-func (v *vcomment) has(key string) bool {
-	_, ok := v.first(key)
+// Has reports whether any comment has key (case-insensitively).
+func (v *Editor) Has(key string) bool {
+	_, ok := v.First(key)
 	return ok
 }
 
-// first returns the value of the first comment with key (case-insensitively).
-func (v *vcomment) first(key string) (string, bool) {
+// First returns the value of the first comment with key (case-insensitively).
+func (v *Editor) First(key string) (string, bool) {
 	for _, c := range v.Entries {
 		if k, ok := commentKey(c); ok && strings.EqualFold(k, key) {
 			return string(c[len(k)+1:]), true
@@ -42,11 +50,11 @@ func (v *vcomment) first(key string) (string, bool) {
 	return "", false
 }
 
-// applyKey replaces every comment whose key equals key (case-insensitively)
+// ApplyKey replaces every comment whose key equals key (case-insensitively)
 // by one comment per value, inserted where the first one was, or appended
 // when there was none. The new comments keep the first match's key spelling.
 // Empty values delete the key.
-func (v *vcomment) applyKey(key string, values []string) error {
+func (v *Editor) ApplyKey(key string, values []string) error {
 	if isChapterKey(key) {
 		return fmt.Errorf("%w: %s holds chapters, which are not editable", types.ErrUnsupportedWrite, key)
 	}
@@ -103,36 +111,36 @@ func isChapterKey(key string) bool {
 		key[len(prefix)] >= '0' && key[len(prefix)] <= '9'
 }
 
-// applyField writes one typed-field edit. Setting writes the
+// ApplyField writes one typed-field edit. Setting writes the
 // highest-precedence bound key present in the block, or the field's first
 // bound key when none is; clearing deletes every bound key. No other key is
 // touched. The track and disc number and total fields go through
-// [vcomment.applyNumberField], because TRACKNUMBER and DISCNUMBER can also
+// [Editor.applyNumberField], because TRACKNUMBER and DISCNUMBER can also
 // hold the total.
-func (v *vcomment) applyField(e types.FieldEdit, edits *types.EditSet) error {
+func (v *Editor) ApplyField(e types.FieldEdit, edits *types.EditSet) error {
 	if keys, _, ok := numberKeysFor(e.Field); ok {
 		return v.applyNumberField(e, edits, keys)
 	}
 	var keys []string
-	for _, b := range types.FieldBindings(types.FormatFLAC) {
+	for _, b := range types.FieldBindings(v.format) {
 		if b.Field == e.Field {
 			keys = append(keys, b.Keys...)
 		}
 	}
 	if len(keys) == 0 {
-		return fmt.Errorf("%w: %s cannot be written to FLAC", types.ErrUnsupportedWrite, e.Field)
+		return fmt.Errorf("%w: %s cannot be written to %s", types.ErrUnsupportedWrite, e.Field, v.format)
 	}
-	target := types.FieldTargets(types.FormatFLAC, e, edits, keys[0], true)[0]
+	target := types.FieldTargets(v.format, e, edits, keys[0], true)[0]
 	values := types.FieldValues(e, target, edits)
 	if len(values) == 0 {
-		for _, k := range types.FieldTargets(types.FormatFLAC, e, edits, keys[0], false) {
-			if err := v.applyKey(k, nil); err != nil {
+		for _, k := range types.FieldTargets(v.format, e, edits, keys[0], false) {
+			if err := v.ApplyKey(k, nil); err != nil {
 				return err
 			}
 		}
 		return nil
 	}
-	return v.applyKey(target, values)
+	return v.ApplyKey(target, values)
 }
 
 // numberKeys describes where a track or disc number and total live.
@@ -170,7 +178,7 @@ func numberKeysFor(f types.Field) (keys numberKeys, isTotal, ok bool) {
 // present explicit total key, or the first one when none is present. Clearing
 // a total deletes every explicit total key and strips a stale "/Total" suffix
 // from the number key; it never deletes the number.
-func (v *vcomment) applyNumberField(e types.FieldEdit, edits *types.EditSet, keys numberKeys) error {
+func (v *Editor) applyNumberField(e types.FieldEdit, edits *types.EditSet, keys numberKeys) error {
 	_, isTotal, _ := numberKeysFor(e.Field)
 	number, total := keys.final(edits.Final)
 	edited := 0 // no values: the field is being cleared
@@ -185,32 +193,32 @@ func (v *vcomment) applyNumberField(e types.FieldEdit, edits *types.EditSet, key
 
 	var presentTotals []string
 	for _, k := range keys.totals {
-		if v.has(k) {
+		if v.Has(k) {
 			presentTotals = append(presentTotals, k)
 		}
 	}
-	old, _ := v.first(keys.number)
+	old, _ := v.First(keys.number)
 	hasSuffix := strings.Contains(old, "/")
 
 	switch {
 	case hasSuffix && len(presentTotals) == 0:
-		return v.applyKey(keys.number, numberTotal(number, total))
+		return v.ApplyKey(keys.number, numberTotal(number, total))
 	case !isTotal:
-		return v.applyKey(keys.number, slices.Clone(e.Values))
+		return v.ApplyKey(keys.number, slices.Clone(e.Values))
 	case len(e.Values) > 0:
 		target := keys.totals[0]
 		if len(presentTotals) > 0 {
 			target = presentTotals[0]
 		}
-		return v.applyKey(target, slices.Clone(e.Values))
+		return v.ApplyKey(target, slices.Clone(e.Values))
 	}
 	for _, k := range presentTotals {
-		if err := v.applyKey(k, nil); err != nil {
+		if err := v.ApplyKey(k, nil); err != nil {
 			return err
 		}
 	}
 	if hasSuffix {
-		return v.applyKey(keys.number, numberTotal(number, 0))
+		return v.ApplyKey(keys.number, numberTotal(number, 0))
 	}
 	return nil
 }
