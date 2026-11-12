@@ -50,7 +50,7 @@ func v24SizeCoding(sr *binutil.SafeReader, start, end int64) frameSizeCoding {
 // countFrames counts the well-formed frames at the start of [start, end) when
 // their sizes are decoded with coding, and reports whether the walk stopped
 // because a frame ran past end.
-func countFrames(sr *binutil.SafeReader, start, end int64, coding frameSizeCoding) (n int, overran bool) {
+func countFrames(sr *binutil.SafeReader, start, end int64, coding frameSizeCoding) (n int, overran bool) { //nolint:nonamedreturns // the names document the results
 	var hdr [10]byte
 	for off := start; off+10 <= end; n++ {
 		if sr.ReadAt(hdr[:], off, "frame header") != nil || !validFrameID(hdr[:4]) {

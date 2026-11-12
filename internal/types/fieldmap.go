@@ -388,7 +388,7 @@ func isNumberKey(key string) bool {
 // value carries no "/"; any other key (TRACKTOTAL, TOTALTRACKS, ...) holds one
 // number, which is both. Scanning only the part asked for keeps the many reads
 // of one open cheap.
-func scanNumber(key, value string, total bool) (n int, ok bool) {
+func scanNumber(key, value string, total bool) (n int, ok bool) { //nolint:nonamedreturns // the names document the results
 	if isNumberKey(key) {
 		num, tot, hasTotal := strings.Cut(value, "/")
 		switch {

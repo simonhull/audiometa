@@ -315,7 +315,7 @@ func (j *writeJob) writeAtomic(ctx context.Context) error {
 // writeInPlace patches the metadata region of the target when the writer
 // supports it and the edits fit. done is false when the caller should fall
 // back to writeAtomic.
-func (j *writeJob) writeInPlace(ctx context.Context) (done bool, err error) {
+func (j *writeJob) writeInPlace(ctx context.Context) (done bool, err error) { //nolint:nonamedreturns // the names document the results
 	ipw, ok := j.tw.(registry.InPlaceWriter)
 	if !ok {
 		return false, nil

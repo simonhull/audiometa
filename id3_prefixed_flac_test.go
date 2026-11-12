@@ -11,7 +11,7 @@ import (
 
 // id3PrefixedFLAC writes sample.flac behind sample.mp3's ID3v2.3 tag, as
 // some taggers leave FLAC files, and returns the path and the tag.
-func id3PrefixedFLAC(t *testing.T) (path string, prefix []byte) {
+func id3PrefixedFLAC(t *testing.T) (path string, prefix []byte) { //nolint:nonamedreturns // the names document the results
 	t.Helper()
 	mp3, err := os.ReadFile("testdata/sample.mp3")
 	if err != nil {

@@ -233,7 +233,7 @@ func panicError(path string, rec any) error {
 }
 
 // safely calls call, converting a panic into a CorruptedFileError for path.
-func safely[T any](path string, call func() (T, error)) (v T, err error) {
+func safely[T any](path string, call func() (T, error)) (v T, err error) { //nolint:nonamedreturns // the names document the results
 	defer func() {
 		if rec := recover(); rec != nil {
 			var zero T

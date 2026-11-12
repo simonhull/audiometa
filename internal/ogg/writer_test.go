@@ -85,7 +85,7 @@ func keyEdit(key string, values ...string) *types.EditSet {
 }
 
 // rawPagesAndTail splits data into whole pages and the bytes after the last.
-func rawPagesAndTail(t testing.TB, data []byte) (pages []rawPage, tail []byte) {
+func rawPagesAndTail(t testing.TB, data []byte) (pages []rawPage, tail []byte) { //nolint:nonamedreturns // the names document the results
 	t.Helper()
 	s := newPageStream(bytes.NewReader(data), int64(len(data)), "x", false)
 	for s.off < int64(len(data)) {

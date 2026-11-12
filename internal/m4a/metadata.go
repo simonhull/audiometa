@@ -224,7 +224,7 @@ const keyGnre = "gnre"
 // parseGnre decodes a gnre item: its first data atom holds a 16-bit
 // big-endian ID3v1 genre index plus one. ok is false when the item is
 // malformed or holds 0 (no genre).
-func parseGnre(ctx context.Context, sr *binary.SafeReader, atom *Atom) (index int, ok bool) {
+func parseGnre(ctx context.Context, sr *binary.SafeReader, atom *Atom) (index int, ok bool) { //nolint:nonamedreturns // the names document the results
 	dataAtom, err := atom.child(ctx, sr, atomData)
 	if err != nil || dataAtom.DataSize() != 8+2 {
 		return 0, false

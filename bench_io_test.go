@@ -83,7 +83,7 @@ func openForBench(path string) (*parsedFile, error) {
 // ioRun opens fx once and, when step is not nil, calls it with the parsed file
 // reading through a counter that was reset after the open. It returns the
 // reads and bytes requested by the open, or by step.
-func ioRun(b *testing.B, fx ioFixture, step func(f *File)) (calls int, bytesRead int64) {
+func ioRun(b *testing.B, fx ioFixture, step func(f *File)) (calls int, bytesRead int64) { //nolint:nonamedreturns // the names document the results
 	b.Helper()
 	osf, err := os.Open(fx.path)
 	if err != nil {

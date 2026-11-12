@@ -212,6 +212,17 @@ linters:
       # sentinel per message would add names without adding a way to handle the error.
       - linters: [err113]
         path: ^(internal|cmd)/
+      # Package-level state that is the design: read-only lookup tables, the format registries
+      # and their lock, and the sync.Pool; none is mutated after init except by the registry.
+      - linters: [gochecknoglobals]
+        path: ^internal/
+      # Seams the tests swap (lookupWriter, lookupDigester), and the build metadata the linker
+      # fills in with -ldflags -X (Version, gitCommit, buildTime, goVersion).
+      - linters: [gochecknoglobals]
+        path: ^(digest|write|version)\.go$
+      # Test fixtures and expected-value tables shared by the tests of a package.
+      - linters: [gochecknoglobals]
+        path: _test\.go$
       # The CLI is the program edge: it prints the error it receives, and wrapping would change
       # the text users and scripts see.
       - linters: [wrapcheck]

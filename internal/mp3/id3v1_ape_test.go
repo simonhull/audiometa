@@ -24,7 +24,7 @@ func apeWithTAG(total int) []byte {
 
 // apeTrailerFixture is an MP3 whose ID3v2 tag has no Title or Artist, followed
 // by audio and an APEv2 tag with "TAG" 128 bytes before the end of the file.
-func apeTrailerFixture() (file, ape []byte) {
+func apeTrailerFixture() (file, ape []byte) { //nolint:nonamedreturns // the names document the results
 	ape = apeWithTAG(300)
 	v2 := id3Tag(4, id3Frame(4, "TALB", latin1Text("V2 Album")))
 	file = append(append(v2, audioBytes(4096)...), ape...)

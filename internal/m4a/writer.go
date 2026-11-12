@@ -318,7 +318,7 @@ func shiftChunkOffsets(root *matom, rEnd, delta int64) error {
 // moovRegion returns the extent of moov and the free/skip run after it: the
 // part of the file a metadata write replaces. Everything else is copied
 // verbatim. The caller must have checked that the file has a moov atom.
-func (top *topLevel) moovRegion() (start, end int64) {
+func (top *topLevel) moovRegion() (start, end int64) { //nolint:nonamedreturns // the names document the results
 	m := top.atoms[top.moov]
 	start, end = m.Offset, m.Offset+m.Size
 	for _, a := range top.atoms[top.moov+1:] {

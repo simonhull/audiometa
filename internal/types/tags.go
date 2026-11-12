@@ -492,7 +492,7 @@ func (t *Tags) syncKey(key string) {
 // returns the fields those keys now fill, which the typed merge must leave as
 // the sync made them. Eligibility is judged on t as it was before the merge,
 // so the result does not depend on map order.
-func (t *Tags) mergeRaw(other *Tags) (owned [fieldCount]bool) {
+func (t *Tags) mergeRaw(other *Tags) (owned [fieldCount]bool) { //nolint:nonamedreturns // the names document the results
 	if t.format != FormatUnknown && other.format != FormatUnknown && t.format != other.format {
 		return owned
 	}

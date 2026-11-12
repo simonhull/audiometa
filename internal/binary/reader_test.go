@@ -13,7 +13,7 @@ type mockReader struct {
 	data []byte
 }
 
-func (m *mockReader) ReadAt(p []byte, off int64) (n int, err error) {
+func (m *mockReader) ReadAt(p []byte, off int64) (n int, err error) { //nolint:nonamedreturns // the names document the results
 	if off >= int64(len(m.data)) {
 		return 0, io.EOF
 	}

@@ -92,7 +92,7 @@ func (p probeResult) tags() map[string]string {
 
 // counts returns the number of ffprobe streams that are not cover images and
 // the number that are (ffprobe lists embedded artwork as a video stream).
-func (p probeResult) counts() (media, pictures int) {
+func (p probeResult) counts() (media, pictures int) { //nolint:nonamedreturns // the names document the results
 	for _, s := range p.Streams {
 		if s.Disposition.AttachedPic == 1 {
 			pictures++

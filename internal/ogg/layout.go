@@ -135,7 +135,7 @@ func (lr *layoutReader) add(i int, off, next int64, page *oggPage) error {
 // take appends page's packets to the layout until the wanted number are
 // complete. It returns the lacing index of the segment that completed the last
 // of them, or -1 when the page ends before that.
-func (lr *layoutReader) take(page *oggPage) (ended int) {
+func (lr *layoutReader) take(page *oggPage) (ended int) { //nolint:nonamedreturns // the names document the results
 	k := 0
 	for seg := range lr.tracker.segments(page) {
 		lr.cur = append(lr.cur, seg.data...)
@@ -174,7 +174,7 @@ type pageSpan struct{ start, end int64 }
 // audio for [digester.AudioDigest]; the walk returns the offset where it
 // stopped, where the trailing bytes begin. It reads each page's header and
 // segment table only.
-func walkPages(ctx context.Context, src io.ReaderAt, size, off int64, serial uint32, visit func(pageSpan)) (end int64, err error) {
+func walkPages(ctx context.Context, src io.ReaderAt, size, off int64, serial uint32, visit func(pageSpan)) (end int64, err error) { //nolint:nonamedreturns // the names document the results
 	var buf [pageFixedHeader + maxSegments]byte
 	for i := 0; off+pageFixedHeader <= size; i++ {
 		if err := binary.Canceled(ctx, i); err != nil {

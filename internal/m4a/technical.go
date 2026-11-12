@@ -249,7 +249,7 @@ func parseMvhd(sr *binary.SafeReader, mvhdAtom *Atom, file *types.File) error {
 }
 
 // parseMvhdVersion0 parses 32-bit mvhd (version 0).
-func parseMvhdVersion0(sr *binary.SafeReader, offset int64) (timescale uint32, duration uint64, err error) {
+func parseMvhdVersion0(sr *binary.SafeReader, offset int64) (timescale uint32, duration uint64, err error) { //nolint:nonamedreturns // the names document the results
 	// Skip creation time (4 bytes) and modification time (4 bytes)
 	offset += 8
 
@@ -270,7 +270,7 @@ func parseMvhdVersion0(sr *binary.SafeReader, offset int64) (timescale uint32, d
 }
 
 // parseMvhdVersion1 parses 64-bit mvhd (version 1).
-func parseMvhdVersion1(sr *binary.SafeReader, offset int64) (timescale uint32, duration uint64, err error) {
+func parseMvhdVersion1(sr *binary.SafeReader, offset int64) (timescale uint32, duration uint64, err error) { //nolint:nonamedreturns // the names document the results
 	// Skip creation time (8 bytes) and modification time (8 bytes)
 	offset += 16
 
@@ -428,7 +428,7 @@ func (c losslessConfig) valid() losslessConfig {
 // start, relative to the entry: after the 36-byte version 0 layout and the
 // 16 (version 1) or 36 (version 2) bytes that later versions add. ok is false
 // for versions this package does not know.
-func soundEntryChildren(version uint16) (offset int64, ok bool) {
+func soundEntryChildren(version uint16) (offset int64, ok bool) { //nolint:nonamedreturns // the names document the results
 	switch version {
 	case 0:
 		return 36, true

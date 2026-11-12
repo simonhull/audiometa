@@ -21,7 +21,7 @@ const (
 	m4bFixture = "../../testdata/sample.m4b"
 )
 
-func runCLI(t *testing.T, args ...string) (code int, stdout, stderr string) {
+func runCLI(t *testing.T, args ...string) (code int, stdout, stderr string) { //nolint:nonamedreturns // the names document the results
 	t.Helper()
 	var out, errb bytes.Buffer
 	code = run(args, &out, &errb)

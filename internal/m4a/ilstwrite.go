@@ -140,7 +140,7 @@ func applyIlstEdits(root *matom, edits *types.EditSet) error {
 
 // ensureIlst finds or creates moov/udta/meta/ilst and drops the free and
 // skip atoms of udta and meta. undo, when not nil, removes what it created.
-func ensureIlst(root *matom) (ilst *matom, undo func(), err error) {
+func ensureIlst(root *matom) (ilst *matom, undo func(), err error) { //nolint:nonamedreturns // the names document the results
 	parent := root
 	for _, typ := range []string{atomUdta, atomMeta, atomIlst} {
 		a := parent.child(typ)
@@ -583,7 +583,7 @@ func subAtoms(b []byte) ([]subAtom, bool) {
 }
 
 // firstData returns the type and value of an item's first data atom.
-func firstData(payload []byte) (dataType uint32, value []byte, ok bool) {
+func firstData(payload []byte) (dataType uint32, value []byte, ok bool) { //nolint:nonamedreturns // the names document the results
 	children, ok := subAtoms(payload)
 	if !ok {
 		return 0, nil, false

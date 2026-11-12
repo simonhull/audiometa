@@ -30,7 +30,7 @@ func NewEditor(format types.Format, c Comments) *Editor {
 
 // commentKey returns the key of a raw comment (the text before the first
 // "="); ok is false for a comment without "=", which matches no key.
-func commentKey(c []byte) (key string, ok bool) {
+func commentKey(c []byte) (key string, ok bool) { //nolint:nonamedreturns // the names document the results
 	k, _, ok := bytes.Cut(c, []byte{'='})
 	return string(k), ok
 }
@@ -166,7 +166,7 @@ var (
 
 // numberKeysFor returns the keys of a track or disc field and whether f is
 // the total (rather than the number). ok is false for any other field.
-func numberKeysFor(f types.Field) (keys numberKeys, isTotal, ok bool) {
+func numberKeysFor(f types.Field) (keys numberKeys, isTotal, ok bool) { //nolint:nonamedreturns // the names document the results
 	if f == types.FieldTrackNumber || f == types.FieldTrackTotal {
 		return trackKeys, f == types.FieldTrackTotal, true
 	}

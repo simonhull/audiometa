@@ -24,7 +24,7 @@ type oggPage struct {
 
 // oggPages splits data into pages the way RFC 3533 describes them. It stops at
 // the first byte that does not start a whole page and returns what follows.
-func oggPages(data []byte) (pages []oggPage, tail []byte) {
+func oggPages(data []byte) (pages []oggPage, tail []byte) { //nolint:nonamedreturns // the names document the results
 	for off := 0; off < len(data); {
 		if len(data)-off < 27 || string(data[off:off+4]) != "OggS" || data[off+4] != 0 {
 			return pages, data[off:]

@@ -85,7 +85,7 @@ func newFlagSet(name, synopsis string, stderr io.Writer) *flag.FlagSet {
 }
 
 // parse parses args. ok is false when the caller should return code.
-func parse(fs *flag.FlagSet, args []string) (code int, ok bool) {
+func parse(fs *flag.FlagSet, args []string) (code int, ok bool) { //nolint:nonamedreturns // the names document the results
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return exitOK, false
