@@ -115,3 +115,44 @@ func atoi(s string) int {
 	n, _ := strconv.Atoi(s)
 	return n
 }
+
+// encodeID3v1 returns the ID3v1 trailer that holds tags: title, artist,
+// album, year, comment and track number, each cut to its field width. Text is
+// ISO-8859-1, with '?' for a character outside it. A year outside 1900-2100
+// (the range the reader accepts) is left blank. A track number from 1 to 255
+// makes the tag ID3v1.1 and limits the comment to 28 bytes. The genre byte is
+// copied from old, the trailer being replaced.
+func encodeID3v1(tags *types.Tags, old [id3v1Size]byte) [id3v1Size]byte {
+	var b [id3v1Size]byte
+	copy(b[:3], "TAG")
+	putLatin1(b[3:33], tags.Title)
+	putLatin1(b[33:63], tags.Artist)
+	putLatin1(b[63:93], tags.Album)
+	if validID3Year(tags.Year) {
+		copy(b[93:97], strconv.Itoa(tags.Year))
+	}
+	if tags.TrackNumber >= 1 && tags.TrackNumber <= 255 {
+		putLatin1(b[97:125], tags.Comment)
+		b[126] = byte(tags.TrackNumber)
+	} else {
+		putLatin1(b[97:127], tags.Comment)
+	}
+	b[127] = old[127]
+	return b
+}
+
+// putLatin1 writes s into dst as ISO-8859-1, cut to len(dst); the rest of dst
+// is left as it is (NUL). A rune above U+00FF is written as '?'.
+func putLatin1(dst []byte, s string) {
+	i := 0
+	for _, r := range s {
+		if i == len(dst) {
+			return
+		}
+		if r > 0xFF {
+			r = '?'
+		}
+		dst[i] = byte(r)
+		i++
+	}
+}
