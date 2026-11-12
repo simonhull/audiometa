@@ -382,20 +382,22 @@ const maxChapterSamples = 1 << 20
 // chapterSampleBound returns how many samples the chapter track's stsz can
 // describe in this file, at most maxChapterSamples: the entries a per-sample
 // table holds, or, for a uniform sample size, as many samples as the file has
-// room for. Every chapter sample takes at least 2 bytes, its title length. A
-// missing or unreadable stsz gives maxChapterSamples; its readers report it.
+// room for. Every chapter sample takes at least 2 bytes, its title length, so
+// a missing or unreadable stsz gives as many samples as the file has room for;
+// its readers report it.
 func chapterSampleBound(ctx context.Context, sr *binary.SafeReader, stblAtom *Atom) int {
+	fileRoom := int(min(sr.Size()/2, maxChapterSamples))
 	stszAtom, err := stblAtom.child(ctx, sr, "stsz")
 	if err != nil || stszAtom.DataSize() < 12 {
-		return maxChapterSamples
+		return fileRoom
 	}
 	defaultSize, err := sr.Read[uint32](stszAtom.DataOffset()+4, "default sample size")
 	if err != nil {
-		return maxChapterSamples
+		return fileRoom
 	}
 	count, err := sr.Read[uint32](stszAtom.DataOffset()+8, "sample count")
 	if err != nil {
-		return maxChapterSamples
+		return fileRoom
 	}
 
 	room := (stszAtom.DataSize() - 12) / 4 // entries of a per-sample table
