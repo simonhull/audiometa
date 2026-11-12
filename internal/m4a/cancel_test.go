@@ -13,6 +13,7 @@ import (
 )
 
 func TestParse_CancelInsideAtomWalk(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"sample.m4b", "sample.m4a"} {
 		data, err := os.ReadFile("../../testdata/" + name)
 		if err != nil {
@@ -28,8 +29,9 @@ func TestParse_CancelInsideAtomWalk(t *testing.T) {
 }
 
 func TestParseChapters_CancelInsideTables(t *testing.T) {
+	t.Parallel()
 	payload := append(textSample("A"), textSample("B")...)
-	data, moovOff := buildQTChapterFile(1000, payload,
+	data, moovOff := buildQTChapterFile(payload,
 		sttsAtom([2]uint32{2, 1000}),
 		stszAtom(0, 2, 3, 3),
 		stcoAtom(8),

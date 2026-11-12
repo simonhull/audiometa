@@ -13,6 +13,13 @@ import (
 
 // artworkExt maps an image MIME type to a file extension. Only these values
 // are ever used: the extension is never derived from file contents.
+// Permissions of what the artwork command creates: owner-only files, and directories
+// the owner and group can read.
+const (
+	dirMode  = 0o750
+	fileMode = 0o600
+)
+
 func artworkExt(mime string) string {
 	switch strings.ToLower(strings.TrimSpace(mime)) {
 	case "image/jpeg", "image/jpg":
@@ -64,7 +71,7 @@ func runArtwork(args []string, stdout, stderr io.Writer) int {
 	if !requireFiles(fs, stderr) {
 		return exitUsage
 	}
-	if err := os.MkdirAll(*outDir, 0o750); err != nil {
+	if err := os.MkdirAll(*outDir, dirMode); err != nil {
 		fmt.Fprintf(stderr, "audiometa artwork: %v\n", err)
 		return exitFail
 	}
@@ -127,7 +134,7 @@ func writeNew(dest string, data []byte, force bool) error {
 	if force {
 		return replaceFile(dest, data)
 	}
-	f, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	f, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_EXCL, fileMode)
 	if err != nil {
 		if errors.Is(err, os.ErrExist) {
 			return fmt.Errorf("%s exists (use --force to overwrite)", dest)

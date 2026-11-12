@@ -20,7 +20,7 @@ func copyOwner(f *os.File, st os.FileInfo) {
 func syncDir(dir string) error {
 	d, err := os.Open(dir)
 	if err != nil {
-		return err
+		return err //nolint:wrapcheck // the caller wraps the directory sync with its own context
 	}
 	syncErr := d.Sync()
 	closeErr := d.Close()

@@ -140,7 +140,7 @@ func applyIlstEdits(root *matom, edits *types.EditSet) error {
 
 // ensureIlst finds or creates moov/udta/meta/ilst and drops the free and
 // skip atoms of udta and meta. undo, when not nil, removes what it created.
-func ensureIlst(root *matom) (ilst *matom, undo func(), err error) {
+func ensureIlst(root *matom) (ilst *matom, undo func(), err error) { //nolint:nonamedreturns // the names document the results
 	parent := root
 	for _, typ := range []string{atomUdta, atomMeta, atomIlst} {
 		a := parent.child(typ)
@@ -493,24 +493,9 @@ func applyCovr(ilst *matom, ops []types.ArtworkOp) error {
 			return fmt.Errorf("%w: malformed covr item", types.ErrUnsupportedWrite)
 		}
 	}
-	removeAll := false
-	for _, op := range ops {
-		switch op.Kind {
-		case types.ArtworkOpAdd:
-			data, err := covrData(op.Art)
-			if err != nil {
-				return err
-			}
-			children = append(children, subAtom{typ: atomData, raw: data})
-		case types.ArtworkOpRemove, types.ArtworkOpRemoveAll:
-			if op.Kind == types.ArtworkOpRemove && op.Type != types.ArtworkFrontCover {
-				continue
-			}
-			children = slices.DeleteFunc(children, func(c subAtom) bool { return c.typ == atomData })
-			removeAll = true
-		default:
-			return fmt.Errorf("%w: unknown artwork operation %d", types.ErrUnsupportedWrite, op.Kind)
-		}
+	children, removeAll, err := applyCovrOps(children, ops)
+	if err != nil {
+		return err
 	}
 	var payload []byte
 	if slices.ContainsFunc(children, func(c subAtom) bool { return c.typ == atomData }) {
@@ -528,6 +513,31 @@ func applyCovr(ilst *matom, ops []types.ArtworkOp) error {
 	}
 	e.insert(-1, &matom{typ: itemCovr, payload: payload})
 	return nil
+}
+
+// applyCovrOps applies ops in order to the sub-atoms of a covr item. It reports whether an
+// operation removed images, in which case an emptied covr is dropped rather than kept.
+func applyCovrOps(children []subAtom, ops []types.ArtworkOp) ([]subAtom, bool, error) {
+	removeAll := false
+	for _, op := range ops {
+		switch op.Kind {
+		case types.ArtworkOpAdd:
+			data, err := covrData(op.Art)
+			if err != nil {
+				return nil, false, err
+			}
+			children = append(children, subAtom{typ: atomData, raw: data})
+		case types.ArtworkOpRemove, types.ArtworkOpRemoveAll:
+			if op.Kind == types.ArtworkOpRemove && op.Type != types.ArtworkFrontCover {
+				continue
+			}
+			children = slices.DeleteFunc(children, func(c subAtom) bool { return c.typ == atomData })
+			removeAll = true
+		default:
+			return nil, false, fmt.Errorf("%w: unknown artwork operation %d", types.ErrUnsupportedWrite, op.Kind)
+		}
+	}
+	return children, removeAll, nil
 }
 
 // covrData encodes a as a covr data atom.
@@ -573,7 +583,7 @@ func subAtoms(b []byte) ([]subAtom, bool) {
 }
 
 // firstData returns the type and value of an item's first data atom.
-func firstData(payload []byte) (dataType uint32, value []byte, ok bool) {
+func firstData(payload []byte) (dataType uint32, value []byte, ok bool) { //nolint:nonamedreturns // the names document the results
 	children, ok := subAtoms(payload)
 	if !ok {
 		return 0, nil, false

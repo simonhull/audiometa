@@ -10,6 +10,7 @@ import (
 	"math"
 	"unicode/utf8"
 
+	"github.com/simonhull/audiometa/internal/imagemeta"
 	"github.com/simonhull/audiometa/internal/types"
 )
 
@@ -85,7 +86,9 @@ func EncodedLen(a types.Artwork) int {
 }
 
 // Encode validates a (a printable-ASCII MIME type, a picture type from Other to Publisher
-// logotype, a UTF-8 description) and encodes it, with color depth and color count 0.
+// logotype, a UTF-8 description) and encodes it. The block's width, height, color depth and
+// color count are written together, depth and count read from the image data, or are all 0
+// when the image's depth cannot be read or its size is unknown.
 // Failures wrap [types.ErrUnsupportedWrite]. Encode does not limit the block's size; see
 // [EncodedLen].
 func Encode(a types.Artwork) ([]byte, error) {
@@ -104,11 +107,22 @@ func Encode(a types.Artwork) ([]byte, error) {
 	out = binary.BigEndian.AppendUint32(out, uint32(a.Type))
 	out = appendBytes(out, []byte(a.MIMEType))
 	out = appendBytes(out, []byte(a.Description))
-	out = binary.BigEndian.AppendUint32(out, dimension(a.Width))
-	out = binary.BigEndian.AppendUint32(out, dimension(a.Height))
-	out = binary.BigEndian.AppendUint32(out, 0) // color depth: unknown
-	out = binary.BigEndian.AppendUint32(out, 0) // colors used: not indexed
+	for _, n := range numericFields(a) {
+		out = binary.BigEndian.AppendUint32(out, n)
+	}
 	return appendBytes(out, a.Data), nil
+}
+
+// numericFields returns a's width, height, color depth and indexed color count. The format
+// (and opusinfo) require them to be either all valid or all 0, so when the width, the height or
+// the depth is unknown, which the image header decides, all four are 0. The color count is 0
+// for an image that is not indexed.
+func numericFields(a types.Artwork) [4]uint32 {
+	depth, colors := imagemeta.ColorDepth(a.Data, a.MIMEType)
+	if a.Width <= 0 || a.Height <= 0 || depth <= 0 {
+		return [4]uint32{}
+	}
+	return [4]uint32{dimension(a.Width), dimension(a.Height), dimension(depth), dimension(colors)}
 }
 
 // appendBytes appends b preceded by its big-endian 32-bit length. Callers bound len(b) by

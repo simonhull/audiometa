@@ -163,7 +163,7 @@ func buildMeta(ctx context.Context, sr *binutil.SafeReader, size int64, edits *t
 // and the offset just past the last block. A missing "fLaC" marker, a first
 // block other than STREAMINFO, a block running past the end of the file, or a
 // chain that never reaches its last block is a CorruptedFileError.
-func walkBlocks(ctx context.Context, sr *binutil.SafeReader, size int64, visit func(typ uint8, off, n int64) error) (prefix, end int64, err error) {
+func walkBlocks(ctx context.Context, sr *binutil.SafeReader, size int64, visit func(typ uint8, off, n int64) error) (prefix, end int64, err error) { //nolint:nonamedreturns // the names document the results
 	if size < int64(len(flacMagic)) {
 		return 0, 0, corrupted(sr.Path(), 0, errNoMagic.Error())
 	}

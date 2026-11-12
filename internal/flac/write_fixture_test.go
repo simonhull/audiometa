@@ -140,7 +140,7 @@ func headersOf(t *testing.T, meta []byte) []header {
 // last) and audioTail.
 func simpleFLAC(pad int, comments ...string) []byte {
 	return append(buildFLAC(
-		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100, 44100)),
+		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100)),
 		flacBlock(false, blockTypeVorbisComment, vorbisCommentPayload(comments...)),
 		flacBlock(true, blockTypePadding, make([]byte, pad)),
 	), audioTail...)

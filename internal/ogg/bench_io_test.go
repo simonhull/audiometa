@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"io"
+	"slices"
 	"testing"
 )
 
@@ -41,8 +42,10 @@ func ioOpus(cover bool) []byte {
 		comments = append(comments, "METADATA_BLOCK_PICTURE="+base64.StdEncoding.EncodeToString(block))
 	}
 	head := opusHeadPacket()
-	pages := []pageSpec{{headerType: 0x02, serial: 1, lacing: lacingFor(len(head)), data: head}}
-	pages = append(pages, splitAcrossPages(commentPacket("OpusTags", false, comments...), 0, 1)...)
+	pages := slices.Concat(
+		[]pageSpec{{headerType: 0x02, serial: 1, lacing: lacingFor(len(head)), data: head}},
+		splitAcrossPages(commentPacket("OpusTags", false, comments...), 1),
+	)
 	const audioPages, audioSize = 240, 17_000
 	payload := bytes.Repeat([]byte{0x7E}, audioSize)
 	for i := range audioPages {
@@ -65,6 +68,7 @@ func ioInputs() []ioInput {
 }
 
 func benchIO(b *testing.B, run func(b *testing.B, r io.ReaderAt, size int64)) {
+	b.Helper()
 	for _, in := range ioInputs() {
 		b.Run(in.name, func(b *testing.B) {
 			br := bytes.NewReader(in.data)
@@ -83,6 +87,7 @@ func benchIO(b *testing.B, run func(b *testing.B, r io.ReaderAt, size int64)) {
 // BenchmarkIOParse reports the reads and bytes requested by Parse.
 func BenchmarkIOParse(b *testing.B) {
 	benchIO(b, func(b *testing.B, r io.ReaderAt, size int64) {
+		b.Helper()
 		if _, err := (&parser{}).Parse(context.Background(), r, size, "x.opus"); err != nil {
 			b.Fatal(err)
 		}
@@ -92,6 +97,7 @@ func BenchmarkIOParse(b *testing.B) {
 // BenchmarkIOExtractArtwork reports the reads and bytes requested by ExtractArtwork.
 func BenchmarkIOExtractArtwork(b *testing.B) {
 	benchIO(b, func(b *testing.B, r io.ReaderAt, size int64) {
+		b.Helper()
 		if _, err := (&parser{}).ExtractArtwork(context.Background(), r, size, "x.opus"); err != nil {
 			b.Fatal(err)
 		}
@@ -101,6 +107,7 @@ func BenchmarkIOExtractArtwork(b *testing.B) {
 // BenchmarkIODigest reports the reads and bytes requested by AudioDigest.
 func BenchmarkIODigest(b *testing.B) {
 	benchIO(b, func(b *testing.B, r io.ReaderAt, size int64) {
+		b.Helper()
 		if _, err := (digester{}).AudioDigest(context.Background(), r, size); err != nil {
 			b.Fatal(err)
 		}

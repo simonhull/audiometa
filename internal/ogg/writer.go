@@ -45,6 +45,7 @@ import (
 // never parses it and carries it from memory to its new pages.
 type writer struct {
 	digester
+
 	codec *codec
 }
 
@@ -62,84 +63,6 @@ type rewrite struct {
 	// keepsNumbers is true when the new header pages end at the sequence number
 	// the old ones did: every later page is copied untouched.
 	keepsNumbers bool
-}
-
-// plan reads src, applies edits to its comment header and decides the new page
-// layout. It validates the whole file: it returns before any output exists.
-func (w *writer) plan(ctx context.Context, src io.ReaderAt, size int64, edits *types.EditSet) (*rewrite, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	l, err := readLayout(ctx, src, size, "")
-	if err != nil {
-		return nil, err
-	}
-	if l.codec != w.codec {
-		return nil, corruptedAt("", 0, "file is not an "+w.codec.idName+" stream")
-	}
-	if err := scanStreams(ctx, src, size, l.audioStart, l.serial); err != nil {
-		return nil, err
-	}
-	comment, err := w.editedComment(ctx, l, edits)
-	if err != nil {
-		return nil, err
-	}
-	r := &rewrite{l: l, same: bytes.Equal(comment, l.packets[1])}
-	if r.same {
-		return r, nil
-	}
-	packets := append([][]byte{comment}, l.packets[2:]...)
-	if len(comment) == len(l.packets[1]) {
-		r.pages, r.sameLayout, r.keepsNumbers = relayout(l, packets), true, true
-		return r, nil
-	}
-	r.pages = paginate(packets, l.serial, l.firstSeq+1, l.eos)
-	headerBytes := l.idEnd
-	for _, p := range r.pages {
-		headerBytes += int64(pageFixedHeader + len(p.Lacing) + len(p.Data))
-	}
-	if headerBytes > maxHeaderBytes {
-		return nil, fmt.Errorf("%w: the comment header would take %d bytes of pages, more than the %d a reader accepts", types.ErrUnsupportedWrite, headerBytes, maxHeaderBytes)
-	}
-	r.keepsNumbers = len(r.pages) == len(l.pages) && r.pages[len(r.pages)-1].SequenceNumber == l.lastSeq
-	return r, nil
-}
-
-// editedComment returns the comment packet of l with edits applied.
-func (w *writer) editedComment(ctx context.Context, l *layout, edits *types.EditSet) ([]byte, error) {
-	packet, magic := l.packets[1], w.codec.commentMagic
-	if !bytes.HasPrefix(packet, []byte(magic)) {
-		return nil, corruptedAt("", l.idEnd, "the comment header does not start with its "+w.codec.commentName+" marker")
-	}
-	c, err := vorbis.Split(ctx, packet[len(magic):])
-	if err != nil {
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, ctxErr
-		}
-		return nil, corruptedAt("", l.idEnd, "malformed "+w.codec.commentName+": "+err.Error())
-	}
-	v := vorbis.NewEditor(w.codec.format, c)
-	for _, e := range edits.Keys {
-		if err := v.ApplyKey(e.Key, e.Values); err != nil {
-			return nil, err
-		}
-	}
-	for _, e := range edits.Fields {
-		if err := v.ApplyField(e, edits); err != nil {
-			return nil, err
-		}
-	}
-	if err := applyArtwork(v, edits.Artwork); err != nil {
-		return nil, err
-	}
-	out := append([]byte(magic), v.Encode()...)
-	if bytes.Equal(out, packet) || w.codec != opusCodec || len(c.Tail) == 0 || c.Tail[0]&1 != 0 {
-		return out, nil
-	}
-	// The data after the comments is padding: it absorbs the change in length.
-	core := vorbis.Comments{Vendor: v.Vendor, Entries: v.Entries}
-	v.Tail = opusPadding(len(packet) - len(magic) - len(core.Encode()))
-	return append([]byte(magic), v.Encode()...), nil
 }
 
 // opusPadding returns n zero bytes, or nil when n is not positive.
@@ -345,6 +268,84 @@ func (w *writer) InPlacePatch(ctx context.Context, src io.ReaderAt, size int64, 
 	}
 	a, b := l.pages[first].start-l.idEnd, l.pages[last].end-l.idEnd
 	return &registry.Patch{Off: l.pages[first].start, Data: fresh[a:b]}, nil
+}
+
+// plan reads src, applies edits to its comment header and decides the new page
+// layout. It validates the whole file: it returns before any output exists.
+func (w *writer) plan(ctx context.Context, src io.ReaderAt, size int64, edits *types.EditSet) (*rewrite, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	l, err := readLayout(ctx, src, size, "")
+	if err != nil {
+		return nil, err
+	}
+	if l.codec != w.codec {
+		return nil, corruptedAt("", 0, "file is not an "+w.codec.idName+" stream")
+	}
+	if err := scanStreams(ctx, src, size, l.audioStart, l.serial); err != nil {
+		return nil, err
+	}
+	comment, err := w.editedComment(ctx, l, edits)
+	if err != nil {
+		return nil, err
+	}
+	r := &rewrite{l: l, same: bytes.Equal(comment, l.packets[1])}
+	if r.same {
+		return r, nil
+	}
+	packets := append([][]byte{comment}, l.packets[2:]...)
+	if len(comment) == len(l.packets[1]) {
+		r.pages, r.sameLayout, r.keepsNumbers = relayout(l, packets), true, true
+		return r, nil
+	}
+	r.pages = paginate(packets, l.serial, l.firstSeq+1, l.eos)
+	headerBytes := l.idEnd
+	for _, p := range r.pages {
+		headerBytes += int64(pageFixedHeader + len(p.Lacing) + len(p.Data))
+	}
+	if headerBytes > maxHeaderBytes {
+		return nil, fmt.Errorf("%w: the comment header would take %d bytes of pages, more than the %d a reader accepts", types.ErrUnsupportedWrite, headerBytes, maxHeaderBytes)
+	}
+	r.keepsNumbers = len(r.pages) == len(l.pages) && r.pages[len(r.pages)-1].SequenceNumber == l.lastSeq
+	return r, nil
+}
+
+// editedComment returns the comment packet of l with edits applied.
+func (w *writer) editedComment(ctx context.Context, l *layout, edits *types.EditSet) ([]byte, error) {
+	packet, magic := l.packets[1], w.codec.commentMagic
+	if !bytes.HasPrefix(packet, []byte(magic)) {
+		return nil, corruptedAt("", l.idEnd, "the comment header does not start with its "+w.codec.commentName+" marker")
+	}
+	c, err := vorbis.Split(ctx, packet[len(magic):])
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		return nil, corruptedAt("", l.idEnd, "malformed "+w.codec.commentName+": "+err.Error())
+	}
+	v := vorbis.NewEditor(w.codec.format, c)
+	for _, e := range edits.Keys {
+		if err := v.ApplyKey(e.Key, e.Values); err != nil {
+			return nil, err
+		}
+	}
+	for _, e := range edits.Fields {
+		if err := v.ApplyField(e, edits); err != nil {
+			return nil, err
+		}
+	}
+	if err := applyArtwork(v, edits.Artwork); err != nil {
+		return nil, err
+	}
+	out := append([]byte(magic), v.Encode()...)
+	if bytes.Equal(out, packet) || w.codec != opusCodec || len(c.Tail) == 0 || c.Tail[0]&1 != 0 {
+		return out, nil
+	}
+	// The data after the comments is padding: it absorbs the change in length.
+	core := vorbis.Comments{Vendor: v.Vendor, Entries: v.Entries}
+	v.Tail = opusPadding(len(packet) - len(magic) - len(core.Encode()))
+	return append([]byte(magic), v.Encode()...), nil
 }
 
 var (

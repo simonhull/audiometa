@@ -122,7 +122,7 @@ func parseTechnicalInfo(ctx context.Context, sr *binutil.SafeReader, tagSize int
 // headerAt returns the 4 bytes at off as a frame header, from window (which
 // starts at windowStart) when they are inside it. ok is false when they would
 // run past end.
-func headerAt(sr *binutil.SafeReader, window []byte, windowStart, off, end int64) (header uint32, ok bool, err error) {
+func headerAt(sr *binutil.SafeReader, window []byte, windowStart, off, end int64) (header uint32, ok bool, err error) { //nolint:nonamedreturns // the names document the results
 	if off+4 > end {
 		return 0, false, nil
 	}
@@ -179,7 +179,7 @@ func validFrameHeader(header uint32) bool {
 }
 
 // parseMP3FrameHeader extracts bitrate, sample rate, and channels from frame header.
-func parseMP3FrameHeader(header uint32) (bitrate, sampleRate, channels int) {
+func parseMP3FrameHeader(header uint32) (bitrate, sampleRate, channels int) { //nolint:nonamedreturns // the names document the results
 	bitrates, sampleRates := bitrateTableV1, sampleRateTableV1
 	switch mpegVersion(header) {
 	case versionMPEG2:

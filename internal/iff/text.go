@@ -170,7 +170,7 @@ func appendChunk(b []byte, id string, p []byte, order byteOrder) []byte {
 // of the first; with no values it removes them. A new id goes at the end.
 // changed is false, and entries are returned as they are, when id already
 // holds exactly values.
-func setEntries(entries []entry, id string, values []string) (_ []entry, changed bool) {
+func setEntries(entries []entry, id string, values []string) (_ []entry, changed bool) { //nolint:nonamedreturns // the names document the results
 	if slices.Equal(valuesOf(entries, id), values) {
 		return entries, false
 	}

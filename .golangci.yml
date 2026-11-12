@@ -13,50 +13,51 @@ output:
       print-issued-lines: true
 
 linters:
-  default: none
-  enable:
-    - bidichk
-    - bodyclose
-    - containedctx
-    - contextcheck
-    - copyloopvar
-    - durationcheck
-    - errcheck
-    - errname
-    - errorlint
-    - exhaustive
-    - fatcontext
-    - forcetypeassert
-    - goconst
-    - gocritic
-    - gocyclo
-    - godot
-    - goprintffuncname
-    - gosec
-    - govet
-    - ineffassign
-    - intrange
-    - makezero
-    - misspell
-    - modernize
-    - nakedret
-    - nestif
-    - nilerr
-    - nolintlint
-    - perfsprint
-    - predeclared
-    - recvcheck
-    - revive
-    - staticcheck
-    - testifylint
-    - thelper
-    - unconvert
-    - unparam
-    - unused
-    - usestdlibvars
-    - whitespace
+  default: all
+  # Every linter is on except these, each by maintainer decision.
+  disable:
+    - exhaustruct     # forbids the zero-value struct literals and options the code relies on
+    - wsl             # whitespace style churn, not defects (deprecated alias of wsl_v5)
+    - wsl_v5          # whitespace style churn, not defects
+    - nlreturn        # blank-line-before-return style churn
+    - varnamelen      # short names (r, sr, n, off) are idiomatic in parsers
+    - noinlineerr     # `if err := f(); err != nil` is the standard Go idiom
+    - testpackage     # in-package tests of unexported code are deliberate
+    - gosmopolitan    # non-Latin strings are test data for tag decoding
+    - lll             # long format strings and tables; gofumpt owns layout
+    - tagalign        # struct tag alignment is formatting churn
+    - exhaustruct_v5  # the exhaustruct family again (see exhaustruct)
+    - gomodguard      # deprecated upstream (replaced by gomodguard_v2, which stays on)
 
   settings:
+    depguard:
+      rules:
+        banned:
+          files:
+            - $all
+          deny:
+            - pkg: io/ioutil
+              desc: deprecated since Go 1.16; use io and os
+            - pkg: math/rand$
+              desc: use math/rand/v2
+            - pkg: github.com/pkg/errors
+              desc: use the standard errors package and fmt.Errorf with %w
+            - pkg: golang.org/x/exp
+              desc: its useful parts live in the standard library (slices, maps, cmp)
+            - pkg: encoding/json$
+              desc: use encoding/json/v2
+        no-log:
+          # Examples and godoc examples are runnable demos that report fatal errors with log.
+          files:
+            - $all
+            - "!**/examples/**"
+            - "!**/example*_test.go"
+          deny:
+            - pkg: log$
+              desc: libraries do not log; return errors or warnings
+    cyclop:
+      # The same bound as gocyclo below, so the two cannot disagree.
+      max-complexity: 15
     errcheck:
       check-type-assertions: true
       check-blank: false
@@ -64,6 +65,11 @@ linters:
         - (io.Closer).Close
         - (*os.File).Close
         - (*github.com/simonhull/audiometa.File).Close
+    funlen:
+      # Binary-format parsers read many fields in sequence; the defaults (60 lines, 40
+      # statements) split them into fragments that read worse than the sequence.
+      lines: 100
+      statements: 50
     gocritic:
       disabled-checks:
         - hugeParam
@@ -84,10 +90,44 @@ linters:
         - fieldalignment
     misspell:
       locale: US
+    ireturn:
+      # Seams return io.ReaderAt, io.Reader and friends on purpose; errors and the standard
+      # library's interfaces are fine to return.
+      allow:
+        - error
+        - stdlib
+        - empty
+        - anon
+        - generic
+    mnd:
+      # Binary-format parsers are sequences of field offsets, sizes and masks that the format
+      # specifications name; a constant per number reads worse than the spec table beside it.
+      ignored-files:
+        - internal/(flac|m4a|mp3|ogg|iff|vorbis|imagemeta|picture|trailer)/
+        - internal/types/format\.go
     nakedret:
       max-func-lines: 30
     nestif:
       min-complexity: 5
+    wrapcheck:
+      # Errors from this module's own packages already carry their context, and a context
+      # error must reach the caller as ctx.Err() so errors.Is(err, context.Canceled) holds.
+      ignore-package-globs:
+        - github.com/simonhull/audiometa/*
+      ignore-sigs:
+        - .Errorf(
+        - errors.New(
+        - errors.Unwrap(
+        - errors.Join(
+        - (context.Context).Err()
+        - .Err()
+        # io.Reader, io.ReaderAt, io.Writer and io.Closer wrappers and fakes must pass io.EOF
+        # and the underlying error through unchanged; callers compare them with errors.Is.
+        - .ReadAt(
+        - .Write(
+        - .WriteAt(
+        - .Close()
+        - .Sync()
     revive:
       enable-all-rules: false
       rules:
@@ -120,23 +160,29 @@ linters:
       - third_party$
       - builtin$
     rules:
-      # Tests have different requirements
+      # Tests are linted like production code; only these checks are relaxed for them.
+      # Tables of expected values are naturally magic numbers, test bodies are long, tests
+      # build ad-hoc errors, and tests open fixture paths from variables.
       - path: _test\.go
         linters:
-          - errcheck
-          - forcetypeassert
-          - goconst
-          - gocritic
-          - gocyclo
-          - gosec
-          - govet
-          - nestif
-          - nilerr
-          - nolintlint
-          - revive
-          - testifylint
-          - thelper
-          - unparam
+          - mnd
+          - funlen
+          - err113
+      - path: _test\.go
+        linters: [gosec]
+        text: "G304"
+      # More gosec findings that are about production code and do not apply to tests: fixture
+      # builders narrow small known constants (G115); the oracle tests run fixed external tools
+      # (G204) and open repository fixture paths (G703, as for G304); the permission tests chmod
+      # on purpose (G302); seeded fixtures need no CSPRNG (G404); and G602 flags fixed-size
+      # fixture arrays.
+      - path: _test\.go
+        linters: [gosec]
+        text: "G115|G204|G302|G404|G602|G703"
+      # Fixtures encode with binary.Write into a bytes.Buffer, which cannot fail.
+      - path: _test\.go
+        linters: [errcheck]
+        text: "binary\\.Write"
       - path: _test\.go
         linters:
           - staticcheck
@@ -159,7 +205,7 @@ linters:
       # Examples are simple demos; they can use log.Fatalf and don't need
       # the same complexity gates as library code.
       - linters: [gocritic]
-        path: examples/
+        path: ^examples/|example[a-z_]*_test\.go$
         text: "exitAfterDefer"
       - linters: [gocyclo]
         path: examples/
@@ -172,6 +218,80 @@ linters:
       # an upper bound, not a length guarantee.
       - linters: [makezero]
         path: _test\.go
+      # Internal packages and the CLI describe malformed input and misuse with one-off
+      # messages that carry the offsets and sizes involved; nothing outside matches them
+      # (the root package's exported sentinels and typed errors are the contract), so a
+      # sentinel per message would add names without adding a way to handle the error.
+      - linters: [err113]
+        path: ^(internal|cmd)/
+      # These tests swap the package's writer registry (useWriter) and run their subtests against
+      # it; any other test running meanwhile would see the swapped writer.
+      - linters: [paralleltest]
+        path: ^(write_internal_test|write_fs_test)\.go$
+      # Serial tests that swap package state: the format parser registry (file_boundary_test),
+      # the digester lookup (digest_test), the build metadata (version_test) and the
+      # directory-sync hook (atomicfile_test). The other tests in these files are parallel.
+      - linters: [paralleltest]
+        path: ^(file_boundary_test|digest_test|version_test|internal/atomicfile/atomicfile_test)\.go$
+      # These tests register and unregister formats in the process-wide parser, writer and
+      # digester registries; two of them running at once undo each other's registrations.
+      - linters: [paralleltest]
+        path: ^internal/registry/(registry|writer)_test\.go$
+      # The subtests of these tests share one SafeReader, which is not safe for concurrent use.
+      - linters: [paralleltest]
+        path: ^internal/binary/(endian|reader)_test\.go$
+      # Tests that measure process-wide allocation (testbudget, AllocsPerRun) cannot overlap
+      # another test. The other tests in these files are parallel.
+      - linters: [paralleltest]
+        path: ^internal/(flac/bounded|iff/writer|m4a/budget|m4a/chapters|mp3/artwork_walk|mp3/mediamarkers|ogg/budget|ogg/container|testbudget/budget)_test\.go$
+      # Test data repeats literals (fixture names, tag values, frame IDs) on purpose: a table row
+      # reads best with its value inline, and a constant per literal hides the data.
+      - linters: [goconst]
+        path: _test\.go$
+      # Table-driven tests repeat one shape over different data; extracting the shape would
+      # hide the table.
+      - linters: [dupl]
+        path: _test\.go$
+      # Package-level state that is the design: read-only lookup tables, the format registries
+      # and their lock, and the sync.Pool; none is mutated after init except by the registry.
+      - linters: [gochecknoglobals]
+        path: ^internal/
+      # Seams the tests swap (lookupWriter, lookupDigester), and the build metadata the linker
+      # fills in with -ldflags -X (Version, gitCommit, buildTime, goVersion).
+      - linters: [gochecknoglobals]
+        path: ^(digest|write|version)\.go$
+      # Test fixtures and expected-value tables shared by the tests of a package.
+      - linters: [gochecknoglobals]
+        path: _test\.go$
+      # The CLI is the program edge: it prints the error it receives, and wrapping would change
+      # the text users and scripts see.
+      - linters: [wrapcheck]
+        path: ^cmd/audiometa/
+      # Chapter's JSON tags are part of its public encoding, and the oracle test decodes
+      # ffprobe's snake_case output; neither can follow a case convention.
+      - linters: [tagliatelle]
+        path: ^(internal/types/chapter\.go|write_oracle_test\.go)$
+      # The CLI's JSON field names are its output format: renaming them to satisfy a case
+      # convention would change what scripts parse.
+      - linters: [tagliatelle]
+        path: ^cmd/audiometa/
+      # Formats register themselves with the registry in init(); that is the design (a blank
+      # import of a format package is what enables it).
+      - linters: [gochecknoinits]
+        path: ^internal/(flac|m4a|mp3|ogg|iff)/
+        source: '^func init\(\)'
+      # The examples are linear demos read top to bottom; splitting main hides the walkthrough.
+      - linters: [funlen, gocognit, cyclop, mnd]
+        path: ^examples/
+      # The examples are CLI demos whose output is fmt.Print*.
+      - linters: [forbidigo]
+        path: ^examples/
+      # InPlacePatch returns (nil, nil) for "this edit does not fit in place, rewrite instead"
+      # on purpose (plan 074, Decision 5): a nil plan is not an error, and a sentinel would
+      # make every caller unwrap it again.
+      - linters: [nilnil]
+        path: ^internal/(flac|m4a|mp3|ogg)/writer\.go$
+        source: 'return nil, nil'
       # Map keys with trailing spaces are part of the audio format spec (4-char atom names)
       - linters: [gocritic]
         text: "mapKey: suspicious whitespace"
@@ -179,13 +299,10 @@ linters:
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
-  uniq-by-line: true
+  uniq-by-line: false # every linter reports its own finding on a shared line
   new: false
 
 formatters:
   enable:
-    - gofmt
+    - gofumpt
     - goimports
-  settings:
-    gofmt:
-      simplify: true

@@ -11,8 +11,11 @@ import (
 )
 
 func TestMAtom_RoundTripCorpus(t *testing.T) {
-	for _, path := range []string{"../../testdata/sample.m4b", "../../testdata/sample.m4a", "../../testdata/bench/book.m4b",
-		"../../testdata/sample_faststart.m4a", "../../testdata/sample_faststart.m4b"} {
+	t.Parallel()
+	for _, path := range []string{
+		"../../testdata/sample.m4b", "../../testdata/sample.m4a", "../../testdata/bench/book.m4b",
+		"../../testdata/sample_faststart.m4a", "../../testdata/sample_faststart.m4b",
+	} {
 		data, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
@@ -29,6 +32,7 @@ func TestMAtom_RoundTripCorpus(t *testing.T) {
 }
 
 func TestMAtom_RoundTripSynthetic(t *testing.T) {
+	t.Parallel()
 	for _, faststart := range []bool{false, true} {
 		data := buildMP4(faststart, ilstText("\xA9nam", "T"), ilstFreeform("Narrator", "N"), covrItem(covrImage{13, []byte{1, 2, 3}}))
 		m := topAtomOf(t, data, atomMoov)
@@ -44,6 +48,7 @@ func TestMAtom_RoundTripSynthetic(t *testing.T) {
 }
 
 func TestMAtom_ExtendedHeaderPreserved(t *testing.T) {
+	t.Parallel()
 	ilst := atom("ilst", ilstText("\xA9nam", "T"))
 	udta := extAtom("udta", atom("meta", []byte{0, 0, 0, 0}, mdirHdlr, ilst))
 	moov := atom("moov", atom("mvhd", make([]byte, 100)), udta)
@@ -72,10 +77,11 @@ func TestMAtom_ExtendedHeaderPreserved(t *testing.T) {
 }
 
 func TestMAtom_SizesFixedUp(t *testing.T) {
+	t.Parallel()
 	data := buildMP4(false, ilstText("\xA9nam", "Title"))
 	before := moovTreeOf(t, data)
 	sizes := func(root *matom) []uint64 {
-		var out []uint64
+		out := make([]uint64, 0, len([][]string{{}, {atomUdta}, {atomUdta, atomMeta}, {atomUdta, atomMeta, atomIlst}}))
 		for _, path := range [][]string{{}, {atomUdta}, {atomUdta, atomMeta}, {atomUdta, atomMeta, atomIlst}} {
 			out = append(out, findPath(root, path...).size())
 		}
@@ -99,6 +105,7 @@ func TestMAtom_SizesFixedUp(t *testing.T) {
 }
 
 func TestMAtom_MalformedUdtaKeptVerbatim(t *testing.T) {
+	t.Parallel()
 	// A udta whose child overruns it is kept as an opaque leaf.
 	bad := atom("udta", []byte{0, 0, 0, 99}, []byte("junk"))
 	moov := atom("moov", atom("mvhd", make([]byte, 100)), bad)
@@ -112,6 +119,7 @@ func TestMAtom_MalformedUdtaKeptVerbatim(t *testing.T) {
 }
 
 func TestMAtom_MalformedStblIsCorrupt(t *testing.T) {
+	t.Parallel()
 	stbl := atom("stbl", []byte{0, 0, 0, 99}, []byte("stco"))
 	moov := atom("moov", atom("trak", atom("mdia", atom("minf", stbl))))
 	_, err := readMoovTree(srOf(moov), &Atom{Type: atomMoov, Size: int64(len(moov))})
@@ -121,6 +129,7 @@ func TestMAtom_MalformedStblIsCorrupt(t *testing.T) {
 }
 
 func TestMAtom_UdtaTerminatorPreserved(t *testing.T) {
+	t.Parallel()
 	udta := atom("udta", atom("meta", []byte{0, 0, 0, 0}, mdirHdlr, atom("ilst")), []byte{0, 0, 0, 0})
 	moov := atom("moov", atom("mvhd", make([]byte, 100)), udta)
 	root := moovTreeOf(t, moov)

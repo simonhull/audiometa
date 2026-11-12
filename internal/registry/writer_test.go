@@ -64,13 +64,20 @@ func TestGetDigester(t *testing.T) {
 }
 
 func TestRange_Overlaps(t *testing.T) {
+	t.Parallel()
 	r := Range{Off: 10, End: 20}
 	for _, tc := range []struct {
 		o    Range
 		want bool
 	}{
-		{Range{0, 10}, false}, {Range{20, 30}, false}, {Range{0, 11}, true}, {Range{19, 30}, true},
-		{Range{12, 14}, true}, {Range{0, 30}, true}, {Range{15, 15}, false}, {Range{30, 30}, false},
+		{Range{0, 10}, false},
+		{Range{20, 30}, false},
+		{Range{0, 11}, true},
+		{Range{19, 30}, true},
+		{Range{12, 14}, true},
+		{Range{0, 30}, true},
+		{Range{15, 15}, false},
+		{Range{30, 30}, false},
 	} {
 		if got := r.Overlaps(tc.o); got != tc.want || tc.o.Overlaps(r) != tc.want {
 			t.Errorf("%v.Overlaps(%v) = %v, want %v", r, tc.o, got, tc.want)

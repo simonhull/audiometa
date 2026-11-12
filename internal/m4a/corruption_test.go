@@ -25,6 +25,7 @@ func wantOneWarning(t *testing.T, file *types.File, stage string) types.Warning 
 }
 
 func TestParse_CorruptMovieHeaderKeepsTrackInfo(t *testing.T) {
+	t.Parallel()
 	badMvhd := createMockAtom("mvhd", []byte{0, 0, 0, 0, 0, 0})
 	audio := trakWith("soun", stsdFor("mp4a", sampleEntryV01(0, 2, 44100)))
 	moov := createMockAtom("moov", append(badMvhd, audio...))
@@ -41,7 +42,8 @@ func TestParse_CorruptMovieHeaderKeepsTrackInfo(t *testing.T) {
 }
 
 func TestParse_CorruptSampleTableKeepsDuration(t *testing.T) {
-	moov := createMockAtom("moov", append(createMvhdAtom(0, 1000, 10000), trakWithStbl("soun", corruptAtom)...))
+	t.Parallel()
+	moov := createMockAtom("moov", append(createMvhdAtom(1000, 10000), trakWithStbl(corruptAtom)...))
 
 	file := parseBytes(t, append(m4bFtyp(), moov...))
 
@@ -58,6 +60,7 @@ func TestParse_CorruptSampleTableKeepsDuration(t *testing.T) {
 }
 
 func TestParse_AbsentTechnicalAtomsAreSilent(t *testing.T) {
+	t.Parallel()
 	file := parseBytes(t, append(m4bFtyp(), createMockAtom("moov", nil)...))
 	if len(file.Warnings) != 0 {
 		t.Errorf("warnings = %+v, want none", file.Warnings)
@@ -83,6 +86,7 @@ func coverData(image []byte) []byte {
 }
 
 func TestExtractArtwork_CorruptPathIsAnError(t *testing.T) {
+	t.Parallel()
 	moov := createMockAtom("moov", createMockAtom("udta", corruptAtom))
 	_, err := extractArtworkFrom(t, append(m4bFtyp(), moov...))
 	if !errors.As(err, new(*types.CorruptedFileError)) {
@@ -91,6 +95,7 @@ func TestExtractArtwork_CorruptPathIsAnError(t *testing.T) {
 }
 
 func TestExtractArtwork_AbsentCovrIsNotAnError(t *testing.T) {
+	t.Parallel()
 	art, err := extractArtworkFrom(t, ilstFile(createMetadataItem([]byte("\xa9nam"), "Title")))
 	if err != nil || art != nil {
 		t.Errorf("artwork = %v, err = %v, want nil, nil", art, err)
@@ -98,6 +103,7 @@ func TestExtractArtwork_AbsentCovrIsNotAnError(t *testing.T) {
 }
 
 func TestExtractArtwork_CorruptCovrChildKeepsEarlierImages(t *testing.T) {
+	t.Parallel()
 	covr := createMockAtom("covr", append(coverData([]byte("\xff\xd8\xff\xd9")), corruptAtom...))
 	art, err := extractArtworkFrom(t, ilstFile(covr))
 	if err != nil {
@@ -109,6 +115,7 @@ func TestExtractArtwork_CorruptCovrChildKeepsEarlierImages(t *testing.T) {
 }
 
 func TestIlstItem_CorruptSecondValueWarnsAndKeepsFirst(t *testing.T) {
+	t.Parallel()
 	item := createMockAtom("\xa9nam", append(createDataAtom("First"), corruptAtom...))
 	file := runIlst(t, item)
 	if file.Tags.Title != "First" {
@@ -118,10 +125,11 @@ func TestIlstItem_CorruptSecondValueWarnsAndKeepsFirst(t *testing.T) {
 }
 
 func TestParse_UnreadableEsdsWarns(t *testing.T) {
+	t.Parallel()
 	entry := mp4aSampleEntry(esdsPayload(0, []byte{0x12, 0x10}))
 	binary.BigEndian.PutUint32(entry, 1000) // the entry claims to run past the end of the file
 	stsd := fullAtom("stsd", append(u32be(1), entry...))
-	moov := createMockAtom("moov", append(createMvhdAtom(0, 1000, 10000), trakWithStbl("soun", stsd)...))
+	moov := createMockAtom("moov", append(createMvhdAtom(1000, 10000), trakWithStbl(stsd)...))
 
 	file := parseBytes(t, append(m4bFtyp(), moov...))
 
@@ -132,10 +140,11 @@ func TestParse_UnreadableEsdsWarns(t *testing.T) {
 }
 
 func TestParse_TruncatedSttsKeepsChaptersAndWarns(t *testing.T) {
+	t.Parallel()
 	sttsThreeClaimedTwoPresent := fullAtom("stts", u32be(3, 1, 1000, 1, 1000))
 	base := uint32(len(m4bFtyp())) // the chapter text sits after the ftyp atom
 	payload := slices.Concat(textSample("One"), textSample("Two"))
-	data, _ := buildQTChapterFile(1000, payload,
+	data, _ := buildQTChapterFile(payload,
 		stszAtom(0, 2, 5, 5),
 		stscAtom([3]uint32{1, 1, 1}),
 		stcoAtom(base+8, base+13),
@@ -149,7 +158,8 @@ func TestParse_TruncatedSttsKeepsChaptersAndWarns(t *testing.T) {
 }
 
 func TestParse_CorruptUdtaWarnsAboutChapters(t *testing.T) {
-	moov := createMockAtom("moov", append(createMvhdAtom(0, 1000, 10000), createMockAtom("udta", corruptAtom)...))
+	t.Parallel()
+	moov := createMockAtom("moov", append(createMvhdAtom(1000, 10000), createMockAtom("udta", corruptAtom)...))
 
 	file := parseBytes(t, append(m4bFtyp(), moov...))
 
@@ -165,6 +175,7 @@ func TestParse_CorruptUdtaWarnsAboutChapters(t *testing.T) {
 }
 
 func TestParse_ChapterTrackWithoutMdhdUsesDefaultTimescale(t *testing.T) {
+	t.Parallel()
 	base := uint32(len(m4bFtyp())) // the chapter text sits after the ftyp atom
 	payload := slices.Concat(textSample("One"), textSample("Two"))
 	trak1 := createMockAtom("trak", append(tkhdAtom(1), createMockAtom("tref", createMockAtom("chap", u32be(2)))...))
@@ -186,7 +197,8 @@ func TestParse_ChapterTrackWithoutMdhdUsesDefaultTimescale(t *testing.T) {
 }
 
 func TestParseAudiobookTags_CorruptSiblingAfterFreeformIsReported(t *testing.T) {
-	ilst := createMockAtom("ilst", append(createCustomAtom("com.apple.iTunes", "Narrator", "Wil Wheaton"), corruptAtom...))
+	t.Parallel()
+	ilst := createMockAtom("ilst", append(createCustomAtom("Narrator", "Wil Wheaton"), corruptAtom...))
 	sr := audiobinary.NewSafeReader(bytes.NewReader(ilst), int64(len(ilst)), "t.m4b")
 	ilstAtom, err := readAtomHeader(sr, 0, int64(len(ilst)))
 	if err != nil {
@@ -203,7 +215,8 @@ func TestParseAudiobookTags_CorruptSiblingAfterFreeformIsReported(t *testing.T) 
 }
 
 func TestParseAudiobookTags_CorruptChildOfFreeformIsReported(t *testing.T) {
-	freeform := createMockAtom("----", append(createCustomAtom("com.apple.iTunes", "Narrator", "Wil Wheaton")[8:], corruptAtom...))
+	t.Parallel()
+	freeform := createMockAtom("----", append(createCustomAtom("Narrator", "Wil Wheaton")[8:], corruptAtom...))
 	ilst := createMockAtom("ilst", freeform)
 	sr := audiobinary.NewSafeReader(bytes.NewReader(ilst), int64(len(ilst)), "t.m4b")
 	ilstAtom, err := readAtomHeader(sr, 0, int64(len(ilst)))

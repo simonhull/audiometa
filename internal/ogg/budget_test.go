@@ -13,8 +13,10 @@ import (
 
 func TestReadHeaderPackets_EmptyPagesEndTheSearch(t *testing.T) {
 	head := opusHeadPacket()
-	pages := []pageSpec{{headerType: 2, serial: 1, lacing: lacingFor(len(head)), data: head}}
-	pages = append(pages, slices.Repeat([]pageSpec{{serial: 1}}, 300_000)...)
+	pages := slices.Concat(
+		[]pageSpec{{headerType: 2, serial: 1, lacing: lacingFor(len(head)), data: head}},
+		slices.Repeat([]pageSpec{{serial: 1}}, 300_000),
+	)
 	data := buildOgg(pages...)
 
 	file := &types.File{}

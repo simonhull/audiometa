@@ -113,7 +113,7 @@ func (s *pageStream) fill(b []byte, what string, off int64) error {
 // header reads and validates the fixed 27-byte header of the page at off, field
 // by field in file order, so a truncated page reports the first field that
 // does not fit.
-func (s *pageStream) header(off int64) (fixed [27]byte, err error) {
+func (s *pageStream) header(off int64) (fixed [27]byte, err error) { //nolint:nonamedreturns // the names document the results
 	if avail := s.size - off; avail > 0 {
 		if err := s.fill(fixed[:min(avail, int64(len(fixed)))], "Ogg magic", off); err != nil {
 			return fixed, err
@@ -135,8 +135,11 @@ func (s *pageStream) header(off int64) (fixed [27]byte, err error) {
 		what      string
 		at, bytes int
 	}{
-		{"header type", 5, 1}, {"granule position", 6, 8}, {"serial number", 14, 4},
-		{"sequence number", 18, 4}, {"segment count", 26, 1},
+		{"header type", 5, 1},
+		{"granule position", 6, 8},
+		{"serial number", 14, 4},
+		{"sequence number", 18, 4},
+		{"segment count", 26, 1},
 	} {
 		if err := s.check(f.what, off+int64(f.at), f.bytes); err != nil {
 			return fixed, err
@@ -256,7 +259,7 @@ func (t *packetTracker) segments(page *oggPage) iter.Seq[segment] {
 //
 // Packets are assembled in two passes so each is allocated once at its final
 // size: the first sums the segment lengths, the second copies them.
-func splitPackets(pages []*oggPage) (packets [][]byte, open bool) {
+func splitPackets(pages []*oggPage) (packets [][]byte, open bool) { //nolint:nonamedreturns // the names document the results
 	var sizes []int
 	var t packetTracker
 	n := 0

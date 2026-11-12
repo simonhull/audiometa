@@ -9,6 +9,7 @@ import (
 )
 
 func TestDiff(t *testing.T) {
+	t.Parallel()
 	mp3Orig := func() *Tags {
 		o := boundTags(FormatMP3)
 		o.Set("TIT2", "Orig")
@@ -39,43 +40,94 @@ func TestDiff(t *testing.T) {
 		conflict bool
 	}{
 		{"no change", FormatMP3, mp3Orig, func(*Tags) {}, nil, nil, false},
-		{"raw set", FormatMP3, mp3Orig, func(c *Tags) { c.Set("TIT2", "x") },
-			[]KeyEdit{{"TIT2", []string{"x"}}}, nil, false},
-		{"typed set", FormatMP3, mp3Orig, func(c *Tags) { c.Title = "x" },
-			nil, []FieldEdit{{FieldTitle, []string{"x"}}}, false},
-		{"raw and typed disagree", FormatMP3, mp3Orig, func(c *Tags) { c.Set("TIT2", "x"); c.Title = "y" },
-			nil, nil, true},
-		{"raw date unparseable, year typed", FormatFLAC, vorbisOrig, func(c *Tags) { c.Set("DATE", "00"); c.Year = 1948 },
-			nil, nil, true},
-		{"raw date unparseable on a file without one, year typed", FormatFLAC, vorbisNoDate, func(c *Tags) { c.Set("DATE", "00"); c.Year = 1948 },
-			nil, nil, true},
-		{"raw TDRC and typed year", FormatMP3, mp3Orig, func(c *Tags) { c.Set("TDRC", "x"); c.Year = 1999 },
-			nil, nil, true},
-		{"raw unrelated key and typed field", FormatMP3, mp3Orig, func(c *Tags) { c.Set("TXXX-ONLY", "v"); c.Title = "y" },
-			[]KeyEdit{{"TXXX-ONLY", []string{"v"}}}, []FieldEdit{{FieldTitle, []string{"y"}}}, false},
-		{"raw and typed agree", FormatMP3, mp3Orig, func(c *Tags) { c.Set("TIT2", "x"); c.Title = "x" },
-			[]KeyEdit{{"TIT2", []string{"x"}}}, nil, false},
-		{"delete key", FormatMP3, mp3Orig, func(c *Tags) { c.Delete("TXXX-ONLY") },
-			[]KeyEdit{{"TXXX-ONLY", nil}}, nil, false},
-		{"delete bound key", FormatMP3, mp3Orig, func(c *Tags) { c.Delete("TIT2") },
-			[]KeyEdit{{"TIT2", nil}}, nil, false},
-		{"clear typed field", FormatMP3, mp3Orig, func(c *Tags) { c.Title = "" },
-			nil, []FieldEdit{{FieldTitle, nil}}, false},
-		{"artist vs artists", FormatMP3, mp3Orig, func(c *Tags) { c.Artist = "A"; c.Artists = []string{"B"} },
-			nil, nil, true},
-		{"artist and artists agree", FormatMP3, mp3Orig, func(c *Tags) { c.Artist = "A"; c.Artists = []string{"A", "B"} },
-			nil, []FieldEdit{{FieldArtist, []string{"A"}}, {FieldArtists, []string{"A", "B"}}}, false},
-		{"year vs date", FormatFLAC, vorbisOrig, func(c *Tags) { c.Year = 1999; c.Date = "2001-01-01" },
-			nil, nil, true},
-		{"year and date agree", FormatFLAC, vorbisOrig, func(c *Tags) { c.Year = 1999; c.Date = "1999-02-03" },
-			nil, []FieldEdit{{FieldYear, []string{"1999"}}, {FieldDate, []string{"1999-02-03"}}}, false},
-		{"narrator only, no inference", FormatMP3, mp3Orig, func(c *Tags) { c.Narrator = "N" },
-			nil, []FieldEdit{{FieldNarrator, []string{"N"}}}, false},
-		{"unbound cur raw set", FormatMP3, mp3Orig, func(c *Tags) { BindFormat(c, FormatUnknown); c.Set("TIT2", "x") },
-			nil, nil, true}, // raw says x, typed Title still Orig: ambiguous
+		{
+			"raw set", FormatMP3, mp3Orig, func(c *Tags) { c.Set("TIT2", "x") },
+			[]KeyEdit{{"TIT2", []string{"x"}}},
+			nil, false,
+		},
+		{
+			"typed set", FormatMP3, mp3Orig, func(c *Tags) { c.Title = "x" },
+			nil,
+			[]FieldEdit{{FieldTitle, []string{"x"}}},
+			false,
+		},
+		{
+			"raw and typed disagree", FormatMP3, mp3Orig, func(c *Tags) { c.Set("TIT2", "x"); c.Title = "y" },
+			nil, nil, true,
+		},
+		{
+			"raw date unparseable, year typed", FormatFLAC, vorbisOrig, func(c *Tags) { c.Set("DATE", "00"); c.Year = 1948 },
+			nil, nil, true,
+		},
+		{
+			"raw date unparseable on a file without one, year typed", FormatFLAC, vorbisNoDate, func(c *Tags) { c.Set("DATE", "00"); c.Year = 1948 },
+			nil, nil, true,
+		},
+		{
+			"raw TDRC and typed year", FormatMP3, mp3Orig, func(c *Tags) { c.Set("TDRC", "x"); c.Year = 1999 },
+			nil, nil, true,
+		},
+		{
+			"raw unrelated key and typed field", FormatMP3, mp3Orig, func(c *Tags) { c.Set("TXXX-ONLY", "v"); c.Title = "y" },
+			[]KeyEdit{{"TXXX-ONLY", []string{"v"}}},
+			[]FieldEdit{{FieldTitle, []string{"y"}}},
+			false,
+		},
+		{
+			"raw and typed agree", FormatMP3, mp3Orig, func(c *Tags) { c.Set("TIT2", "x"); c.Title = "x" },
+			[]KeyEdit{{"TIT2", []string{"x"}}},
+			nil, false,
+		},
+		{
+			"delete key", FormatMP3, mp3Orig, func(c *Tags) { c.Delete("TXXX-ONLY") },
+			[]KeyEdit{{"TXXX-ONLY", nil}},
+			nil, false,
+		},
+		{
+			"delete bound key", FormatMP3, mp3Orig, func(c *Tags) { c.Delete("TIT2") },
+			[]KeyEdit{{"TIT2", nil}},
+			nil, false,
+		},
+		{
+			"clear typed field", FormatMP3, mp3Orig, func(c *Tags) { c.Title = "" },
+			nil,
+			[]FieldEdit{{FieldTitle, nil}},
+			false,
+		},
+		{
+			"artist vs artists", FormatMP3, mp3Orig, func(c *Tags) { c.Artist = "A"; c.Artists = []string{"B"} },
+			nil, nil, true,
+		},
+		{
+			"artist and artists agree", FormatMP3, mp3Orig, func(c *Tags) { c.Artist = "A"; c.Artists = []string{"A", "B"} },
+			nil,
+			[]FieldEdit{{FieldArtist, []string{"A"}}, {FieldArtists, []string{"A", "B"}}},
+			false,
+		},
+		{
+			"year vs date", FormatFLAC, vorbisOrig, func(c *Tags) { c.Year = 1999; c.Date = "2001-01-01" },
+			nil, nil, true,
+		},
+		{
+			"year and date agree", FormatFLAC, vorbisOrig, func(c *Tags) { c.Year = 1999; c.Date = "1999-02-03" },
+			nil,
+			[]FieldEdit{{FieldYear, []string{"1999"}}, {FieldDate, []string{"1999-02-03"}}},
+			false,
+		},
+		{
+			"narrator only, no inference", FormatMP3, mp3Orig, func(c *Tags) { c.Narrator = "N" },
+			nil,
+			[]FieldEdit{{FieldNarrator, []string{"N"}}},
+			false,
+		},
+		{
+			"unbound cur raw set", FormatMP3, mp3Orig, func(c *Tags) { BindFormat(c, FormatUnknown); c.Set("TIT2", "x") },
+			nil, nil, true,
+		}, // raw says x, typed Title still Orig: ambiguous
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			orig := tc.orig()
 			cur := orig.Clone()
 			tc.mutate(cur)
@@ -104,6 +156,7 @@ func TestDiff(t *testing.T) {
 }
 
 func TestDiff_KeysSorted(t *testing.T) {
+	t.Parallel()
 	for range 20 {
 		orig := boundTags(FormatFLAC)
 		cur := orig.Clone()
@@ -121,6 +174,7 @@ func TestDiff_KeysSorted(t *testing.T) {
 }
 
 func TestEditSet_Empty(t *testing.T) {
+	t.Parallel()
 	if !(&EditSet{}).Empty() {
 		t.Error("zero EditSet must be empty")
 	}

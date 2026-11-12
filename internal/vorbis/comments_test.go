@@ -17,6 +17,7 @@ func parseDerived(comment string, file *types.File) error {
 }
 
 func TestParseComment(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		comment string
@@ -58,7 +59,7 @@ func TestParseComment(t *testing.T) {
 
 		// Text fields
 		{"comment", "COMMENT=Great album!", func(f *types.File) bool { return f.Tags.Comment == "Great album!" }},
-		{"lyrics", "LYRICS=La la la", func(f *types.File) bool { return f.Tags.Lyrics == "La la la" }},
+		{"lyrics", "LYRICS=Sing song", func(f *types.File) bool { return f.Tags.Lyrics == "Sing song" }},
 		{"description", "DESCRIPTION=A detailed description", func(f *types.File) bool { return f.Tags.Description == "A detailed description" }},
 
 		// Audiobook fields
@@ -87,6 +88,7 @@ func TestParseComment(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			file := &types.File{}
 			err := parseDerived(tc.comment, file)
 			if err != nil {
@@ -100,6 +102,7 @@ func TestParseComment(t *testing.T) {
 }
 
 func TestParseComment_MultipleGenres(t *testing.T) {
+	t.Parallel()
 	file := &types.File{}
 
 	_ = parseDerived("GENRE=Rock", file)
@@ -115,6 +118,7 @@ func TestParseComment_MultipleGenres(t *testing.T) {
 }
 
 func TestParseComment_MultipleArtists(t *testing.T) {
+	t.Parallel()
 	file := &types.File{}
 
 	_ = parseDerived("ARTIST=Artist One", file)
@@ -130,6 +134,7 @@ func TestParseComment_MultipleArtists(t *testing.T) {
 }
 
 func TestParseComment_RepeatedSingleValuedFirstWins(t *testing.T) {
+	t.Parallel()
 	file := &types.File{}
 	for _, c := range []string{
 		"TITLE=First", "TITLE=Second", "ALBUM=A1", "ALBUM=A2", "DATE=2001-01-01", "DATE=2002",
@@ -149,6 +154,7 @@ func TestParseComment_RepeatedSingleValuedFirstWins(t *testing.T) {
 }
 
 func TestParseComment_InvalidFormat(t *testing.T) {
+	t.Parallel()
 	file := &types.File{}
 	err := parseDerived("NOEQUALSIGN", file)
 	if err == nil {
@@ -157,6 +163,7 @@ func TestParseComment_InvalidFormat(t *testing.T) {
 }
 
 func TestParseComment_EmptyValue(t *testing.T) {
+	t.Parallel()
 	file := &types.File{}
 	err := parseDerived("TITLE=", file)
 	if err != nil {
@@ -168,6 +175,7 @@ func TestParseComment_EmptyValue(t *testing.T) {
 }
 
 func TestParseComment_EmptyKey(t *testing.T) {
+	t.Parallel()
 	file := &types.File{}
 	err := parseDerived("=value", file)
 	if err != nil {
@@ -180,6 +188,7 @@ func TestParseComment_EmptyKey(t *testing.T) {
 }
 
 func TestParseComment_ValueWithEquals(t *testing.T) {
+	t.Parallel()
 	file := &types.File{}
 	err := parseDerived("COMMENT=x=y=z", file)
 	if err != nil {
@@ -191,6 +200,7 @@ func TestParseComment_ValueWithEquals(t *testing.T) {
 }
 
 func TestParseComment_StoresRawTag(t *testing.T) {
+	t.Parallel()
 	file := &types.File{}
 	_ = parseDerived("TITLE=Test Song", file)
 
@@ -201,6 +211,7 @@ func TestParseComment_StoresRawTag(t *testing.T) {
 }
 
 func TestParseComment_UnknownTag(t *testing.T) {
+	t.Parallel()
 	file := &types.File{}
 	err := parseDerived("CUSTOMTAG=CustomValue", file)
 	if err != nil {
@@ -214,6 +225,7 @@ func TestParseComment_UnknownTag(t *testing.T) {
 }
 
 func TestParseComment_DateYearExtraction(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		date string
 		year int
@@ -227,6 +239,7 @@ func TestParseComment_DateYearExtraction(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.date, func(t *testing.T) {
+			t.Parallel()
 			file := &types.File{}
 			_ = parseDerived("DATE="+tc.date, file)
 			if file.Tags.Year != tc.year {
@@ -237,6 +250,7 @@ func TestParseComment_DateYearExtraction(t *testing.T) {
 }
 
 func TestParseComment_DescriptionNotOverwritten(t *testing.T) {
+	t.Parallel()
 	file := &types.File{}
 	_ = parseDerived("DESCRIPTION=Original", file)
 	_ = parseDerived("DESCRIPTION=New", file)
@@ -247,6 +261,7 @@ func TestParseComment_DescriptionNotOverwritten(t *testing.T) {
 }
 
 func TestParseComment_InvalidNumbers(t *testing.T) {
+	t.Parallel()
 	file := &types.File{}
 
 	_ = parseDerived("TRACKNUMBER=abc", file)
@@ -261,6 +276,7 @@ func TestParseComment_InvalidNumbers(t *testing.T) {
 }
 
 func TestParseComment_CaseInsensitiveKeys(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		comment string
@@ -276,6 +292,7 @@ func TestParseComment_CaseInsensitiveKeys(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			file := &types.File{}
 			if err := parseDerived(tt.comment, file); err != nil {
 				t.Fatal(err)
@@ -296,6 +313,7 @@ func allKeys(f *types.File) []string {
 }
 
 func TestParseComment_RawKeyCanonicalized(t *testing.T) {
+	t.Parallel()
 	file := &types.File{}
 	if err := parseDerived("title=Foo", file); err != nil {
 		t.Fatal(err)
@@ -312,6 +330,7 @@ func TestParseComment_RawKeyCanonicalized(t *testing.T) {
 }
 
 func TestParseComment_MixedCaseSameKey(t *testing.T) {
+	t.Parallel()
 	file := &types.File{}
 	for _, c := range []string{"GENRE=Rock", "genre=Jazz"} {
 		if err := parseDerived(c, file); err != nil {
@@ -327,8 +346,10 @@ func TestParseComment_MixedCaseSameKey(t *testing.T) {
 }
 
 func TestParseComment_NonSeriesTagsStayRaw(t *testing.T) {
+	t.Parallel()
 	for _, key := range []string{"SHOW", "EPISODE_ID", "PART"} {
 		t.Run(key, func(t *testing.T) {
+			t.Parallel()
 			file := &types.File{}
 			_ = parseDerived(key+"=Foo", file)
 			if file.Tags.Series != "" || file.Tags.SeriesPart != "" {
@@ -345,12 +366,14 @@ func TestParseComment_NonSeriesTagsStayRaw(t *testing.T) {
 // field in reverse precedence order and checks that, once the format is bound,
 // the field holds the highest-precedence key's value (Ogg Vorbis and Opus).
 func TestPrecedence_BeatsFileOrder(t *testing.T) {
+	t.Parallel()
 	for _, format := range []types.Format{types.FormatOgg, types.FormatOpus, types.FormatFLAC} {
 		for _, b := range types.FieldBindings(format) {
 			if len(b.Keys) < 2 {
 				continue
 			}
 			t.Run(format.String()+"/"+b.Field.String(), func(t *testing.T) {
+				t.Parallel()
 				var file types.File
 				value := func(i int) string {
 					if slices.Contains([]types.Field{types.FieldYear, types.FieldTrackTotal, types.FieldDiscTotal, types.FieldSeriesPart}, b.Field) {
@@ -377,6 +400,7 @@ func TestPrecedence_BeatsFileOrder(t *testing.T) {
 }
 
 func TestParseComment_NumberWithTotal(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		comments []string
@@ -390,6 +414,7 @@ func TestParseComment_NumberWithTotal(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			var file types.File
 			for _, c := range tt.comments {
 				if err := parseDerived(c, &file); err != nil {

@@ -19,8 +19,10 @@ func hasWarning(f *audiometa.File, sub string) bool {
 }
 
 func TestWithMaxArtworkSize(t *testing.T) {
+	t.Parallel()
 	for _, path := range []string{"testdata/sample.flac", "testdata/sample.mp3", "testdata/sample.m4b"} {
 		t.Run(path, func(t *testing.T) {
+			t.Parallel()
 			f, err := audiometa.Open(path, audiometa.WithMaxArtworkSize(1))
 			if err != nil {
 				t.Fatal(err)
@@ -41,6 +43,7 @@ func TestWithMaxArtworkSize(t *testing.T) {
 }
 
 func TestWithMaxArtworkSizeAllowsFit(t *testing.T) {
+	t.Parallel()
 	f, err := audiometa.Open("testdata/sample.flac", audiometa.WithMaxArtworkSize(1<<20))
 	if err != nil {
 		t.Fatal(err)
@@ -56,6 +59,7 @@ func TestWithMaxArtworkSizeAllowsFit(t *testing.T) {
 }
 
 func TestMaxArtworkSizeDefaultNoLimit(t *testing.T) {
+	t.Parallel()
 	f, err := audiometa.Open("testdata/sample.flac")
 	if err != nil {
 		t.Fatal(err)
@@ -68,6 +72,7 @@ func TestMaxArtworkSizeDefaultNoLimit(t *testing.T) {
 }
 
 func TestMaxArtworkSizeIgnoreWarnings(t *testing.T) {
+	t.Parallel()
 	f, err := audiometa.Open("testdata/sample.flac", audiometa.WithMaxArtworkSize(1), audiometa.WithIgnoreWarnings())
 	if err != nil {
 		t.Fatal(err)
@@ -80,6 +85,7 @@ func TestMaxArtworkSizeIgnoreWarnings(t *testing.T) {
 }
 
 func TestArtworkPreloadAndCaching(t *testing.T) {
+	t.Parallel()
 	f, err := audiometa.Open("testdata/sample.flac", audiometa.WithArtworkPreload(), audiometa.WithMaxArtworkSize(1))
 	if err != nil {
 		t.Fatal(err)
@@ -97,6 +103,7 @@ func TestArtworkPreloadAndCaching(t *testing.T) {
 }
 
 func TestMaxArtworkSizeWithStrictParsing(t *testing.T) {
+	t.Parallel()
 	// Strict is evaluated at Open; preload + oversize must fail it.
 	f, err := audiometa.Open("testdata/sample.flac", audiometa.WithArtworkPreload(), audiometa.WithMaxArtworkSize(1), audiometa.WithStrictParsing())
 	if err == nil {
@@ -131,7 +138,6 @@ func TestWarningPolicyOrder(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			f, err := audiometa.Open(path, tt.opts...)
 			if (err != nil) != tt.wantFail {
 				t.Fatalf("Open err = %v, want failure %v", err, tt.wantFail)

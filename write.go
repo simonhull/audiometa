@@ -204,7 +204,7 @@ func WriteContext(ctx context.Context, path string, edit func(f *File) error, op
 
 // withID3v1Mode returns tw set to apply mode to an ID3v1 trailer, or tw itself
 // when its format has none.
-func withID3v1Mode(tw registry.TagWriter, mode ID3v1Mode) registry.TagWriter {
+func withID3v1Mode(tw registry.TagWriter, mode ID3v1Mode) registry.TagWriter { //nolint:ireturn // the seam returns the registered implementation
 	if c, ok := tw.(registry.ID3v1Configurer); ok {
 		return c.WithID3v1(mode)
 	}
@@ -315,7 +315,7 @@ func (j *writeJob) writeAtomic(ctx context.Context) error {
 // writeInPlace patches the metadata region of the target when the writer
 // supports it and the edits fit. done is false when the caller should fall
 // back to writeAtomic.
-func (j *writeJob) writeInPlace(ctx context.Context) (done bool, err error) {
+func (j *writeJob) writeInPlace(ctx context.Context) (done bool, err error) { //nolint:nonamedreturns // the names document the results
 	ipw, ok := j.tw.(registry.InPlaceWriter)
 	if !ok {
 		return false, nil
@@ -328,7 +328,7 @@ func (j *writeJob) writeInPlace(ctx context.Context) (done bool, err error) {
 		return false, nil
 	}
 	if p.Off < 0 || p.Off+int64(len(p.Data)) > j.f.src.size {
-		return true, fmt.Errorf("in-place patch [%d, %d) outside file of %d bytes", p.Off, p.Off+int64(len(p.Data)), j.f.src.size)
+		return true, fmt.Errorf("in-place patch [%d, %d) outside file of %d bytes", p.Off, p.Off+int64(len(p.Data)), j.f.src.size) //nolint:err113 // a registered writer that breaks its contract is a bug, not an error callers match
 	}
 	verify, err := j.inPlaceVerifier(ctx, p)
 	if err != nil {
@@ -482,7 +482,7 @@ func verifyParsed(ctx context.Context, r io.ReaderAt, size int64, labelPath stri
 
 // writerFor returns the registered writer for format, or an error wrapping
 // ErrUnsupportedWrite.
-func writerFor(format Format) (registry.TagWriter, error) {
+func writerFor(format Format) (registry.TagWriter, error) { //nolint:ireturn // the seam returns the registered implementation
 	tw := lookupWriter(format)
 	if tw == nil {
 		return nil, fmt.Errorf("%w: no writer for %s files", ErrUnsupportedWrite, format)

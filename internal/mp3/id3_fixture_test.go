@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"slices"
 	"testing"
 	"unicode/utf16"
 
@@ -17,7 +18,7 @@ func synchsafe(n int) []byte {
 
 // id3Frame builds one ID3v2.3/2.4 frame: v2.4 sizes are synchsafe, v2.3 plain big-endian.
 func id3Frame(version byte, id string, payload []byte) []byte {
-	h := make([]byte, 10)
+	h := make([]byte, 10, 10+len(payload))
 	copy(h, id)
 	if version == 4 {
 		copy(h[4:8], synchsafe(len(payload)))
@@ -42,18 +43,19 @@ func latin1Text(s string) []byte { return append([]byte{0x00}, s...) }
 
 // utf16Text is a text-frame payload with encoding byte 1, LE BOM, UTF-16LE units.
 func utf16Text(s string) []byte {
-	out := []byte{0x01, 0xFF, 0xFE}
+	out := slices.Grow([]byte{0x01, 0xFF, 0xFE}, 2*len(s))
 	for _, u := range utf16.Encode([]rune(s)) {
 		out = append(out, byte(u), byte(u>>8))
 	}
 	return out
 }
 
-// chapFrameBody builds a CHAP payload: elementID\0, start/end ms, 0xFFFFFFFF offsets, subframes.
-func chapFrameBody(elementID string, startMS, endMS uint32, subframes ...[]byte) []byte {
+// chapFrameBody builds a CHAP payload: elementID\0, a chapter from 0 to 1000 ms, 0xFFFFFFFF
+// offsets, subframes.
+func chapFrameBody(elementID string, subframes ...[]byte) []byte {
 	b := append([]byte(elementID), 0)
-	b = binary.BigEndian.AppendUint32(b, startMS)
-	b = binary.BigEndian.AppendUint32(b, endMS)
+	b = binary.BigEndian.AppendUint32(b, 0)
+	b = binary.BigEndian.AppendUint32(b, 1000)
 	b = append(b, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF)
 	return append(b, bytes.Join(subframes, nil)...)
 }

@@ -3,12 +3,25 @@ package audiometa
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"flag"
 	"io"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
+)
+
+// goldenOptions makes encoding/json/v2 write what the golden files recorded: two-space
+// indentation, nil slices and maps as null, and durations as integer nanoseconds.
+var goldenOptions = json.JoinOptions(
+	jsontext.WithIndent("  "),
+	json.FormatNilSliceAsNull(true),
+	json.FormatNilMapAsNull(true),
+	json.WithMarshalers(json.MarshalToFunc(func(enc *jsontext.Encoder, d time.Duration) error {
+		return enc.WriteToken(jsontext.Int(int64(d)))
+	})),
 )
 
 var update = flag.Bool("update", false, "rewrite golden files")
@@ -73,9 +86,11 @@ func BenchmarkOpenFile(b *testing.B) {
 }
 
 func TestBenchFixturesParse(t *testing.T) {
+	t.Parallel()
 	wantChapters := map[string]int{"book.m4b": 50, "book.mp3": 50, "book.opus": 50, "book.flac": 0}
 	for _, name := range benchFixtures {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			data, err := os.ReadFile(filepath.Join("testdata", "bench", name))
 			if err != nil {
 				t.Fatal(err)
@@ -87,7 +102,7 @@ func TestBenchFixturesParse(t *testing.T) {
 			if got := len(pf.file.Chapters); got != wantChapters[name] {
 				t.Errorf("chapters = %d, want %d", got, wantChapters[name])
 			}
-			got, err := json.MarshalIndent(pf.file, "", "  ")
+			got, err := json.Marshal(pf.file, goldenOptions)
 			if err != nil {
 				t.Fatal(err)
 			}

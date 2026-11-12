@@ -335,12 +335,15 @@ func decodeYear(t *Tags, format Format, value string) bool {
 	return true
 }
 
+// yearDigits is the length of a year in a date such as "2024-05-01".
+const yearDigits = 4
+
 // startsWithFourDigits reports whether s begins with four ASCII digits.
 func startsWithFourDigits(s string) bool {
-	if len(s) < 4 {
+	if len(s) < yearDigits {
 		return false
 	}
-	for i := range 4 {
+	for i := range yearDigits {
 		if s[i] < '0' || s[i] > '9' {
 			return false
 		}
@@ -364,11 +367,11 @@ func decodeSeriesPart(t *Tags, format Format, key, value string) bool {
 
 // leadingYear parses the leading four characters of s as an integer, or 0.
 func leadingYear(s string) int {
-	if len(s) < 4 {
+	if len(s) < yearDigits {
 		return 0
 	}
 	var year int
-	if _, err := fmt.Sscanf(s[:4], "%d", &year); err != nil {
+	if _, err := fmt.Sscanf(s[:yearDigits], "%d", &year); err != nil {
 		return 0
 	}
 	return year
@@ -385,7 +388,7 @@ func isNumberKey(key string) bool {
 // value carries no "/"; any other key (TRACKTOTAL, TOTALTRACKS, ...) holds one
 // number, which is both. Scanning only the part asked for keeps the many reads
 // of one open cheap.
-func scanNumber(key, value string, total bool) (n int, ok bool) {
+func scanNumber(key, value string, total bool) (n int, ok bool) { //nolint:nonamedreturns // the names document the results
 	if isNumberKey(key) {
 		num, tot, hasTotal := strings.Cut(value, "/")
 		switch {

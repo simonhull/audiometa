@@ -43,30 +43,10 @@ type writer struct {
 
 // WithID3v1 returns a copy of w that applies mode to an existing ID3v1
 // trailer.
-func (w *writer) WithID3v1(mode registry.ID3v1Mode) registry.TagWriter {
+func (w *writer) WithID3v1(mode registry.ID3v1Mode) registry.TagWriter { //nolint:ireturn // the seam returns the registered implementation
 	c := *w
 	c.id3v1 = mode
 	return &c
-}
-
-// trailer returns the ID3v1 trailer a write puts after the audio ending at
-// end, and whether that differs from the trailer src has there: nil, true for
-// ID3v1Remove, the rewritten trailer for ID3v1Update, the existing one
-// otherwise. Without edits.Final, ID3v1Update keeps the trailer.
-func (w *writer) trailer(sr *binutil.SafeReader, end int64, edits *types.EditSet) (out []byte, changed bool, err error) {
-	var old [id3v1Size]byte
-	if err := sr.ReadAt(old[:], end, "ID3v1 tag"); err != nil {
-		return nil, false, err
-	}
-	switch {
-	case w.id3v1 == registry.ID3v1Remove:
-		return nil, true, nil
-	case w.id3v1 == registry.ID3v1Update && edits.Final != nil:
-		enc := encodeID3v1(edits.Final, old)
-		return enc[:], enc != old, nil
-	default:
-		return old[:], false, nil
-	}
 }
 
 // ChangesTrailer reports whether WriteFile would write a different ID3v1
@@ -199,6 +179,26 @@ func (w *writer) InPlacePatch(ctx context.Context, src io.ReaderAt, size int64, 
 	return &registry.Patch{Data: tag}, nil
 }
 
+// trailer returns the ID3v1 trailer a write puts after the audio ending at
+// end, and whether that differs from the trailer src has there: nil, true for
+// ID3v1Remove, the rewritten trailer for ID3v1Update, the existing one
+// otherwise. Without edits.Final, ID3v1Update keeps the trailer.
+func (w *writer) trailer(sr *binutil.SafeReader, end int64, edits *types.EditSet) (out []byte, changed bool, err error) { //nolint:nonamedreturns // the names document the results
+	var old [id3v1Size]byte
+	if err := sr.ReadAt(old[:], end, "ID3v1 tag"); err != nil {
+		return nil, false, err
+	}
+	switch {
+	case w.id3v1 == registry.ID3v1Remove:
+		return nil, true, nil
+	case w.id3v1 == registry.ID3v1Update && edits.Final != nil:
+		enc := encodeID3v1(edits.Final, old)
+		return enc[:], enc != old, nil
+	default:
+		return old[:], false, nil
+	}
+}
+
 // buildTag reads the source tag, refuses DRM, applies edits and serializes
 // the new tag.
 func buildTag(ctx context.Context, sr *binutil.SafeReader, size int64, edits *types.EditSet) (*wtag, []byte, error) {
@@ -222,7 +222,7 @@ func buildTag(ctx context.Context, sr *binutil.SafeReader, size int64, edits *ty
 // audioRange returns the audio region [start, end): after the ID3v2 tag (and
 // its footer) and before an ID3v1 trailer (one that is the last tag block, not a "TAG" inside an APEv2 or Lyrics3v2 tag). Any "ID3" header counts as a tag,
 // whatever its version, so the range matches what a write leaves untouched.
-func audioRange(sr *binutil.SafeReader, size int64) (start, end int64, hasV1 bool, err error) {
+func audioRange(sr *binutil.SafeReader, size int64) (start, end int64, hasV1 bool, err error) { //nolint:nonamedreturns // the names document the results
 	end = size
 	if size >= 10 {
 		var h [10]byte

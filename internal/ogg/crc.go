@@ -7,7 +7,7 @@ const crcPoly = 0x04C11DB7
 // crcTable drives [crcUpdate]. Go's hash/crc32 only implements reflected
 // CRCs, and the Ogg checksum is not reflected: it is computed most
 // significant bit first, starts at 0 and has no final XOR.
-var crcTable = func() (t [256]uint32) {
+var crcTable = func() (t [256]uint32) { //nolint:nonamedreturns // the names document the results
 	for i := range t {
 		r := uint32(i) << 24
 		for range 8 {

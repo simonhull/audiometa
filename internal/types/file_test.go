@@ -6,6 +6,7 @@ import (
 )
 
 func TestFile_TakeValue(t *testing.T) {
+	t.Parallel()
 	var f File
 	for i := range MaxTagValues {
 		if !TakeValue(&f) {

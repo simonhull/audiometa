@@ -1,6 +1,7 @@
 package picture
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"math"
@@ -86,7 +87,7 @@ func TestDecodeClampsDimensions(t *testing.T) {
 func TestEncodeRoundTrip(t *testing.T) {
 	t.Parallel()
 	for _, a := range []types.Artwork{
-		{Type: types.ArtworkFrontCover, MIMEType: "image/jpeg", Data: []byte{0xFF, 0xD8}, Width: 10, Height: 20},
+		{Type: types.ArtworkFrontCover, MIMEType: "image/png", Data: rgbPNG(), Width: 10, Height: 20},
 		{Type: types.ArtworkPublisherLogotype, MIMEType: "image/png", Description: "logo é", Data: []byte("png")},
 		{Type: types.ArtworkOther, Data: nil},
 	} {
@@ -102,7 +103,7 @@ func TestEncodeRoundTrip(t *testing.T) {
 			t.Fatalf("Decode: %v", err)
 		}
 		if got.Type != a.Type || got.MIMEType != a.MIMEType || got.Description != a.Description ||
-			got.Width != a.Width || got.Height != a.Height || string(got.Data) != string(a.Data) {
+			got.Width != a.Width || got.Height != a.Height || !bytes.Equal(got.Data, a.Data) {
 			t.Errorf("round trip = %+v, want %+v", got, a)
 		}
 	}

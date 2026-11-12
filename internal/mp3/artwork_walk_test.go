@@ -37,6 +37,7 @@ func extractAll(t *testing.T, data []byte) []types.Artwork {
 }
 
 func TestExtractArtwork_DecodesFramesLikeMetadata(t *testing.T) {
+	t.Parallel()
 	apic := apicPayload("image/jpeg", 3, "", pictureImage)
 	tests := []struct {
 		name string
@@ -55,6 +56,7 @@ func TestExtractArtwork_DecodesFramesLikeMetadata(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			art := extractAll(t, append(tt.tag, mpegFrame...))
 			if len(art) != 1 || !bytes.Equal(art[0].Data, pictureImage) {
 				var got [][]byte
@@ -68,6 +70,7 @@ func TestExtractArtwork_DecodesFramesLikeMetadata(t *testing.T) {
 }
 
 func TestExtractArtwork_CompressedV22TagHasNone(t *testing.T) {
+	t.Parallel()
 	tag := v22Tag() // holds a PIC frame
 	tag[5] = flagV22Compression
 	if art := extractAll(t, append(tag, mpegFrame...)); len(art) != 0 {

@@ -70,12 +70,12 @@ func ioFixtures(tb testing.TB) []ioFixture {
 func openForBench(path string) (*parsedFile, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, err //nolint:wrapcheck // test helper returns the error for the test to report
 	}
 	defer f.Close()
 	st, err := f.Stat()
 	if err != nil {
-		return nil, err
+		return nil, err //nolint:wrapcheck // test helper returns the error for the test to report
 	}
 	return openReader(context.Background(), f, st.Size(), path)
 }
@@ -83,7 +83,7 @@ func openForBench(path string) (*parsedFile, error) {
 // ioRun opens fx once and, when step is not nil, calls it with the parsed file
 // reading through a counter that was reset after the open. It returns the
 // reads and bytes requested by the open, or by step.
-func ioRun(b *testing.B, fx ioFixture, step func(f *File)) (calls int, bytesRead int64) {
+func ioRun(b *testing.B, fx ioFixture, step func(f *File)) (calls int, bytesRead int64) { //nolint:nonamedreturns // the names document the results
 	b.Helper()
 	osf, err := os.Open(fx.path)
 	if err != nil {
@@ -109,6 +109,7 @@ func ioRun(b *testing.B, fx ioFixture, step func(f *File)) (calls int, bytesRead
 }
 
 func benchIO(b *testing.B, step func(b *testing.B, f *File)) {
+	b.Helper()
 	for _, fx := range ioFixtures(b) {
 		b.Run(fx.name, func(b *testing.B) {
 			b.ReportAllocs()
@@ -128,8 +129,10 @@ func benchIO(b *testing.B, step func(b *testing.B, f *File)) {
 }
 
 func TestOpenReader_ReadsHeadOnce(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"sample.flac", "sample.m4a", "sample.mp3", "sample.opus", "sample.wav"} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			data, err := os.ReadFile(filepath.Join("testdata", name))
 			if err != nil {
 				t.Fatal(err)
@@ -158,6 +161,7 @@ func BenchmarkIOOpen(b *testing.B) { benchIO(b, nil) }
 // after an open.
 func BenchmarkIOArtwork(b *testing.B) {
 	benchIO(b, func(b *testing.B, f *File) {
+		b.Helper()
 		if _, err := f.ExtractArtwork(); err != nil {
 			b.Fatal(err)
 		}
@@ -168,6 +172,7 @@ func BenchmarkIOArtwork(b *testing.B) {
 // an open.
 func BenchmarkIODigest(b *testing.B) {
 	benchIO(b, func(b *testing.B, f *File) {
+		b.Helper()
 		if _, err := f.AudioDigest(); err != nil {
 			b.Fatal(err)
 		}

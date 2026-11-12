@@ -11,6 +11,7 @@ import (
 )
 
 func TestVC_VerbatimRoundTrip(t *testing.T) {
+	t.Parallel()
 	payload := vorbisCommentPayload("title=x", "Artist=A", "ARTIST=B", "no separator", "EMPTY=")
 	v, err := vorbis.Split(t.Context(), payload)
 	if err != nil {
@@ -30,6 +31,7 @@ func TestVC_VerbatimRoundTrip(t *testing.T) {
 }
 
 func TestVC_Malformed(t *testing.T) {
+	t.Parallel()
 	good := vorbisCommentPayload("TITLE=A")
 	for name, p := range map[string][]byte{
 		"empty":           nil,
@@ -53,6 +55,7 @@ func writeComments(t *testing.T, mutate func(*types.Tags), comments ...string) [
 }
 
 func TestVC_KeyEditPreservesOriginalKeyCase(t *testing.T) {
+	t.Parallel()
 	got := writeComments(t, func(tg *types.Tags) { tg.Set("TITLE", "New") }, "ARTIST=A", "title=Old", "ALBUM=B")
 	if want := []string{"ARTIST=A", "title=New", "ALBUM=B"}; !slices.Equal(got, want) {
 		t.Errorf("comments %q, want %q", got, want)
@@ -60,6 +63,7 @@ func TestVC_KeyEditPreservesOriginalKeyCase(t *testing.T) {
 }
 
 func TestVC_MultiValue(t *testing.T) {
+	t.Parallel()
 	got := writeComments(t, func(tg *types.Tags) { tg.Set("ARTIST", "A", "B") }, "TITLE=T", "ARTIST=Old", "ALBUM=X", "artist=Old2")
 	if want := []string{"TITLE=T", "ARTIST=A", "ARTIST=B", "ALBUM=X"}; !slices.Equal(got, want) {
 		t.Errorf("comments %q, want %q", got, want)
@@ -67,6 +71,7 @@ func TestVC_MultiValue(t *testing.T) {
 }
 
 func TestVC_DeleteKey(t *testing.T) {
+	t.Parallel()
 	got := writeComments(t, func(tg *types.Tags) { tg.Delete("GENRE") }, "Genre=Rock", "TITLE=T", "GENRE=Pop", "genre=Jazz")
 	if want := []string{"TITLE=T"}; !slices.Equal(got, want) {
 		t.Errorf("comments %q, want %q", got, want)
@@ -74,6 +79,7 @@ func TestVC_DeleteKey(t *testing.T) {
 }
 
 func TestVC_DeleteKeyWithoutField(t *testing.T) {
+	t.Parallel()
 	got := writeComments(t, func(tg *types.Tags) { tg.Delete("SHOW") }, "TITLE=T", "SHOW=Podcast")
 	if want := []string{"TITLE=T"}; !slices.Equal(got, want) {
 		t.Errorf("comments %q, want %q", got, want)
@@ -81,6 +87,7 @@ func TestVC_DeleteKeyWithoutField(t *testing.T) {
 }
 
 func TestVC_FieldEdits(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		comments []string
@@ -97,8 +104,10 @@ func TestVC_FieldEdits(t *testing.T) {
 		{"disc total added", nil, func(tg *types.Tags) { tg.DiscTotal = 2 }, []string{"DISCTOTAL=2"}},
 		{"track total via TOTALTRACKS", []string{"TOTALTRACKS=5"}, func(tg *types.Tags) { tg.TrackTotal = 9 }, []string{"TOTALTRACKS=9"}},
 		{
-			"track total with both keys", []string{"TRACKTOTAL=5", "TOTALTRACKS=5"},
-			func(tg *types.Tags) { tg.TrackTotal = 9 }, []string{"TRACKTOTAL=9", "TOTALTRACKS=5"},
+			"track total with both keys",
+			[]string{"TRACKTOTAL=5", "TOTALTRACKS=5"},
+			func(tg *types.Tags) { tg.TrackTotal = 9 },
+			[]string{"TRACKTOTAL=9", "TOTALTRACKS=5"},
 		},
 		{"track total cleared removes both", []string{"TRACKTOTAL=5", "TITLE=T", "TOTALTRACKS=5"}, func(tg *types.Tags) { tg.TrackTotal = 0 }, []string{"TITLE=T"}},
 		{"track number keeps its suffix total", []string{"TRACKNUMBER=3/12"}, func(tg *types.Tags) { tg.TrackNumber = 4 }, []string{"TRACKNUMBER=4/12"}},
@@ -111,18 +120,22 @@ func TestVC_FieldEdits(t *testing.T) {
 		{"disc total in the suffix", []string{"DISCNUMBER=1/2"}, func(tg *types.Tags) { tg.DiscTotal = 3 }, []string{"DISCNUMBER=1/3"}},
 		{"series added", []string{"TITLE=T"}, func(tg *types.Tags) { tg.Series = "S" }, []string{"TITLE=T", "SERIES=S"}},
 		{"series via MVNM", []string{"MVNM=Old"}, func(tg *types.Tags) { tg.Series = "S" }, []string{"MVNM=S"}},
-		{"lyrics", nil, func(tg *types.Tags) { tg.Lyrics = "la la" }, []string{"LYRICS=la la"}},
+		{"lyrics", nil, func(tg *types.Tags) { tg.Lyrics = "sing song" }, []string{"LYRICS=sing song"}},
 		{"comment", nil, func(tg *types.Tags) { tg.Comment = "c" }, []string{"COMMENT=c"}},
 		{"musicbrainz track", nil, func(tg *types.Tags) { tg.MusicBrainzTrackID = "id" }, []string{"MUSICBRAINZ_TRACKID=id"}},
 		{"genres", []string{"GENRE=Old"}, func(tg *types.Tags) { tg.Genres = []string{"A", "B"} }, []string{"GENRE=A", "GENRE=B"}},
 		{
-			"artist only keeps the other artists", []string{"ARTIST=X", "ARTIST=Y"},
-			func(tg *types.Tags) { tg.Artist = "Z" }, []string{"ARTIST=Z", "ARTIST=Y"},
+			"artist only keeps the other artists",
+			[]string{"ARTIST=X", "ARTIST=Y"},
+			func(tg *types.Tags) { tg.Artist = "Z" },
+			[]string{"ARTIST=Z", "ARTIST=Y"},
 		},
 		{"artist cleared", []string{"ARTIST=X", "TITLE=T"}, func(tg *types.Tags) { tg.Artist, tg.Artists = "", nil }, []string{"TITLE=T"}},
 		{
-			"artists", []string{"ARTIST=X"},
-			func(tg *types.Tags) { tg.Artist, tg.Artists = "A", []string{"A", "B"} }, []string{"ARTIST=A", "ARTIST=B"},
+			"artists",
+			[]string{"ARTIST=X"},
+			func(tg *types.Tags) { tg.Artist, tg.Artists = "A", []string{"A", "B"} },
+			[]string{"ARTIST=A", "ARTIST=B"},
 		},
 	}
 	for _, tt := range tests {
@@ -133,6 +146,7 @@ func TestVC_FieldEdits(t *testing.T) {
 }
 
 func TestVC_SuffixTotalsReadBack(t *testing.T) {
+	t.Parallel()
 	src := simpleFLAC(64, "TRACKNUMBER=3/12", "DISCNUMBER=1/2")
 	out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.TrackNumber, tg.DiscTotal = 4, 3 }))
 	g := parseBytes(t, out).Tags
@@ -143,6 +157,7 @@ func TestVC_SuffixTotalsReadBack(t *testing.T) {
 }
 
 func TestVC_EveryFieldWritable(t *testing.T) {
+	t.Parallel()
 	for f := range types.AllFields() {
 		v := vorbis.NewEditor(types.FormatFLAC, vorbis.Comments{})
 		edits := &types.EditSet{Orig: &types.Tags{}, Final: &types.Tags{Artist: "a", Artists: []string{"a"}}}
@@ -153,6 +168,7 @@ func TestVC_EveryFieldWritable(t *testing.T) {
 }
 
 func TestVC_TypedFieldsReadBack(t *testing.T) {
+	t.Parallel()
 	src := simpleFLAC(64, "DATE=2021-05-03")
 	out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) {
 		tg.Year = 1999
@@ -169,6 +185,7 @@ func TestVC_TypedFieldsReadBack(t *testing.T) {
 }
 
 func TestVC_InvalidKeyRefused(t *testing.T) {
+	t.Parallel()
 	for _, key := range []string{"A=B", "TILDE~", "", "NL\n"} {
 		src := simpleFLAC(64)
 		edits := &types.EditSet{Keys: []types.KeyEdit{{Key: key, Values: []string{"v"}}}, Orig: &types.Tags{}, Final: &types.Tags{}}
@@ -184,6 +201,7 @@ func TestVC_InvalidKeyRefused(t *testing.T) {
 }
 
 func TestVC_ChapterKeyRefused(t *testing.T) {
+	t.Parallel()
 	src := simpleFLAC(64, "CHAPTER001=00:00:00.000", "CHAPTER001NAME=One")
 	for name, mutate := range map[string]func(*types.Tags){
 		"set":    func(tg *types.Tags) { tg.Set("CHAPTER001NAME", "x") },
@@ -201,6 +219,7 @@ func TestVC_ChapterKeyRefused(t *testing.T) {
 }
 
 func TestVC_ChaptersPreserved(t *testing.T) {
+	t.Parallel()
 	got := writeComments(t, func(tg *types.Tags) { tg.Title = "New" }, "CHAPTER001=00:00:00.000", "CHAPTER001NAME=One", "TITLE=T")
 	if want := []string{"CHAPTER001=00:00:00.000", "CHAPTER001NAME=One", "TITLE=New"}; !slices.Equal(got, want) {
 		t.Errorf("comments %q, want %q", got, want)
@@ -208,6 +227,7 @@ func TestVC_ChaptersPreserved(t *testing.T) {
 }
 
 func TestVC_VendorPreserved(t *testing.T) {
+	t.Parallel()
 	src := simpleFLAC(64, "TITLE=T")
 	out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) {
 		tg.Title = ""
@@ -219,6 +239,7 @@ func TestVC_VendorPreserved(t *testing.T) {
 }
 
 func TestVC_NoCrossFieldWrites(t *testing.T) {
+	t.Parallel()
 	base := []string{"COMPOSER=C", "GROUPING=Saga #5", "TITLE=Book 3"}
 	tests := []struct {
 		name   string
@@ -238,6 +259,7 @@ func TestVC_NoCrossFieldWrites(t *testing.T) {
 }
 
 func TestVC_PartialOnError(t *testing.T) {
+	t.Parallel()
 	good := vorbisCommentPayload("TITLE=A", "ARTIST=B")
 	v, err := vorbis.Split(t.Context(), good[:len(good)-1]) // the second comment is cut
 	if err == nil {

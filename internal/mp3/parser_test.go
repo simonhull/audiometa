@@ -11,16 +11,18 @@ import (
 )
 
 func TestParse_ValidMP3(t *testing.T) {
+	t.Parallel()
 	// Create a minimal valid MP3 with ID3v2 tag
 	data := createMinimalMP3WithID3()
 
-	tmpFile, err := os.CreateTemp("", "test*.mp3")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test*.mp3")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpFile.Name())
 
-	tmpFile.Write(data)
+	if _, err := tmpFile.Write(data); err != nil {
+		t.Fatal(err)
+	}
 	tmpFile.Close()
 
 	// Open file for parsing
@@ -60,6 +62,7 @@ func TestParse_ValidMP3(t *testing.T) {
 }
 
 func TestParse_FileNotFound(t *testing.T) {
+	t.Parallel()
 	_, err := os.Open("/nonexistent/path.mp3")
 	if err == nil {
 		t.Error("expected error for nonexistent file")
@@ -67,11 +70,11 @@ func TestParse_FileNotFound(t *testing.T) {
 }
 
 func TestParse_EmptyFile(t *testing.T) {
-	tmpFile, err := os.CreateTemp("", "test*.mp3")
+	t.Parallel()
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test*.mp3")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpFile.Name())
 	tmpFile.Close()
 
 	// Open file for parsing
@@ -140,6 +143,7 @@ func createMinimalMP3WithID3() []byte {
 }
 
 func TestDecode_Synchsafe(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		input    []byte
 		expected uint32
@@ -160,6 +164,7 @@ func TestDecode_Synchsafe(t *testing.T) {
 }
 
 func TestParseYear(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		input    string
 		expected int
@@ -181,6 +186,7 @@ func TestParseYear(t *testing.T) {
 }
 
 func TestParseTextFrame(t *testing.T) {
+	t.Parallel()
 	file := &types.File{
 		Tags: types.Tags{},
 	}
@@ -223,6 +229,7 @@ func TestParseTextFrame(t *testing.T) {
 }
 
 func TestParseTXXXFrame(t *testing.T) {
+	t.Parallel()
 	file := &types.File{
 		Tags: types.Tags{},
 	}
@@ -262,6 +269,7 @@ func TestParseTXXXFrame(t *testing.T) {
 }
 
 func TestParseChapterFrames(t *testing.T) {
+	t.Parallel()
 	// Create mock CHAP frames
 	frames := []id3v2Frame{
 		{
@@ -322,6 +330,7 @@ func TestParseChapterFrames(t *testing.T) {
 }
 
 func TestParse_TrailingAPEv2IsNotAudio(t *testing.T) {
+	t.Parallel()
 	data := slices.Concat(id3Tag(4, id3Frame(4, "TIT2", latin1Text("x"))), audioBytes(417*40))
 	plain := parseBytes(t, data)
 	if plain.Audio.Bitrate != 128000 || plain.Audio.Duration == 0 {
@@ -335,6 +344,7 @@ func TestParse_TrailingAPEv2IsNotAudio(t *testing.T) {
 }
 
 func TestParse_TAGInsideAPEv2IsNotID3v1(t *testing.T) {
+	t.Parallel()
 	ape := apeWithHeader(200)
 	copy(ape[len(ape)-128:], "TAG") // an item value that looks like an ID3v1 trailer
 	f := parseBytes(t, slices.Concat(audioBytes(417*40), ape))
@@ -344,6 +354,7 @@ func TestParse_TAGInsideAPEv2IsNotID3v1(t *testing.T) {
 }
 
 func TestParse_ReleaseFields(t *testing.T) {
+	t.Parallel()
 	const (
 		albumID  = "f3c0fd5e-ba3e-4a2c-8fd3-6e4a6f0c1b2d"
 		artistID = "5b11f4ce-a62d-471e-81fc-a69a8278c7da"
@@ -359,41 +370,63 @@ func TestParse_ReleaseFields(t *testing.T) {
 		tag  []byte
 		want types.Tags
 	}{
-		{"v2.4", id3Tag(4,
-			txt(4, "TSRC", "USRC17607839"), txt(4, "TCOP", "2001 Label"), txt(4, "TDOR", "1999-06-01"), txt(4, "TPUB", "The Publisher"),
-			xxx(4, "MusicBrainz Album Id", albumID), xxx(4, "MusicBrainz Artist Id", artistID+"\x00other"),
-			xxx(4, "BARCODE", "0123456789"), xxx(4, "CATALOGNUMBER", "CAT-1"),
-			id3Frame(4, frameIDUFID, ufidPayload(mbOwner, recordingID))),
-			types.Tags{ISRC: "USRC17607839", Copyright: "2001 Label", OriginalDate: "1999-06-01", Publisher: "The Publisher",
+		{
+			"v2.4", id3Tag(4,
+				txt(4, "TSRC", "USRC17607839"), txt(4, "TCOP", "2001 Label"), txt(4, "TDOR", "1999-06-01"), txt(4, "TPUB", "The Publisher"),
+				xxx(4, "MusicBrainz Album Id", albumID), xxx(4, "MusicBrainz Artist Id", artistID+"\x00other"),
+				xxx(4, "BARCODE", "0123456789"), xxx(4, "CATALOGNUMBER", "CAT-1"),
+				id3Frame(4, frameIDUFID, ufidPayload(mbOwner, recordingID))),
+			types.Tags{
+				ISRC: "USRC17607839", Copyright: "2001 Label", OriginalDate: "1999-06-01", Publisher: "The Publisher",
 				MusicBrainzAlbumID: albumID, MusicBrainzArtistID: artistID, Barcode: "0123456789", CatalogNumber: "CAT-1",
-				MusicBrainzTrackID: recordingID}},
-		{"v2.3 TORY is a year", id3Tag(3, txt(3, "TORY", "1999"), txt(3, "TSRC", "GBAYE0601498")),
-			types.Tags{OriginalDate: "1999", ISRC: "GBAYE0601498"}},
-		{"TDOR before TORY", id3Tag(4, txt(4, "TORY", "1998"), txt(4, "TDOR", "1999-06-01")),
-			types.Tags{OriginalDate: "1999-06-01"}},
-		{"v2.2 TRC TCR TOR TPB", id3Tag(2,
-			id3v22Frame("TRC", latin1Text("USRC17607839")), id3v22Frame("TCR", latin1Text("(c) 2001")),
-			id3v22Frame("TOR", latin1Text("1999")), id3v22Frame("TPB", latin1Text("Pub"))),
-			types.Tags{ISRC: "USRC17607839", Copyright: "(c) 2001", OriginalDate: "1999", Publisher: "Pub"}},
-		{"repeated TXXX first wins", id3Tag(4, xxx(4, "BARCODE", "111"), xxx(4, "BARCODE", "222")),
-			types.Tags{Barcode: "111"}},
-		{"TXXX description is case-insensitive", id3Tag(4, xxx(4, "musicbrainz album id", albumID)),
-			types.Tags{MusicBrainzAlbumID: albumID}},
-		{"TXXX PUBLISHER before TPUB", id3Tag(4, txt(4, "TPUB", "Frame"), xxx(4, "PUBLISHER", "Custom")),
-			types.Tags{Publisher: "Custom"}},
-		{"UFID of another owner", id3Tag(4, id3Frame(4, frameIDUFID, ufidPayload("http://example.com", "x"))),
-			types.Tags{}},
+				MusicBrainzTrackID: recordingID,
+			},
+		},
+		{
+			"v2.3 TORY is a year", id3Tag(3, txt(3, "TORY", "1999"), txt(3, "TSRC", "GBAYE0601498")),
+			types.Tags{OriginalDate: "1999", ISRC: "GBAYE0601498"},
+		},
+		{
+			"TDOR before TORY", id3Tag(4, txt(4, "TORY", "1998"), txt(4, "TDOR", "1999-06-01")),
+			types.Tags{OriginalDate: "1999-06-01"},
+		},
+		{
+			"v2.2 TRC TCR TOR TPB", id3Tag(2,
+				id3v22Frame("TRC", latin1Text("USRC17607839")), id3v22Frame("TCR", latin1Text("(c) 2001")),
+				id3v22Frame("TOR", latin1Text("1999")), id3v22Frame("TPB", latin1Text("Pub"))),
+			types.Tags{ISRC: "USRC17607839", Copyright: "(c) 2001", OriginalDate: "1999", Publisher: "Pub"},
+		},
+		{
+			"repeated TXXX first wins", id3Tag(4, xxx(4, "BARCODE", "111"), xxx(4, "BARCODE", "222")),
+			types.Tags{Barcode: "111"},
+		},
+		{
+			"TXXX description is case-insensitive", id3Tag(4, xxx(4, "musicbrainz album id", albumID)),
+			types.Tags{MusicBrainzAlbumID: albumID},
+		},
+		{
+			"TXXX PUBLISHER before TPUB", id3Tag(4, txt(4, "TPUB", "Frame"), xxx(4, "PUBLISHER", "Custom")),
+			types.Tags{Publisher: "Custom"},
+		},
+		{
+			"UFID of another owner", id3Tag(4, id3Frame(4, frameIDUFID, ufidPayload("http://example.com", "x"))),
+			types.Tags{},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := parseBytes(t, slices.Concat(tc.tag, audio)).Tags
 			for _, c := range []struct {
 				name      string
 				got, want string
 			}{
-				{"ISRC", got.ISRC, tc.want.ISRC}, {"Copyright", got.Copyright, tc.want.Copyright},
-				{"OriginalDate", got.OriginalDate, tc.want.OriginalDate}, {"Publisher", got.Publisher, tc.want.Publisher},
-				{"Label", got.Label, ""}, {"Barcode", got.Barcode, tc.want.Barcode},
+				{"ISRC", got.ISRC, tc.want.ISRC},
+				{"Copyright", got.Copyright, tc.want.Copyright},
+				{"OriginalDate", got.OriginalDate, tc.want.OriginalDate},
+				{"Publisher", got.Publisher, tc.want.Publisher},
+				{"Label", got.Label, ""},
+				{"Barcode", got.Barcode, tc.want.Barcode},
 				{"CatalogNumber", got.CatalogNumber, tc.want.CatalogNumber},
 				{"MusicBrainzAlbumID", got.MusicBrainzAlbumID, tc.want.MusicBrainzAlbumID},
 				{"MusicBrainzArtistID", got.MusicBrainzArtistID, tc.want.MusicBrainzArtistID},

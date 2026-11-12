@@ -22,12 +22,14 @@ func srOf(data []byte) *binutil.SafeReader {
 }
 
 func TestWriter_Registered(t *testing.T) {
+	t.Parallel()
 	if _, ok := registry.GetWriter(types.FormatMP3).(*writer); !ok {
 		t.Error("no MP3 writer registered")
 	}
 }
 
 func TestWriter_ID3v1Verbatim(t *testing.T) {
+	t.Parallel()
 	v1 := id3v1Trailer("Old Title", "Old Artist", "Album", "1999", "c", 7)
 	src := append(file(id3Tag(3, id3Frame(3, "TIT2", latin1Text("T")), id3Frame(3, "TPE1", latin1Text("A")))), v1...)
 	out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) {
@@ -40,6 +42,7 @@ func TestWriter_ID3v1Verbatim(t *testing.T) {
 }
 
 func TestWriter_AudioRegionVerbatim(t *testing.T) {
+	t.Parallel()
 	audio := bytes.Repeat(mpegFrame, 4096/len(mpegFrame))
 	tag := id3TagFlags(4, 0, 16, id3Frame(4, "TIT2", latin1Text("T")))
 	src := append(append(slices0(tag), audio...), id3v1Trailer("T", "", "", "", "", 0)...)
@@ -55,6 +58,7 @@ func TestWriter_AudioRegionVerbatim(t *testing.T) {
 func slices0(b []byte) []byte { return append([]byte(nil), b...) }
 
 func TestWriter_Deterministic(t *testing.T) {
+	t.Parallel()
 	src := file(id3Tag(4, id3Frame(4, "TIT2", latin1Text("T")), id3Frame(4, "TXXX", txxxPayload(3, "A", "1"))))
 	edits := editsFor(t, src, func(tg *types.Tags) {
 		tg.Title = "X"
@@ -67,6 +71,7 @@ func TestWriter_Deterministic(t *testing.T) {
 }
 
 func TestWriter_InPlaceEqualsFullRewrite(t *testing.T) {
+	t.Parallel()
 	src := append(file(id3TagFlags(3, 0, 256, id3Frame(3, "TIT2", latin1Text("Title")))), id3v1Trailer("T", "", "", "", "", 0)...)
 	edits := editsFor(t, src, func(tg *types.Tags) { tg.Title = "Another title" })
 	full := writeBytes(t, src, edits)
@@ -83,6 +88,7 @@ func TestWriter_InPlaceEqualsFullRewrite(t *testing.T) {
 }
 
 func TestWriter_InPlaceNotOK(t *testing.T) {
+	t.Parallel()
 	tests := map[string][]byte{
 		"grows":    file(id3Tag(3, id3Frame(3, "TIT2", latin1Text("Title")))),
 		"untagged": audioTail,
@@ -97,6 +103,7 @@ func TestWriter_InPlaceNotOK(t *testing.T) {
 }
 
 func TestWriter_AudioDigest(t *testing.T) {
+	t.Parallel()
 	tag := id3Tag(4, id3Frame(4, "TIT2", latin1Text("T")))
 	footer := id3TagFlags(4, 0x10, 0, id3Frame(4, "TIT2", latin1Text("T")))
 	footer = append(footer, []byte("3DI\x04\x00\x10\x00\x00\x00\x00")...)
@@ -123,6 +130,7 @@ func TestWriter_AudioDigest(t *testing.T) {
 }
 
 func TestWriter_Corpus(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"sample.mp3", "sample_v24.mp3", "sample_mono_vbr.mp3"} {
 		src, err := os.ReadFile(filepath.Join("..", "..", "testdata", name))
 		if err != nil {
@@ -145,6 +153,7 @@ func TestWriter_Corpus(t *testing.T) {
 }
 
 func TestWriter_TruncatedTagRefused(t *testing.T) {
+	t.Parallel()
 	src := id3Tag(3, id3Frame(3, "TIT2", latin1Text("Title")))
 	src = src[:len(src)-3]
 	if _, err := tryWrite(src, &types.EditSet{Orig: &types.Tags{}, Final: &types.Tags{}}); err == nil {

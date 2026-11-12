@@ -17,6 +17,7 @@ func hasTagValuesWarning(ws []types.Warning) bool {
 }
 
 func TestParse_MultiValueFrameIsCapped(t *testing.T) {
+	t.Parallel()
 	data := file(id3Tag(3, id3Frame(3, "TPE1", latin1Text(strings.Repeat("a\x00", 1<<21)))))
 	var f *types.File
 	testbudget.Check(t, testbudget.For(testbudget.Read, types.FormatMP3), len(data), "Parse", func() {
@@ -34,6 +35,7 @@ func TestParse_MultiValueFrameIsCapped(t *testing.T) {
 }
 
 func TestParse_TXXXValuesAreCapped(t *testing.T) {
+	t.Parallel()
 	payload := append(latin1Text("X\x00"), strings.Repeat("a\x00", 1<<17)...)
 	data := file(id3Tag(3, id3Frame(3, "TXXX", payload)))
 	f := parseBytes(t, data)

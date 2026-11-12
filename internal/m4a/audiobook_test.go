@@ -13,7 +13,8 @@ import (
 )
 
 // createCustomAtom creates a custom (----) atom with mean, name, and data.
-func createCustomAtom(namespace, fieldName, value string) []byte {
+func createCustomAtom(fieldName, value string) []byte {
+	const namespace string = "com.apple.iTunes"
 	buf := &bytes.Buffer{}
 
 	// Create mean atom (namespace)
@@ -60,8 +61,9 @@ func parseAudiobookAndDerive(ctx context.Context, sr *audiobinary.SafeReader, il
 }
 
 func TestParseAudiobookTags_Narrator(t *testing.T) {
+	t.Parallel()
 	// Create ilst with custom narrator atom
-	narratorAtom := createCustomAtom("com.apple.iTunes", "Narrator", "Wil Wheaton")
+	narratorAtom := createCustomAtom("Narrator", "Wil Wheaton")
 	ilst := createMockAtom("ilst", narratorAtom)
 
 	sr := audiobinary.NewSafeReader(bytes.NewReader(ilst), int64(len(ilst)), "test.m4b")
@@ -97,6 +99,7 @@ func createTypedCustomAtom(fieldName string, typeIndicator uint32, payload []byt
 }
 
 func TestParseAudiobookTags_FreeformByDataType(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		field    string
@@ -112,6 +115,7 @@ func TestParseAudiobookTags_FreeformByDataType(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			ilst := createMockAtom("ilst", createTypedCustomAtom(tt.field, tt.typ, tt.payload))
 			sr := audiobinary.NewSafeReader(bytes.NewReader(ilst), int64(len(ilst)), "test.m4b")
 			ilstAtom, _ := readAtomHeader(sr, 0, int64(len(ilst)))
@@ -131,7 +135,8 @@ func TestParseAudiobookTags_FreeformByDataType(t *testing.T) {
 }
 
 func TestParseAudiobookTags_Series(t *testing.T) {
-	seriesAtom := createCustomAtom("com.apple.iTunes", "Series", "The Expanse")
+	t.Parallel()
+	seriesAtom := createCustomAtom("Series", "The Expanse")
 	ilst := createMockAtom("ilst", seriesAtom)
 
 	sr := audiobinary.NewSafeReader(bytes.NewReader(ilst), int64(len(ilst)), "test.m4b")
@@ -149,12 +154,14 @@ func TestParseAudiobookTags_Series(t *testing.T) {
 }
 
 func TestParseAudiobookTags_MultipleFields(t *testing.T) {
+	t.Parallel()
 	// Create ilst with multiple custom atoms
-	var ilstData []byte
-	ilstData = append(ilstData, createCustomAtom("com.apple.iTunes", "Narrator", "Andy Serkis")...)
-	ilstData = append(ilstData, createCustomAtom("com.apple.iTunes", "Publisher", "Hachette Audio")...)
-	ilstData = append(ilstData, createCustomAtom("com.apple.iTunes", "Series", "Lord of the Rings")...)
-	ilstData = append(ilstData, createCustomAtom("com.apple.iTunes", "Series Part", "1")...)
+	ilstData := slices.Concat(
+		createCustomAtom("Narrator", "Andy Serkis"),
+		createCustomAtom("Publisher", "Hachette Audio"),
+		createCustomAtom("Series", "Lord of the Rings"),
+		createCustomAtom("Series Part", "1"),
+	)
 
 	ilst := createMockAtom("ilst", ilstData)
 
@@ -182,6 +189,7 @@ func TestParseAudiobookTags_MultipleFields(t *testing.T) {
 }
 
 func TestParseAudiobookTags_NoCustomAtoms(t *testing.T) {
+	t.Parallel()
 	// ilst with only standard atoms, no custom atoms
 	titleItem := createMetadataItem([]byte{0xA9, 'n', 'a', 'm'}, "Test Book")
 	ilst := createMockAtom("ilst", titleItem)
@@ -191,7 +199,6 @@ func TestParseAudiobookTags_NoCustomAtoms(t *testing.T) {
 
 	file := &types.File{}
 	err := parseAudiobookAndDerive(context.Background(), sr, ilstAtom, file)
-
 	// Should not error, just no audiobook tags extracted
 	if err != nil {
 		t.Errorf("expected no error, got %v", err)
@@ -203,9 +210,10 @@ func TestParseAudiobookTags_NoCustomAtoms(t *testing.T) {
 }
 
 func TestParseAudiobookTags_SeriesPartCaseInsensitive(t *testing.T) {
+	t.Parallel()
 	ilst := createMockAtom("ilst", append(
-		createCustomAtom("com.apple.iTunes", "Series", "Dune"),
-		createCustomAtom("com.apple.iTunes", "SERIES PART", "3")...))
+		createCustomAtom("Series", "Dune"),
+		createCustomAtom("SERIES PART", "3")...))
 	sr := audiobinary.NewSafeReader(bytes.NewReader(ilst), int64(len(ilst)), "")
 	ilstAtom, _ := readAtomHeader(sr, 0, int64(len(ilst)))
 
@@ -221,6 +229,7 @@ func TestParseAudiobookTags_SeriesPartCaseInsensitive(t *testing.T) {
 // TestParseAudiobookTags_NoInference verifies Narrator, Series and SeriesPart
 // are never derived from Composer, Grouping, title, album or the path.
 func TestParseAudiobookTags_NoInference(t *testing.T) {
+	t.Parallel()
 	ilst := createMockAtom("ilst", createMetadataItem([]byte{0xA9, 'w', 'r', 't'}, "Stephen Fry"))
 	sr := audiobinary.NewSafeReader(bytes.NewReader(ilst), int64(len(ilst)), "/books/Foo/Book 03/x.m4b")
 	ilstAtom, _ := readAtomHeader(sr, 0, int64(len(ilst)))
@@ -245,9 +254,11 @@ func TestParseAudiobookTags_NoInference(t *testing.T) {
 // TestParseAudiobookTags_NonSeriesFreeformStaysRaw verifies the generic Part
 // and Volume atoms do not fill SeriesPart but remain in the raw tags.
 func TestParseAudiobookTags_NonSeriesFreeformStaysRaw(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"Part", "Volume"} {
 		t.Run(name, func(t *testing.T) {
-			ilst := createMockAtom("ilst", createCustomAtom("com.apple.iTunes", name, "5"))
+			t.Parallel()
+			ilst := createMockAtom("ilst", createCustomAtom(name, "5"))
 			sr := audiobinary.NewSafeReader(bytes.NewReader(ilst), int64(len(ilst)), "")
 			ilstAtom, _ := readAtomHeader(sr, 0, int64(len(ilst)))
 

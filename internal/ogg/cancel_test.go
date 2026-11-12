@@ -11,6 +11,7 @@ import (
 )
 
 func TestParse_CancelInsidePageLoop(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"sample.ogg", "sample.opus"} {
 		data, err := os.ReadFile("../../testdata/" + name)
 		if err != nil {

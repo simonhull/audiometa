@@ -9,6 +9,7 @@ import (
 // TestParse_NoInference verifies tags are reported exactly as stored: Series,
 // SeriesPart and Narrator are never derived from Grouping, Composer or the path.
 func TestParse_NoInference(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name         string
 		extra        []string
@@ -30,6 +31,7 @@ func TestParse_NoInference(t *testing.T) {
 			make func(title, artist, album string, extra ...string) []byte
 		}{{"vorbis", createMinimalOgg}, {"opus", createMinimalOpus}} {
 			t.Run(tc.name+"/"+codec.name, func(t *testing.T) {
+				t.Parallel()
 				data := codec.make("T", "A", "B", tc.extra...)
 				file, err := (&parser{}).Parse(context.Background(), bytes.NewReader(data), int64(len(data)), tc.path)
 				if err != nil {

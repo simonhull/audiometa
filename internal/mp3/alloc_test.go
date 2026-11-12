@@ -11,6 +11,7 @@ import (
 )
 
 func TestParseID3v2_OversizedFrameWarns(t *testing.T) {
+	t.Parallel()
 	// ID3v2.3 TIT2 frame header declaring a ~2 GB non-synchsafe size in a tiny tag.
 	data := tagBytes(3, 0, []byte{'T', 'I', 'T', '2', 0x7F, 0xFF, 0xFF, 0xFF, 0, 0, 0, 'a', 'b'})
 	sr := binutil.NewSafeReader(bytes.NewReader(data), int64(len(data)), "t.mp3")

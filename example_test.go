@@ -185,7 +185,7 @@ func ExampleWithStrictParsing() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 	truncated := filepath.Join(dir, "truncated.flac")
 	if err := os.WriteFile(truncated, data[:43], 0o600); err != nil {
 		log.Fatal(err)
@@ -295,7 +295,7 @@ func ExampleDetectFormat() {
 // after its STREAMINFO block, which normally records one warning.
 func ExampleWithIgnoreWarnings() {
 	path := copyToTemp("testdata/sample.flac")
-	defer os.RemoveAll(filepath.Dir(path))
+	defer func() { _ = os.RemoveAll(filepath.Dir(path)) }()
 	if err := os.Truncate(path, 43); err != nil {
 		log.Fatal(err)
 	}
@@ -414,7 +414,7 @@ func ExampleCorruptedFileError() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 	path := filepath.Join(dir, "headless.wav")
 	if err := os.WriteFile(path, data[:12], 0o600); err != nil {
 		log.Fatal(err)
@@ -439,7 +439,7 @@ func ExampleOutOfBoundsError() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 	path := filepath.Join(dir, "cut.ogg")
 	if err := os.WriteFile(path, data[:30], 0o600); err != nil {
 		log.Fatal(err)
@@ -455,13 +455,13 @@ func ExampleOutOfBoundsError() {
 
 // The version depends on how the binary was built, so GetVersion and
 // GetVersionInfo have no checked output.
-func ExampleGetVersion() {
+func ExampleGetVersion() { //nolint:testableexamples // the version depends on how the binary was built
 	fmt.Println(audiometa.GetVersion())
 }
 
 // GetVersionInfo adds the commit, build time and Go version when the build
 // recorded them.
-func ExampleGetVersionInfo() {
+func ExampleGetVersionInfo() { //nolint:testableexamples // the build details differ per build
 	info := audiometa.GetVersionInfo()
 	fmt.Println(info.Version, info.GitCommit, info.BuildTime, info.GoVersion)
 }
@@ -538,7 +538,7 @@ func ExampleFile_WritableContext() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 	path := filepath.Join(dir, "protected.m4a")
 	if err := os.WriteFile(path, bytes.ReplaceAll(data, []byte("mp4a"), []byte("enca")), 0o600); err != nil {
 		log.Fatal(err)

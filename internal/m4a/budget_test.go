@@ -14,7 +14,7 @@ import (
 
 func TestParse_RepeatedItemsAreLinear(t *testing.T) {
 	const n = 5000
-	var items [][]byte
+	items := make([][]byte, 0, 2*n)
 	for range n {
 		items = append(items, ilstFreeform("X", "v"), ilstText("\xa9nam", "t"))
 	}
@@ -47,7 +47,7 @@ func TestParseChunkOffsets_BoundedByAtomAndSamples(t *testing.T) {
 	} {
 		stbl := createMockAtom("stbl", fullAtom(tc.typ, []byte(tc.body)))
 		// Zeros after the atom let a table that claims 1<<20 entries fit in the file.
-		data := append(stbl, make([]byte, 9<<20)...)
+		data := slices.Concat(stbl, make([]byte, 9<<20))
 		sr := audiobinary.NewSafeReader(bytes.NewReader(data), int64(len(data)), "t.m4b")
 		atom, err := readAtomHeader(sr, 0, int64(len(stbl)))
 		if err != nil {
@@ -70,6 +70,7 @@ func TestParseChunkOffsets_BoundedByAtomAndSamples(t *testing.T) {
 }
 
 func TestParse_ItemValuesAreCapped(t *testing.T) {
+	t.Parallel()
 	values := slices.Repeat([]string{"a"}, 70_000)
 	data := buildMP4(false, ilstText("\xa9gen", values...))
 	f, err := (&parser{}).Parse(context.Background(), bytes.NewReader(data), int64(len(data)), "x.m4a")

@@ -8,6 +8,7 @@ import (
 )
 
 func TestRawTagParity(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		path     string
 		titleKey string
@@ -21,6 +22,7 @@ func TestRawTagParity(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
+			t.Parallel()
 			f, err := audiometa.Open(tt.path)
 			if err != nil {
 				t.Fatal(err)

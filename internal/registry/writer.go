@@ -123,7 +123,7 @@ func RegisterWriter(format types.Format, w TagWriter) {
 }
 
 // GetWriter returns the writer for format, or nil.
-func GetWriter(format types.Format) TagWriter {
+func GetWriter(format types.Format) TagWriter { //nolint:ireturn // the seam returns the registered implementation
 	mu.RLock()
 	defer mu.RUnlock()
 	return writers[format]
@@ -150,7 +150,7 @@ func RegisterDigester(format types.Format, d AudioDigester) {
 
 // GetDigester returns the digester for format: the one registered with
 // RegisterDigester, otherwise the format's TagWriter, otherwise nil.
-func GetDigester(format types.Format) AudioDigester {
+func GetDigester(format types.Format) AudioDigester { //nolint:ireturn // the seam returns the registered implementation
 	mu.RLock()
 	defer mu.RUnlock()
 	if d, ok := digesters[format]; ok {

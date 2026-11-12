@@ -9,6 +9,7 @@ import (
 )
 
 func TestLeadingID3v2Size(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		head []byte
@@ -22,6 +23,7 @@ func TestLeadingID3v2Size(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			sr := binary.NewSafeReader(bytes.NewReader(tt.head), int64(len(tt.head)), "x")
 			if got := LeadingID3v2Size(sr); got != tt.want {
 				t.Errorf("LeadingID3v2Size = %d, want %d", got, tt.want)
@@ -31,9 +33,10 @@ func TestLeadingID3v2Size(t *testing.T) {
 }
 
 func TestDetectFormat_ID3Prefix(t *testing.T) {
+	t.Parallel()
 	tag := func(version, flags byte, body int) []byte {
 		h := []byte{'I', 'D', '3', version, 0, flags, 0, 0, byte(body >> 7 & 0x7F), byte(body & 0x7F)}
-		return append(h, make([]byte, body)...)
+		return slices.Concat(h, make([]byte, body))
 	}
 	footer := []byte{'3', 'D', 'I', 4, 0, 0x10, 0, 0, 0, 20}
 	frames := []byte{0xFF, 0xFB, 0x90, 0x00, 0, 0, 0, 0}
@@ -50,6 +53,7 @@ func TestDetectFormat_ID3Prefix(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := DetectFormat(bytes.NewReader(tt.data), int64(len(tt.data)), "x")
 			if err != nil || got != tt.want {
 				t.Errorf("DetectFormat = %v, %v; want %v", got, err, tt.want)

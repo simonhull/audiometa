@@ -52,14 +52,25 @@ func TestFieldTargets(t *testing.T) {
 		{"none present, clearing", FormatFLAC, FieldLanguage, planEdits(nil), false, nil},
 		{"MP3 Year, TYER present", FormatMP3, FieldYear, planEdits(nil, "TYER", "1999"), true, []string{"TYER"}},
 		{"MP3 Year, none present", FormatMP3, FieldYear, planEdits(nil), true, []string{"TDRC"}},
-		{"key edit deletes the only key, setting",
-			FormatFLAC, FieldLanguage, planEdits([]KeyEdit{{Key: "LANGUAGE"}}, "LANGUAGE", "eng"), true, []string{"LANGUAGE"}},
-		{"key edit deletes the only key, clearing",
-			FormatFLAC, FieldLanguage, planEdits([]KeyEdit{{Key: "LANGUAGE"}}, "LANGUAGE", "eng"), false, nil},
-		{"key edit adds LANG, setting",
-			FormatFLAC, FieldLanguage, planEdits([]KeyEdit{{Key: "LANG", Values: []string{"fre"}}}), true, []string{"LANG"}},
-		{"key edit adds LANG, clearing",
-			FormatFLAC, FieldLanguage, planEdits([]KeyEdit{{Key: "LANG", Values: []string{"fre"}}}, "LANGUAGE", "eng"), false, []string{"LANGUAGE", "LANG"}},
+		{
+			"key edit deletes the only key, setting",
+			FormatFLAC, FieldLanguage, planEdits([]KeyEdit{{Key: "LANGUAGE"}}, "LANGUAGE", "eng"), true,
+			[]string{"LANGUAGE"},
+		},
+		{
+			"key edit deletes the only key, clearing",
+			FormatFLAC, FieldLanguage, planEdits([]KeyEdit{{Key: "LANGUAGE"}}, "LANGUAGE", "eng"), false, nil,
+		},
+		{
+			"key edit adds LANG, setting",
+			FormatFLAC, FieldLanguage, planEdits([]KeyEdit{{Key: "LANG", Values: []string{"fre"}}}), true,
+			[]string{"LANG"},
+		},
+		{
+			"key edit adds LANG, clearing",
+			FormatFLAC, FieldLanguage, planEdits([]KeyEdit{{Key: "LANG", Values: []string{"fre"}}}, "LANGUAGE", "eng"), false,
+			[]string{"LANGUAGE", "LANG"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -93,10 +104,20 @@ func TestFieldValues(t *testing.T) {
 		edits *EditSet
 		want  []string
 	}{
-		{"year keeps the rest of the date", FieldEdit{Field: FieldYear, Values: []string{"1999"}}, "DATE",
-			planEdits(nil, "DATE", "2021-05-03"), []string{"1999-05-03"}},
-		{"year reads the date after key edits", FieldEdit{Field: FieldYear, Values: []string{"1999"}}, "DATE",
-			planEdits([]KeyEdit{{Key: "DATE", Values: []string{"2030-01-02"}}}, "DATE", "2021-05-03"), []string{"1999-01-02"}},
+		{
+			"year keeps the rest of the date",
+			FieldEdit{Field: FieldYear, Values: []string{"1999"}},
+			"DATE",
+			planEdits(nil, "DATE", "2021-05-03"),
+			[]string{"1999-05-03"},
+		},
+		{
+			"year reads the date after key edits",
+			FieldEdit{Field: FieldYear, Values: []string{"1999"}},
+			"DATE",
+			planEdits([]KeyEdit{{Key: "DATE", Values: []string{"2030-01-02"}}}, "DATE", "2021-05-03"),
+			[]string{"1999-01-02"},
+		},
 		{"year without an old date", FieldEdit{Field: FieldYear, Values: []string{"1999"}}, "DATE", planEdits(nil), []string{"1999"}},
 		{"invalid year", FieldEdit{Field: FieldYear, Values: []string{"x"}}, "DATE", planEdits(nil), nil},
 		{"zero year", FieldEdit{Field: FieldYear, Values: []string{"0"}}, "DATE", planEdits(nil), nil},

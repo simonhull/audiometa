@@ -9,6 +9,7 @@ import (
 )
 
 func TestParseTextFrameRecordsRawAndArtists(t *testing.T) {
+	t.Parallel()
 	var f types.File
 	parseTextFrame(id3v2Frame{ID: "TPE1", Data: append([]byte{3}, "A\x00B"...)}, &f)
 	types.DeriveFields(&f.Tags, types.FormatMP3)
@@ -21,6 +22,7 @@ func TestParseTextFrameRecordsRawAndArtists(t *testing.T) {
 }
 
 func TestParseTXXXRecordsUppercasedDescription(t *testing.T) {
+	t.Parallel()
 	var f types.File
 	parseTXXXFrame(id3v2Frame{ID: "TXXX", Data: append([]byte{3}, "Mood\x00Calm"...)}, &f)
 	if got := f.Tags.Get("MOOD"); !slices.Equal(got, []string{"Calm"}) {
@@ -29,8 +31,10 @@ func TestParseTXXXRecordsUppercasedDescription(t *testing.T) {
 }
 
 func TestParseTXXXNonSeriesTagsStayRaw(t *testing.T) {
+	t.Parallel()
 	for _, desc := range []string{"show", "episode_id", "part"} {
 		t.Run(desc, func(t *testing.T) {
+			t.Parallel()
 			var f types.File
 			parseTXXXFrame(id3v2Frame{ID: "TXXX", Data: append([]byte{3}, desc+"\x00Foo"...)}, &f)
 			if f.Tags.Series != "" || f.Tags.SeriesPart != "" {
@@ -44,6 +48,7 @@ func TestParseTXXXNonSeriesTagsStayRaw(t *testing.T) {
 }
 
 func TestParseTXXXReadsEveryValue(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		data []byte
@@ -58,6 +63,7 @@ func TestParseTXXXReadsEveryValue(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			var f types.File
 			parseTXXXFrame(id3v2Frame{ID: "TXXX", Data: tt.data}, &f)
 			if got := f.Tags.Get("ARTISTS"); !slices.Equal(got, tt.want) {
@@ -68,6 +74,7 @@ func TestParseTXXXReadsEveryValue(t *testing.T) {
 }
 
 func TestParseTXXXFirstValueFillsTheField(t *testing.T) {
+	t.Parallel()
 	var f types.File
 	parseTXXXFrame(id3v2Frame{ID: "TXXX", Data: append([]byte{3}, "Narrator\x00A\x00B"...)}, &f)
 	types.DeriveFields(&f.Tags, types.FormatMP3)
@@ -80,6 +87,7 @@ func TestParseTXXXFirstValueFillsTheField(t *testing.T) {
 }
 
 func TestTXXXMultiValueWriteRoundTrip(t *testing.T) {
+	t.Parallel()
 	for _, v := range []byte{3, 4} {
 		frame := id3Frame(v, "TXXX", txxxPayload(0, "Mood", "A\x00B"))
 		src := file(id3Tag(v, id3Frame(v, "TIT2", latin1Text("T")), frame))

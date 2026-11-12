@@ -39,7 +39,7 @@ func createMinimalM4B(title, artist, album string) []byte {
 
 	// meta atom contains ilst
 	// meta atom has 4 bytes of version+flags before the data
-	metaData := make([]byte, 4)
+	metaData := make([]byte, 4, 4+len(ilstAtom))
 	binary.BigEndian.PutUint32(metaData, 0) // version=0, flags=0
 	metaData = append(metaData, ilstAtom...)
 	metaAtom := createMockAtom("meta", metaData)
@@ -56,14 +56,14 @@ func createMinimalM4B(title, artist, album string) []byte {
 }
 
 func TestParse_Success(t *testing.T) {
+	t.Parallel()
 	data := createMinimalM4B("My Audiobook", "Author Name", "Series 1")
 
 	// Write to temp file
-	tmpFile, err := os.CreateTemp("", "test*.m4b")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test*.m4b")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpFile.Name())
 
 	if _, err := tmpFile.Write(data); err != nil {
 		t.Fatal(err)
@@ -115,6 +115,7 @@ func TestParse_Success(t *testing.T) {
 }
 
 func TestParse_FileNotFound(t *testing.T) {
+	t.Parallel()
 	_, err := os.Open("/nonexistent/file.m4b")
 	if err == nil {
 		t.Error("expected error for nonexistent file")
@@ -122,17 +123,19 @@ func TestParse_FileNotFound(t *testing.T) {
 }
 
 func TestParse_UnknownBrand(t *testing.T) {
+	t.Parallel()
 	// Create a file with an unknown ftyp brand
 	// The parser should still work and default to M4A format
 	data := createMockAtom("ftyp", []byte("XXXX")) // Unknown brand
 
-	tmpFile, err := os.CreateTemp("", "test*.m4b")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test*.m4b")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpFile.Name())
 
-	tmpFile.Write(data)
+	if _, err := tmpFile.Write(data); err != nil {
+		t.Fatal(err)
+	}
 	tmpFile.Close()
 
 	// Open file for parsing
@@ -162,16 +165,18 @@ func TestParse_UnknownBrand(t *testing.T) {
 }
 
 func TestParse_NoMetadata(t *testing.T) {
+	t.Parallel()
 	// Create M4B with no metadata
 	data := createMinimalM4B("", "", "")
 
-	tmpFile, err := os.CreateTemp("", "test*.m4b")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test*.m4b")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpFile.Name())
 
-	tmpFile.Write(data)
+	if _, err := tmpFile.Write(data); err != nil {
+		t.Fatal(err)
+	}
 	tmpFile.Close()
 
 	// Open file for parsing
@@ -200,6 +205,7 @@ func TestParse_NoMetadata(t *testing.T) {
 }
 
 func TestParse_WithArtwork_Integration(t *testing.T) {
+	t.Parallel()
 	// Create M4B with both metadata and artwork
 	jpegData := []byte{
 		0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46,
@@ -210,13 +216,14 @@ func TestParse_WithArtwork_Integration(t *testing.T) {
 	// Use modified helper that includes both metadata and artwork
 	fileData := createM4BWithMetadataAndCover("Test Book", "Test Author", jpegData)
 
-	tmpFile, err := os.CreateTemp("", "test-integration-*.m4b")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test-integration-*.m4b")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpFile.Name())
 
-	tmpFile.Write(fileData)
+	if _, err := tmpFile.Write(fileData); err != nil {
+		t.Fatal(err)
+	}
 	tmpFile.Close()
 
 	// Use high-level audiometa API
@@ -298,7 +305,7 @@ func createM4BWithMetadataAndCover(title, artist string, coverData []byte) []byt
 	ilstAtom := createMockAtom("ilst", ilstData)
 
 	// meta → udta → moov
-	metaData := make([]byte, 4)
+	metaData := make([]byte, 4, 4+len(ilstAtom))
 	binary.BigEndian.PutUint32(metaData, 0)
 	metaData = append(metaData, ilstAtom...)
 
@@ -346,8 +353,11 @@ func TestParse_ReleaseFields(t *testing.T) {
 			"Barcode": "0123", "CatalogNumber": "CAT-1", "Label": "Lbl", "Copyright": "(c) 2001",
 		}},
 		{"lower-case name", [][]byte{ilstFreeform("isrc", "USRC17607839")}, map[string]string{"ISRC": "USRC17607839"}},
-		{"repeated item first wins", [][]byte{ilstFreeform("BARCODE", "111"), ilstFreeform("BARCODE", "222")},
-			map[string]string{"Barcode": "111"}},
+		{
+			"repeated item first wins",
+			[][]byte{ilstFreeform("BARCODE", "111"), ilstFreeform("BARCODE", "222")},
+			map[string]string{"Barcode": "111"},
+		},
 		{"empty first value is skipped", [][]byte{ilstFreeform("LABEL", "", "Lbl")}, map[string]string{"Label": "Lbl"}},
 		{"no original date", [][]byte{ilstFreeform("ORIGINALDATE", "1999")}, map[string]string{}},
 	}

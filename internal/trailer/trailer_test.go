@@ -42,17 +42,19 @@ func ape(n int, withHeader bool) []byte {
 	return append(tag, footer(hasHeader)...)
 }
 
-func lyrics3v2(body string) []byte {
+func lyrics3v2() []byte {
+	const body string = "IND0000210"
 	content := "LYRICSBEGIN" + body
 	return fmt.Appendf(nil, "%s%06dLYRICS200", content, len(content))
 }
 
 // id3v2WithFooter builds an appended ID3v2.4 tag of n frame bytes.
-func id3v2WithFooter(n int) []byte {
+func id3v2WithFooter() []byte {
+	const n int = 30
 	synchsafe := []byte{byte(n >> 21 & 0x7F), byte(n >> 14 & 0x7F), byte(n >> 7 & 0x7F), byte(n & 0x7F)}
 	header := append([]byte{'I', 'D', '3', 4, 0, 0x10}, synchsafe...)
 	footer := append([]byte{'3', 'D', 'I', 4, 0, 0x10}, synchsafe...)
-	return slices.Concat(header, bytes.Repeat([]byte{0}, n), footer)
+	return slices.Concat(header, make([]byte, n), footer)
 }
 
 func TestStart(t *testing.T) {
@@ -65,9 +67,9 @@ func TestStart(t *testing.T) {
 		{"ID3v1", [][]byte{id3v1()}},
 		{"APEv2 without header", [][]byte{ape(40, false)}},
 		{"APEv2 with header", [][]byte{ape(40, true)}},
-		{"Lyrics3v2", [][]byte{lyrics3v2("IND0000210")}},
-		{"ID3v2 with footer", [][]byte{id3v2WithFooter(30)}},
-		{"APEv2, Lyrics3v2 and ID3v1 stacked", [][]byte{ape(40, true), lyrics3v2("IND0000210"), id3v1()}},
+		{"Lyrics3v2", [][]byte{lyrics3v2()}},
+		{"ID3v2 with footer", [][]byte{id3v2WithFooter()}},
+		{"APEv2, Lyrics3v2 and ID3v1 stacked", [][]byte{ape(40, true), lyrics3v2(), id3v1()}},
 		{"ID3v1 before APEv2", [][]byte{id3v1(), ape(12, false)}},
 	}
 	for _, tt := range tests {
@@ -89,9 +91,9 @@ func TestStart_LeavesBrokenBlocksAsAudio(t *testing.T) {
 	t.Parallel()
 	tooBig := ape(40, false)
 	binary.LittleEndian.PutUint32(tooBig[len(tooBig)-20:], 1<<30) // tag size larger than the range
-	noBegin := lyrics3v2("IND0000210")
+	noBegin := lyrics3v2()
 	copy(noBegin, "XXXXXXXXXXX") // LYRICSBEGIN missing
-	noID3 := id3v2WithFooter(30)
+	noID3 := id3v2WithFooter()
 	copy(noID3, "XXX") // footer without its header
 
 	for name, trailer := range map[string][]byte{
@@ -150,13 +152,13 @@ func TestStart_RejectsLookalikes(t *testing.T) {
 	binary.LittleEndian.PutUint32(badVersion[len(badVersion)-24:], 3000)
 	headerFlagNoHeader := ape(40, false)
 	binary.LittleEndian.PutUint32(headerFlagNoHeader[len(headerFlagNoHeader)-12:], 1<<31)
-	signedLyrics := lyrics3v2("IND0000210")
+	signedLyrics := lyrics3v2()
 	copy(signedLyrics[len(signedLyrics)-15:], "+00021")
-	notSynchsafe := id3v2WithFooter(30)
+	notSynchsafe := id3v2WithFooter()
 	notSynchsafe[len(notSynchsafe)-1] |= 0x80
-	noFooterFlag := id3v2WithFooter(30)
+	noFooterFlag := id3v2WithFooter()
 	noFooterFlag[len(noFooterFlag)-5] &^= 0x10
-	mismatched := id3v2WithFooter(30)
+	mismatched := id3v2WithFooter()
 	mismatched[3] = 3 // header says v2.3, footer says v2.4
 	headerVersionDiffers := ape(40, true)
 	binary.LittleEndian.PutUint32(headerVersionDiffers[8:], 1000)
@@ -229,8 +231,8 @@ func TestStart_Canceled(t *testing.T) {
 }
 
 func FuzzStart(f *testing.F) {
-	f.Add(slices.Concat(audio, ape(40, true), lyrics3v2("IND0000210"), id3v1()))
-	f.Add(slices.Concat(audio, id3v2WithFooter(30)))
+	f.Add(slices.Concat(audio, ape(40, true), lyrics3v2(), id3v1()))
+	f.Add(slices.Concat(audio, id3v2WithFooter()))
 	f.Add([]byte("TAGAPETAGEXLYRICS2003DI"))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		end := int64(len(data))
@@ -281,7 +283,7 @@ func TestEndsWithID3v1(t *testing.T) {
 
 func TestScan_NamesBlocksInFileOrder(t *testing.T) {
 	t.Parallel()
-	blocks := [][]byte{ape(40, true), lyrics3v2("IND0000210"), id3v2WithFooter(30), id3v1()}
+	blocks := [][]byte{ape(40, true), lyrics3v2(), id3v2WithFooter(), id3v1()}
 	kinds := []Kind{KindAPEv2, KindLyrics3, KindID3v2, KindID3v1}
 
 	for n := range len(blocks) + 1 {

@@ -148,7 +148,7 @@ func TestAudioDigest_ConcurrentCalls(t *testing.T) {
 }
 
 // TestAudioDigest_NoDigester swaps a package variable, so it must not run in parallel.
-func TestAudioDigest_NoDigester(t *testing.T) { //nolint:paralleltest // swaps lookupDigester
+func TestAudioDigest_NoDigester(t *testing.T) {
 	f := openSample(t, "testdata/sample.flac")
 	orig := lookupDigester
 	lookupDigester = func(types.Format) registry.AudioDigester { return nil }

@@ -7,6 +7,7 @@ import (
 )
 
 func TestDecodeText(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		enc  byte
@@ -25,6 +26,7 @@ func TestDecodeText(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := decodeText(tc.in, tc.enc)
 			if got != tc.want {
 				t.Errorf("got %q, want %q", got, tc.want)
@@ -37,6 +39,7 @@ func TestDecodeText(t *testing.T) {
 }
 
 func TestDecodeUTF16(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		fn   func([]byte) string
@@ -56,6 +59,7 @@ func TestDecodeUTF16(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if got := tc.fn(tc.in); got != tc.want {
 				t.Errorf("got %q, want %q", got, tc.want)
 			}
@@ -64,8 +68,10 @@ func TestDecodeUTF16(t *testing.T) {
 }
 
 func TestParse_TextDecoding(t *testing.T) {
+	t.Parallel()
 	for _, v := range []byte{3, 4} {
 		t.Run("v"+string('0'+v), func(t *testing.T) {
+			t.Parallel()
 			utf16Book := append(utf16Text("Book"), 0, 0)
 			frames := [][]byte{
 				id3Frame(v, "TALB", append([]byte{0x00}, "Caf\xe9\x00"...)),
@@ -95,6 +101,7 @@ func TestParse_TextDecoding(t *testing.T) {
 }
 
 func TestParse_CommentSelection(t *testing.T) {
+	t.Parallel()
 	type c struct{ desc, text string }
 	cases := []struct {
 		name string
@@ -110,6 +117,7 @@ func TestParse_CommentSelection(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			var frames [][]byte
 			for _, cm := range tc.in {
 				payload := append([]byte{0x00}, "eng"...)

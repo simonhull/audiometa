@@ -1,6 +1,7 @@
 package mp3
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 )
 
 func TestParseMarkerTime(t *testing.T) {
+	t.Parallel()
 	ok := []struct {
 		in   string
 		want time.Duration
@@ -41,6 +43,7 @@ const twoMarkers = `<Markers>
 </Markers>`
 
 func TestParseMediaMarkers(t *testing.T) {
+	t.Parallel()
 	chapters, err := parseMediaMarkers(twoMarkers)
 	if err != nil {
 		t.Fatal(err)
@@ -60,6 +63,7 @@ func TestParseMediaMarkers(t *testing.T) {
 }
 
 func TestParseMediaMarkersEdgeCases(t *testing.T) {
+	t.Parallel()
 	if ch, err := parseMediaMarkers("<Markers/>"); ch != nil || err != nil {
 		t.Errorf("empty = %v, %v", ch, err)
 	}
@@ -100,11 +104,12 @@ func TestParseMediaMarkers_OversizeRefusedBeforeDecoding(t *testing.T) {
 }
 
 func TestParseTXXXMediaMarkers(t *testing.T) {
+	t.Parallel()
 	latin := func(desc string) []byte {
 		return append(append([]byte{0}, desc+"\x00"...), twoMarkers...)
 	}
 	utf16 := func(desc string) []byte {
-		b := []byte{1, 0xFF, 0xFE}
+		b := slices.Grow([]byte{1, 0xFF, 0xFE}, 2*len(desc)+4+2*len(twoMarkers))
 		for _, r := range desc {
 			b = append(b, byte(r), 0)
 		}
@@ -121,6 +126,7 @@ func TestParseTXXXMediaMarkers(t *testing.T) {
 	}
 	for name, data := range tests {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			var f types.File
 			parseTXXXFrame(id3v2Frame{ID: "TXXX", Data: data}, &f)
 			if len(f.Chapters) != 2 || f.Chapters[1].Title != "Chapter 2" {
@@ -137,15 +143,17 @@ func TestParseTXXXMediaMarkers(t *testing.T) {
 	}
 }
 
-func mediaMarkersFrame(version byte, doc string) []byte {
+func mediaMarkersFrame(doc string) []byte {
+	const version byte = 3
 	return id3Frame(version, "TXXX", append(append([]byte{0}, "OverDrive MediaMarkers\x00"...), doc...))
 }
 
 func TestParse_OverDriveMediaMarkers(t *testing.T) {
+	t.Parallel()
 	// 1 s of CBR audio at 128 kbps = 16000 bytes.
 	// Second chapter starts inside the file, at 0.5 s.
 	doc := strings.Replace(twoMarkers, "15:51.000", "0:00.500", 1)
-	tag := id3Tag(3, mediaMarkersFrame(3, doc))
+	tag := id3Tag(3, mediaMarkersFrame(doc))
 	f := parseBytes(t, append(tag, audioBytes(16000)...))
 	if len(f.Chapters) != 2 {
 		t.Fatalf("chapters = %+v, warnings %v", f.Chapters, f.Warnings)
@@ -162,7 +170,8 @@ func TestParse_OverDriveMediaMarkers(t *testing.T) {
 }
 
 func TestParse_OverDriveLastChapterBeyondDuration(t *testing.T) {
-	tag := id3Tag(3, mediaMarkersFrame(3, twoMarkers)) // second chapter starts at 15:51, far past the audio
+	t.Parallel()
+	tag := id3Tag(3, mediaMarkersFrame(twoMarkers)) // second chapter starts at 15:51, far past the audio
 	f := parseBytes(t, append(tag, audioBytes(16000)...))
 	if len(f.Chapters) != 2 || f.Chapters[1].EndTime != 0 {
 		t.Errorf("chapters = %+v", f.Chapters)
@@ -170,10 +179,11 @@ func TestParse_OverDriveLastChapterBeyondDuration(t *testing.T) {
 }
 
 func TestParse_CHAPBeatsMediaMarkers(t *testing.T) {
-	chap := id3Frame(3, "CHAP", chapFrameBody("ch1", 0, 1000))
+	t.Parallel()
+	chap := id3Frame(3, "CHAP", chapFrameBody("ch1"))
 	for _, frames := range [][][]byte{
-		{mediaMarkersFrame(3, twoMarkers), chap},
-		{chap, mediaMarkersFrame(3, twoMarkers)},
+		{mediaMarkersFrame(twoMarkers), chap},
+		{chap, mediaMarkersFrame(twoMarkers)},
 	} {
 		f := parseBytes(t, append(id3Tag(3, frames...), mpegFrame...))
 		if len(f.Chapters) != 1 || f.Chapters[0].Source != types.ChapterSourceID3CHAP {

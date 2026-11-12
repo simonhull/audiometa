@@ -26,56 +26,23 @@ import (
 //	CHAPTER001NAME=Introduction
 //	CHAPTER002=00:05:23.500
 //	CHAPTER002NAME=Chapter 1: The Beginning
-func ParseChapters(comments []string, fileDuration time.Duration) []types.Chapter { //nolint:gocyclo // Chapter parsing requires handling multiple tag formats and cases
-	// Map to collect chapter data by chapter number
-	type chapterData struct {
-		timestamp string
-		title     string
-		number    int
-	}
-
+func ParseChapters(comments []string, fileDuration time.Duration) []types.Chapter {
+	// Collect chapter data by chapter number.
 	chaptersMap := make(map[int]*chapterData)
-
-	// Scan all comments for CHAPTERxxx tags
 	for _, comment := range comments {
-		// Find '=' separator
-		before, after, ok := strings.Cut(comment, "=")
+		num, isName, value, ok := chapterTag(comment)
 		if !ok {
 			continue
 		}
-
-		// Most comments are not chapters: reject them before upper-casing.
-		key := strings.TrimSpace(before)
-		if len(key) < len("CHAPTER") || !strings.EqualFold(key[:len("CHAPTER")], "CHAPTER") {
-			continue
+		chap := chaptersMap[num]
+		if chap == nil {
+			chap = &chapterData{number: num}
+			chaptersMap[num] = chap
 		}
-		key = strings.ToUpper(key)
-		value := strings.TrimSpace(after)
-
-		if strings.HasSuffix(key, "NAME") { //nolint:nestif // Chapter tag parsing requires nested conditionals for different formats
-			// CHAPTERxxxNAME - extract chapter number
-			numStr := strings.TrimSuffix(strings.TrimPrefix(key, "CHAPTER"), "NAME")
-			num, err := strconv.Atoi(numStr)
-			if err != nil {
-				continue // Invalid chapter number
-			}
-
-			if chaptersMap[num] == nil {
-				chaptersMap[num] = &chapterData{number: num}
-			}
-			chaptersMap[num].title = value
+		if isName {
+			chap.title = value
 		} else {
-			// CHAPTERxxx - extract chapter number and timestamp
-			numStr := strings.TrimPrefix(key, "CHAPTER")
-			num, err := strconv.Atoi(numStr)
-			if err != nil {
-				continue // Invalid chapter number
-			}
-
-			if chaptersMap[num] == nil {
-				chaptersMap[num] = &chapterData{number: num}
-			}
-			chaptersMap[num].timestamp = value
+			chap.timestamp = value
 		}
 	}
 
@@ -125,6 +92,40 @@ func ParseChapters(comments []string, fileDuration time.Duration) []types.Chapte
 	// End each chapter at the next one's start; the last at the file duration (0 if unknown).
 	types.FillChapterEndTimes(chapters, fileDuration)
 	return chapters
+}
+
+// chapterData is what the comments say about one chapter number.
+type chapterData struct {
+	timestamp string
+	title     string
+	number    int
+}
+
+// chapterTag reads a CHAPTERxxx (a start time) or CHAPTERxxxNAME (a title) comment. It
+// reports ok false for any other comment and for a chapter number that is not an integer.
+func chapterTag(comment string) (int, bool, string, bool) {
+	before, after, found := strings.Cut(comment, "=")
+	if !found {
+		return 0, false, "", false
+	}
+
+	// Most comments are not chapters: reject them before upper-casing.
+	key := strings.TrimSpace(before)
+	if len(key) < len("CHAPTER") || !strings.EqualFold(key[:len("CHAPTER")], "CHAPTER") {
+		return 0, false, "", false
+	}
+	key = strings.ToUpper(key)
+
+	numStr := strings.TrimPrefix(key, "CHAPTER")
+	isName := strings.HasSuffix(key, "NAME")
+	if isName {
+		numStr = strings.TrimSuffix(numStr, "NAME")
+	}
+	num, err := strconv.Atoi(numStr)
+	if err != nil {
+		return 0, false, "", false // Invalid chapter number
+	}
+	return num, isName, strings.TrimSpace(after), true
 }
 
 // maxChapterHours caps the hours of a chapter time so the sum cannot overflow

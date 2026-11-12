@@ -106,22 +106,54 @@ func TestTagSource_MP3Trailers(t *testing.T) {
 		title string
 	}{
 		{"untagged", [][]byte{stripID3v2(sample)}, nil, ""},
-		{"ID3v1 only is used", [][]byte{stripID3v2(sample), id3v1Block("V1 Title", "V1 Artist")},
-			[]audiometa.TagSource{src(audiometa.TagID3v1, 0, true)}, "V1 Title"},
-		{"empty ID3v1 only supplies nothing", [][]byte{stripID3v2(sample), id3v1Block("", "")},
-			[]audiometa.TagSource{src(audiometa.TagID3v1, 0, false)}, ""},
-		{"ID3v1 behind ID3v2 with a title is not used", [][]byte{sample, id3v1Block("V1 Title", "V1 Artist")},
-			[]audiometa.TagSource{v2, src(audiometa.TagID3v1, 0, false)}, "Test Title"},
-		{"APEv2 is listed, unread", [][]byte{sample, apeBlock()},
-			[]audiometa.TagSource{v2, src(audiometa.TagAPEv2, 0, false)}, "Test Title"},
-		{"Lyrics3 is listed, unread", [][]byte{sample, lyrics3Block()},
-			[]audiometa.TagSource{v2, src(audiometa.TagLyrics3, 0, false)}, "Test Title"},
-		{"ID3v2 with footer after the audio is listed, unread", [][]byte{sample, id3v2FooterBlock()},
-			[]audiometa.TagSource{v2, src(audiometa.TagID3v2, 4, false)}, "Test Title"},
-		{"ID3v1 followed by APEv2 is not the last block, so unused", [][]byte{stripID3v2(sample), id3v1Block("V1 Title", "V1 Artist"), apeBlock()},
-			[]audiometa.TagSource{src(audiometa.TagID3v1, 0, false), src(audiometa.TagAPEv2, 0, false)}, ""},
-		{"ID3v1 behind APEv2 is the last block, so used", [][]byte{stripID3v2(sample), apeBlock(), id3v1Block("V1 Title", "V1 Artist")},
-			[]audiometa.TagSource{src(audiometa.TagID3v1, 0, true), src(audiometa.TagAPEv2, 0, false)}, "V1 Title"},
+		{
+			"ID3v1 only is used",
+			[][]byte{stripID3v2(sample), id3v1Block("V1 Title", "V1 Artist")},
+			[]audiometa.TagSource{src(audiometa.TagID3v1, 0, true)},
+			"V1 Title",
+		},
+		{
+			"empty ID3v1 only supplies nothing",
+			[][]byte{stripID3v2(sample), id3v1Block("", "")},
+			[]audiometa.TagSource{src(audiometa.TagID3v1, 0, false)},
+			"",
+		},
+		{
+			"ID3v1 behind ID3v2 with a title is not used",
+			[][]byte{sample, id3v1Block("V1 Title", "V1 Artist")},
+			[]audiometa.TagSource{v2, src(audiometa.TagID3v1, 0, false)},
+			"Test Title",
+		},
+		{
+			"APEv2 is listed, unread",
+			[][]byte{sample, apeBlock()},
+			[]audiometa.TagSource{v2, src(audiometa.TagAPEv2, 0, false)},
+			"Test Title",
+		},
+		{
+			"Lyrics3 is listed, unread",
+			[][]byte{sample, lyrics3Block()},
+			[]audiometa.TagSource{v2, src(audiometa.TagLyrics3, 0, false)},
+			"Test Title",
+		},
+		{
+			"ID3v2 with footer after the audio is listed, unread",
+			[][]byte{sample, id3v2FooterBlock()},
+			[]audiometa.TagSource{v2, src(audiometa.TagID3v2, 4, false)},
+			"Test Title",
+		},
+		{
+			"ID3v1 followed by APEv2 is not the last block, so unused",
+			[][]byte{stripID3v2(sample), id3v1Block("V1 Title", "V1 Artist"), apeBlock()},
+			[]audiometa.TagSource{src(audiometa.TagID3v1, 0, false), src(audiometa.TagAPEv2, 0, false)},
+			"",
+		},
+		{
+			"ID3v1 behind APEv2 is the last block, so used",
+			[][]byte{stripID3v2(sample), apeBlock(), id3v1Block("V1 Title", "V1 Artist")},
+			[]audiometa.TagSource{src(audiometa.TagID3v1, 0, true), src(audiometa.TagAPEv2, 0, false)},
+			"V1 Title",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

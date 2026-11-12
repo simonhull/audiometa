@@ -16,10 +16,11 @@ func vcHead(count uint32) []byte {
 }
 
 func TestParse_CommentPastBlockIsNotRead(t *testing.T) {
+	t.Parallel()
 	leaked := "TITLE=Leaked"
 	payload := binary.LittleEndian.AppendUint32(vcHead(1), uint32(len(leaked)))
 	data := buildFLAC(
-		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100, 44100)),
+		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100)),
 		flacBlock(true, blockTypeVorbisComment, payload), // the comment's bytes are not in the block
 		[]byte(leaked), // audio that happens to look like the comment
 	)
@@ -33,12 +34,13 @@ func TestParse_CommentPastBlockIsNotRead(t *testing.T) {
 }
 
 func TestParse_CommentsBeforeACutAreKept(t *testing.T) {
+	t.Parallel()
 	payload := vcHead(2)
 	payload = binary.LittleEndian.AppendUint32(payload, uint32(len("TITLE=Kept")))
 	payload = append(payload, "TITLE=Kept"...)
 	payload = binary.LittleEndian.AppendUint32(payload, 100) // second comment: no bytes
 	data := buildFLAC(
-		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100, 44100)),
+		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100)),
 		flacBlock(true, blockTypeVorbisComment, payload),
 	)
 	file := parseTestFLAC(t, data)
@@ -51,8 +53,9 @@ func TestParse_CommentsBeforeACutAreKept(t *testing.T) {
 }
 
 func TestParse_EveryVorbisCommentBlockIsRead(t *testing.T) {
+	t.Parallel()
 	data := buildFLAC(
-		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100, 44100)),
+		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100)),
 		flacBlock(false, blockTypeVorbisComment, vorbisCommentPayload("TITLE=One")),
 		flacBlock(true, blockTypeVorbisComment, vorbisCommentPayload("ARTIST=Two")),
 	)
@@ -68,7 +71,7 @@ func TestParse_CommentCountPastBlockDoesNotAllocate(t *testing.T) {
 	audio := make([]byte, 400_000)
 	build := func(count uint32) []byte {
 		return buildFLAC(
-			flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100, 44100)),
+			flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100)),
 			flacBlock(true, blockTypeVorbisComment, vcHead(count)),
 			audio,
 		)
@@ -83,13 +86,15 @@ func TestParse_CommentCountPastBlockDoesNotAllocate(t *testing.T) {
 }
 
 func TestExtractArtwork_PictureDataPastBlockIsNotRead(t *testing.T) {
+	t.Parallel()
 	// Each PICTURE block is 32 bytes but claims 64 KiB of picture data, which
 	// lies in the blocks after it and the audio.
 	const claimed = 64 << 10
 	pic := make([]byte, 32) // type, MIME length 0, description length 0, 4 x u32, data length
 	binary.BigEndian.PutUint32(pic[0:], 3)
 	binary.BigEndian.PutUint32(pic[28:], claimed)
-	parts := [][]byte{flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100, 44100))}
+	parts := make([][]byte, 1, 202)
+	parts[0] = flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100))
 	for i := range 200 {
 		parts = append(parts, flacBlock(i == 199, blockTypePicture, pic))
 	}

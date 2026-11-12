@@ -3,7 +3,8 @@ package audiometa_test
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"maps"
 	"os"
@@ -57,7 +58,7 @@ func runOracle(t *testing.T, tool string, args ...string) []byte {
 	cmd := exec.CommandContext(ctx, tool, args...)
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil || stderr.Len() > 0 {
-		t.Fatalf("%s %s: %v\nstderr: %s", filepath.Base(tool), strings.Join(args, " "), err, stderr.String())
+		t.Fatalf("%s %s: %v\nstdout: %s\nstderr: %s", filepath.Base(tool), strings.Join(args, " "), err, stdout.String(), stderr.String())
 	}
 	return stdout.Bytes()
 }
@@ -70,7 +71,7 @@ type probeResult struct {
 		} `json:"disposition"`
 		Tags map[string]string `json:"tags"`
 	} `json:"streams"`
-	Chapters []json.RawMessage `json:"chapters"`
+	Chapters []jsontext.Value `json:"chapters"`
 	Format   struct {
 		Tags map[string]string `json:"tags"`
 	} `json:"format"`
@@ -91,7 +92,7 @@ func (p probeResult) tags() map[string]string {
 
 // counts returns the number of ffprobe streams that are not cover images and
 // the number that are (ffprobe lists embedded artwork as a video stream).
-func (p probeResult) counts() (media, pictures int) {
+func (p probeResult) counts() (media, pictures int) { //nolint:nonamedreturns // the names document the results
 	for _, s := range p.Streams {
 		if s.Disposition.AttachedPic == 1 {
 			pictures++
@@ -106,7 +107,7 @@ func ffprobe(t *testing.T, tool, path string) probeResult {
 	t.Helper()
 	out := runOracle(t, tool, "-v", "error", "-show_format", "-show_streams", "-show_chapters", "-of", "json", path)
 	var res probeResult
-	if err := json.Unmarshal(out, &res); err != nil {
+	if err := json.Unmarshal(out, &res, jsontext.AllowDuplicateNames(true)); err != nil {
 		t.Fatalf("decode ffprobe output for %s: %v", path, err)
 	}
 	return res
@@ -115,7 +116,8 @@ func ffprobe(t *testing.T, tool, path string) probeResult {
 // TestWriteOracle hands edited files to ffprobe, ffmpeg and flac, which share
 // no code with audiometa: the container must parse cleanly, keep its streams
 // and chapters, and decode end to end.
-func TestWriteOracle(t *testing.T) {
+func TestWriteOracle(t *testing.T) { //nolint:cyclop,gocognit,gocyclo // one walk over each oracle: the checks follow the oracle output in order
+	t.Parallel()
 	ffprobeTool := oracleTool(t, "ffprobe")
 	ffmpegTool := oracleTool(t, "ffmpeg")
 	flacTool := oracleTool(t, "flac")
@@ -139,6 +141,7 @@ func TestWriteOracle(t *testing.T) {
 			continue
 		}
 		t.Run(filepath.Base(tc.path), func(t *testing.T) {
+			t.Parallel()
 			want := ffprobe(t, ffprobeTool, tc.path)
 			for _, e := range edits {
 				t.Run(e.name, func(t *testing.T) {

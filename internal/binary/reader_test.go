@@ -1,6 +1,7 @@
 package binary
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -13,7 +14,7 @@ type mockReader struct {
 	data []byte
 }
 
-func (m *mockReader) ReadAt(p []byte, off int64) (n int, err error) {
+func (m *mockReader) ReadAt(p []byte, off int64) (n int, err error) { //nolint:nonamedreturns // the names document the results
 	if off >= int64(len(m.data)) {
 		return 0, io.EOF
 	}
@@ -177,6 +178,7 @@ func TestSafeReader_CheckLen(t *testing.T) {
 // countingReader counts calls to ReadAt on the wrapped mockReader.
 type countingReader struct {
 	mockReader
+
 	calls int
 }
 
@@ -226,7 +228,7 @@ func TestSafeReader_Window_MissRefills(t *testing.T) {
 	if cr.calls != 2 {
 		t.Errorf("calls = %d, want 2", cr.calls)
 	}
-	if string(buf) != string(data[off:off+4]) {
+	if !bytes.Equal(buf, data[off:off+4]) {
 		t.Errorf("wrong bytes after refill")
 	}
 }
@@ -246,7 +248,7 @@ func TestSafeReader_Window_LargeReadBypasses(t *testing.T) {
 	if cr.calls != 2 {
 		t.Fatalf("calls after big read = %d, want 2", cr.calls)
 	}
-	if string(big) != string(data[10:10+len(big)]) {
+	if !bytes.Equal(big, data[10:10+len(big)]) {
 		t.Error("big read returned wrong bytes")
 	}
 	if err := sr.ReadAt(small, 100, "small again"); err != nil {
@@ -283,7 +285,7 @@ type failingReader struct {
 	short int // bytes to return with nil error when err == nil
 }
 
-func (f failingReader) ReadAt(p []byte, _ int64) (int, error) {
+func (f failingReader) ReadAt(_ []byte, _ int64) (int, error) {
 	if f.err != nil {
 		return 0, f.err
 	}
@@ -319,7 +321,7 @@ func TestSafeReader_Window_NearEOF(t *testing.T) {
 	if err := sr.ReadAt(buf, off, "tail"); err != nil {
 		t.Fatal(err)
 	}
-	if string(buf) != string(data[off:]) {
+	if !bytes.Equal(buf, data[off:]) {
 		t.Error("tail bytes wrong")
 	}
 	if err := sr.ReadAt(buf[:4], off+2, "tail2"); err != nil {
@@ -363,7 +365,7 @@ func TestPrefetched(t *testing.T) {
 		if err != nil || n != tt.n {
 			t.Fatalf("%s: ReadAt = %d, %v", tt.name, n, err)
 		}
-		if string(buf) != string(data[tt.off:tt.off+int64(tt.n)]) {
+		if !bytes.Equal(buf, data[tt.off:tt.off+int64(tt.n)]) {
 			t.Errorf("%s: wrong bytes", tt.name)
 		}
 		if got := cr.calls - before; got != tt.wantCalls {

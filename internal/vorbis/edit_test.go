@@ -9,6 +9,7 @@ import (
 )
 
 func TestEditor_EveryFieldWritable(t *testing.T) {
+	t.Parallel()
 	for _, format := range []types.Format{types.FormatFLAC, types.FormatOgg, types.FormatOpus} {
 		for f := range types.AllFields() {
 			v := NewEditor(format, Comments{})
@@ -21,6 +22,7 @@ func TestEditor_EveryFieldWritable(t *testing.T) {
 }
 
 func TestEditor_ApplyKey(t *testing.T) {
+	t.Parallel()
 	v := NewEditor(types.FormatOpus, Comments{Entries: [][]byte{[]byte("ARTIST=A"), []byte("title=Old"), []byte("Artist=B")}})
 	if err := v.ApplyKey("TITLE", []string{"New"}); err != nil {
 		t.Fatal(err)
@@ -28,7 +30,7 @@ func TestEditor_ApplyKey(t *testing.T) {
 	if err := v.ApplyKey("artist", []string{"X", "Y"}); err != nil {
 		t.Fatal(err)
 	}
-	var got []string
+	got := make([]string, 0, len(v.Entries))
 	for _, e := range v.Entries {
 		got = append(got, string(e))
 	}

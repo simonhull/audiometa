@@ -140,7 +140,7 @@ func deunsyncTag(sr *binutil.SafeReader, header id3v2Header) (*binutil.SafeReade
 // unsynchronisation and strips the group-identity and data-length prefixes. It
 // returns a non-empty reason when the frame is compressed or encrypted and must
 // be skipped.
-func frameBody(version, tagFlags byte, flags uint16, data []byte) (body []byte, skipReason string) {
+func frameBody(version, tagFlags byte, flags uint16, data []byte) (body []byte, skipReason string) { //nolint:nonamedreturns // the names document the results
 	var unsync, dli, group bool
 	switch version {
 	case 4:
@@ -271,7 +271,7 @@ var v22FrameIDs = map[string]string{
 // readFrameHeader reads the frame header at offset for the tag's version and
 // returns the (v2.3-normalised) frame ID, payload size, flags and header length.
 // ok is false at padding or when the header cannot be read.
-func readFrameHeader(sr *binutil.SafeReader, version byte, coding frameSizeCoding, offset int64) (id string, size uint32, flags uint16, headerLen int64, ok bool) {
+func readFrameHeader(sr *binutil.SafeReader, version byte, coding frameSizeCoding, offset int64) (id string, size uint32, flags uint16, headerLen int64, ok bool) { //nolint:nonamedreturns // the names document the results
 	if version == 2 {
 		var buf [6]byte
 		if err := sr.ReadAt(buf[:], offset, "frame header"); err != nil || buf[0] == 0 {
@@ -440,7 +440,7 @@ func parseUFIDFrame(frame id3v2Frame, file *types.File) {
 
 // parseUFID splits a UFID body into its owner, decoded as ISO-8859-1, and its
 // identifier. ok is false when there is no owner or no terminator after it.
-func parseUFID(body []byte) (owner, id string, ok bool) {
+func parseUFID(body []byte) (owner, id string, ok bool) { //nolint:nonamedreturns // the names document the results
 	nul := bytes.IndexByte(body, 0)
 	if nul <= 0 {
 		return "", "", false

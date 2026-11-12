@@ -65,7 +65,7 @@ func Split(ctx context.Context, payload []byte) (Comments, error) {
 
 // takeLE splits a little-endian 32-bit length and that many bytes off b. The comparison is
 // done in int64 so a length near 4 GiB cannot wrap on 32-bit platforms.
-func takeLE(b []byte) (field, rest []byte, ok bool) {
+func takeLE(b []byte) (field, rest []byte, ok bool) { //nolint:nonamedreturns // the names document the results
 	if len(b) < 4 {
 		return nil, nil, false
 	}

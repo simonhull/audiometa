@@ -24,7 +24,7 @@ func apeWithTAG(total int) []byte {
 
 // apeTrailerFixture is an MP3 whose ID3v2 tag has no Title or Artist, followed
 // by audio and an APEv2 tag with "TAG" 128 bytes before the end of the file.
-func apeTrailerFixture() (file, ape []byte) {
+func apeTrailerFixture() (file, ape []byte) { //nolint:nonamedreturns // the names document the results
 	ape = apeWithTAG(300)
 	v2 := id3Tag(4, id3Frame(4, "TALB", latin1Text("V2 Album")))
 	file = append(append(v2, audioBytes(4096)...), ape...)
@@ -32,6 +32,7 @@ func apeTrailerFixture() (file, ape []byte) {
 }
 
 func TestParse_APETagWithTAGIsNotID3v1(t *testing.T) {
+	t.Parallel()
 	file, _ := apeTrailerFixture()
 	f := parseBytes(t, file)
 	if f.Tags.Title != "" || f.Tags.Artist != "" || f.Tags.Year != 0 || f.Tags.TrackNumber != 0 || f.Tags.Comment != "" {
@@ -40,6 +41,7 @@ func TestParse_APETagWithTAGIsNotID3v1(t *testing.T) {
 }
 
 func TestReadID3v1_APETagWithTAGIsNotID3v1(t *testing.T) {
+	t.Parallel()
 	file, _ := apeTrailerFixture()
 	sr := binutil.NewSafeReader(bytes.NewReader(file), int64(len(file)), "")
 	if v1, ok := readID3v1(sr, int64(len(file))); ok {
@@ -48,6 +50,7 @@ func TestReadID3v1_APETagWithTAGIsNotID3v1(t *testing.T) {
 }
 
 func TestAudioRange_APETagWithTAGIsNotID3v1(t *testing.T) {
+	t.Parallel()
 	file, _ := apeTrailerFixture()
 	sr := binutil.NewSafeReader(bytes.NewReader(file), int64(len(file)), "")
 	_, end, hasV1, err := audioRange(sr, int64(len(file)))
@@ -60,6 +63,7 @@ func TestAudioRange_APETagWithTAGIsNotID3v1(t *testing.T) {
 }
 
 func TestWrite_APETagWithTAGKeptAndNotSeeded(t *testing.T) {
+	t.Parallel()
 	file, ape := apeTrailerFixture()
 	out := writeBytes(t, file, editsFor(t, file, func(tg *types.Tags) { tg.Title = "New" }))
 	if !bytes.HasSuffix(out, ape) {
@@ -78,6 +82,7 @@ func TestWrite_APETagWithTAGKeptAndNotSeeded(t *testing.T) {
 
 // A real ID3v1 trailer after an APEv2 tag is the last block, so it still reads.
 func TestParse_ID3v1AfterAPETagStillRead(t *testing.T) {
+	t.Parallel()
 	file, _ := apeTrailerFixture()
 	file = append(file, id3v1Trailer("Real Title", "Real Artist", "Real Album", "2001", "real", 3)...)
 	f := parseBytes(t, file)

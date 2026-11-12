@@ -7,6 +7,7 @@ import (
 )
 
 func TestFieldsCoverEveryTagsField(t *testing.T) {
+	t.Parallel()
 	typ := reflect.TypeFor[Tags]()
 	exported := map[string]bool{}
 	for sf := range typ.Fields() {
@@ -32,6 +33,7 @@ func TestFieldsCoverEveryTagsField(t *testing.T) {
 }
 
 func TestFieldString_Invalid(t *testing.T) {
+	t.Parallel()
 	if got := Field(0).String(); got != "Field(0)" {
 		t.Errorf("Field(0).String() = %q", got)
 	}
@@ -41,6 +43,7 @@ func TestFieldString_Invalid(t *testing.T) {
 }
 
 func TestFieldValuesRoundTrip(t *testing.T) {
+	t.Parallel()
 	for f := range AllFields() {
 		var sample []string
 		switch {
@@ -68,6 +71,7 @@ func TestFieldValuesRoundTrip(t *testing.T) {
 }
 
 func TestSetFieldValues_IntParseError(t *testing.T) {
+	t.Parallel()
 	tags := &Tags{Year: 2000}
 	setFieldValues(tags, FieldYear, []string{"abc"})
 	if tags.Year != 0 {
@@ -78,6 +82,7 @@ func TestSetFieldValues_IntParseError(t *testing.T) {
 // TestCloneEqual_CoverEveryField sets every field, so a field that Clone
 // forgets to copy or Equal forgets to compare fails here.
 func TestCloneEqual_CoverEveryField(t *testing.T) {
+	t.Parallel()
 	sample := func(f Field, alt bool) []string {
 		switch {
 		case intField(&Tags{}, f) != nil:

@@ -42,6 +42,7 @@ func parseTag(t *testing.T, data []byte) (*types.File, int64) {
 }
 
 func TestDeunsync(t *testing.T) {
+	t.Parallel()
 	got := deunsync([]byte{0xFF, 0x00, 0xE0, 0xFF, 0x00, 0xFF})
 	if !slices.Equal(got, []byte{0xFF, 0xE0, 0xFF, 0xFF}) {
 		t.Errorf("deunsync = %x", got)
@@ -49,6 +50,7 @@ func TestDeunsync(t *testing.T) {
 }
 
 func TestID3v23TagLevelUnsync(t *testing.T) {
+	t.Parallel()
 	// Title "ÿà" (Latin-1 FF E0) followed by an Album frame; the on-disk tag is unsynchronised.
 	title := frameBytes(3, "TIT2", 0, []byte{0, 0xFF, 0xE0})
 	album := frameBytes(3, "TALB", 0, append([]byte{0}, "Album"...))
@@ -66,6 +68,7 @@ func TestID3v23TagLevelUnsync(t *testing.T) {
 }
 
 func TestID3v24FrameUnsyncAndDataLength(t *testing.T) {
+	t.Parallel()
 	// Frame 1: unsync flag, title bytes FF 00 E0 on disk (encoding 0 + "ÿà").
 	f1 := frameBytes(4, "TIT2", v24FrameUnsync, []byte{0, 0xFF, 0x00, 0xE0})
 	// Frame 2: data length indicator prefix (4 synchsafe bytes) before the text.
@@ -81,6 +84,7 @@ func TestID3v24FrameUnsyncAndDataLength(t *testing.T) {
 }
 
 func TestID3SkipsCompressedAndEncryptedFrames(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		version byte
@@ -94,6 +98,7 @@ func TestID3SkipsCompressedAndEncryptedFrames(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			bad := frameBytes(tt.version, "TIT2", tt.flags, []byte{0, 'x', 'y', 'z', 'w'})
 			good := frameBytes(tt.version, "TALB", 0, append([]byte{0}, "After"...))
 			file, _ := parseTag(t, tagBytes(tt.version, 0, slices.Concat(bad, good)))

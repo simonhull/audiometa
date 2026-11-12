@@ -61,7 +61,7 @@ func (f *File) AudioDigestContext(ctx context.Context) ([sha256.Size]byte, error
 		return sum, fmt.Errorf("audio digest: %w", withPath(err, f.src.path))
 	}
 	if len(digest) != sha256.Size {
-		return sum, fmt.Errorf("audio digest: digester returned %d bytes, want %d", len(digest), sha256.Size)
+		return sum, fmt.Errorf("audio digest: digester returned %d bytes, want %d", len(digest), sha256.Size) //nolint:err113 // a registered digester that breaks its contract is a bug, not an error callers match
 	}
 	if sum = [sha256.Size]byte(digest); sum == sha256.Sum256(nil) {
 		return [sha256.Size]byte{}, fmt.Errorf("audio digest: %w", &CorruptedFileError{Path: f.src.path, Reason: "no audio data"})

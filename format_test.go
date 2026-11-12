@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"slices"
 	"testing"
 )
 
@@ -37,6 +38,7 @@ func createInvalidFile() []byte {
 }
 
 func TestDetectFormat_M4B(t *testing.T) {
+	t.Parallel()
 	data := createMockM4B("M4B ")
 
 	format, err := DetectFormat(bytes.NewReader(data), int64(len(data)), "test.m4b")
@@ -50,6 +52,7 @@ func TestDetectFormat_M4B(t *testing.T) {
 }
 
 func TestDetectFormat_M4A(t *testing.T) {
+	t.Parallel()
 	data := createMockM4B("M4A ")
 
 	format, err := DetectFormat(bytes.NewReader(data), int64(len(data)), "test.m4a")
@@ -63,6 +66,7 @@ func TestDetectFormat_M4A(t *testing.T) {
 }
 
 func TestDetectFormat_MP42(t *testing.T) {
+	t.Parallel()
 	// mp42 is also valid M4A
 	data := createMockM4B("mp42")
 
@@ -77,6 +81,7 @@ func TestDetectFormat_MP42(t *testing.T) {
 }
 
 func TestDetectFormat_TooSmall(t *testing.T) {
+	t.Parallel()
 	// File too small to contain ftyp
 	data := []byte{0x00, 0x00}
 
@@ -91,6 +96,7 @@ func TestDetectFormat_TooSmall(t *testing.T) {
 }
 
 func TestDetectFormat_InvalidFtyp(t *testing.T) {
+	t.Parallel()
 	data := createInvalidFile()
 
 	_, err := DetectFormat(bytes.NewReader(data), int64(len(data)), "invalid.m4b")
@@ -104,6 +110,7 @@ func TestDetectFormat_InvalidFtyp(t *testing.T) {
 }
 
 func TestDetectFormat_UnsupportedBrand(t *testing.T) {
+	t.Parallel()
 	// Create file with unsupported brand
 	data := createMockM4B("XXXX")
 
@@ -118,6 +125,7 @@ func TestDetectFormat_UnsupportedBrand(t *testing.T) {
 }
 
 func TestFormat_String(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		format   Format
 		expected string
@@ -141,6 +149,7 @@ func TestFormat_String(t *testing.T) {
 }
 
 func TestFormat_Extensions(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		format Format
 		want   []string
@@ -171,6 +180,7 @@ func TestFormat_Extensions(t *testing.T) {
 }
 
 func TestDetectFormat_FLAC(t *testing.T) {
+	t.Parallel()
 	// FLAC magic bytes: "fLaC"
 	data := []byte("fLaC")
 	data = append(data, make([]byte, 100)...) // Add some padding
@@ -186,6 +196,7 @@ func TestDetectFormat_FLAC(t *testing.T) {
 }
 
 func TestDetectFormat_MP3_WithID3(t *testing.T) {
+	t.Parallel()
 	// MP3 with ID3v2 tag
 	data := []byte("ID3")
 	data = append(data, make([]byte, 100)...) // Add some padding
@@ -201,9 +212,9 @@ func TestDetectFormat_MP3_WithID3(t *testing.T) {
 }
 
 func TestDetectFormat_MP3_WithoutID3(t *testing.T) {
+	t.Parallel()
 	// MP3 frame sync: 0xFF 0xFB (common MP3 header)
-	data := []byte{0xFF, 0xFB, 0x00, 0x00}
-	data = append(data, make([]byte, 100)...) // Add some padding
+	data := slices.Concat([]byte{0xFF, 0xFB, 0x00, 0x00}, make([]byte, 100)) // Add some padding
 
 	format, err := DetectFormat(bytes.NewReader(data), int64(len(data)), "test.mp3")
 	if err != nil {
@@ -216,6 +227,7 @@ func TestDetectFormat_MP3_WithoutID3(t *testing.T) {
 }
 
 func TestDetectFormat_Ogg(t *testing.T) {
+	t.Parallel()
 	// Ogg magic bytes: "OggS"
 	data := []byte("OggS")
 	data = append(data, make([]byte, 100)...) // Add some padding
@@ -231,6 +243,7 @@ func TestDetectFormat_Ogg(t *testing.T) {
 }
 
 func TestDetectFormat_WAV(t *testing.T) {
+	t.Parallel()
 	// WAV header: RIFF....WAVE
 	buf := &bytes.Buffer{}
 	buf.WriteString("RIFF")
@@ -250,6 +263,7 @@ func TestDetectFormat_WAV(t *testing.T) {
 }
 
 func TestDetectFormat_AIFF(t *testing.T) {
+	t.Parallel()
 	// AIFF header: FORM....AIFF
 	buf := &bytes.Buffer{}
 	buf.WriteString("FORM")
@@ -282,6 +296,7 @@ func createFtyp(major string, compatible ...string) []byte {
 }
 
 func TestDetectFormat_Brands(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		data    []byte
@@ -300,6 +315,7 @@ func TestDetectFormat_Brands(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := DetectFormat(bytes.NewReader(tt.data), int64(len(tt.data)), "test.mp4")
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("DetectFormat() error = %v, wantErr %v", err, tt.wantErr)

@@ -19,6 +19,7 @@ func (c *byteCountingReaderAt) ReadAt(p []byte, off int64) (int, error) {
 }
 
 func TestParse_SkipsArtworkPayload(t *testing.T) {
+	t.Parallel()
 	const imageSize = 1 << 20
 	apic := append([]byte{0x00}, "image/jpeg\x00"...)
 	apic = append(apic, 0x03, 0x00)

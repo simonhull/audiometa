@@ -254,17 +254,6 @@ func (t *Tags) Name(key string) string {
 	return key
 }
 
-// setName records name as the spelling of key, unless it is spelled as key.
-func (t *Tags) setName(key, name string) {
-	if name == key {
-		return
-	}
-	if t.names == nil {
-		t.names = make(map[string]string)
-	}
-	t.names[key] = name
-}
-
 // Delete removes the raw tags with the given format-native keys (see Get).
 // Keys that are not present are ignored.
 //
@@ -302,32 +291,8 @@ func (t *Tags) Delete(keys ...string) {
 func BindFormat(t *Tags, format Format) {
 	t.format = format
 	for _, b := range bindingsFor(format) {
-		if len(b.Keys) >= 2 {
+		if len(b.Keys) > 1 {
 			deriveField(t, format, b)
-		}
-	}
-}
-
-// syncKey recomputes every typed field bound to key on a bound Tags: each
-// such field is decoded from the highest-precedence bound key still present
-// in raw, or cleared if none is. Fields not bound to key are never touched.
-func (t *Tags) syncKey(key string) {
-	if t.format == FormatUnknown {
-		return
-	}
-	for _, b := range bindingsFor(t.format) {
-		if !slices.Contains(b.Keys, key) {
-			continue
-		}
-		decoded := false
-		for _, k := range b.Keys {
-			if decodeField(t, t.format, b.Field, k, t.raw[k]) {
-				decoded = true
-				break
-			}
-		}
-		if !decoded {
-			setFieldValues(t, b.Field, nil)
 		}
 	}
 }
@@ -383,51 +348,6 @@ func (t *Tags) Merge(other *Tags) {
 			mergeField(t, other, f)
 		}
 	}
-}
-
-// mergeRaw copies the raw keys of other that t may take (see [Tags.Merge]) and
-// returns the fields those keys now fill, which the typed merge must leave as
-// the sync made them. Eligibility is judged on t as it was before the merge,
-// so the result does not depend on map order.
-func (t *Tags) mergeRaw(other *Tags) (owned [fieldCount]bool) {
-	if t.format != FormatUnknown && other.format != FormatUnknown && t.format != other.format {
-		return owned
-	}
-	var take []string
-	for _, key := range slices.Sorted(maps.Keys(other.raw)) {
-		if _, has := t.raw[key]; !has && !t.holdsFieldBoundTo(key) {
-			take = append(take, key)
-		}
-	}
-	if len(take) > 0 && t.raw == nil {
-		t.raw = make(map[string][]string, len(take))
-	}
-	for _, key := range take {
-		t.raw[key] = slices.Clone(other.raw[key])
-		if name, ok := other.names[key]; ok {
-			t.setName(key, name)
-		}
-	}
-	for _, key := range take {
-		t.syncKey(key)
-		for _, b := range bindingsFor(t.format) {
-			if slices.Contains(b.Keys, key) {
-				owned[b.Field] = true
-			}
-		}
-	}
-	return owned
-}
-
-// holdsFieldBoundTo reports whether t already holds a typed field that key
-// fills in t's format.
-func (t *Tags) holdsFieldBoundTo(key string) bool {
-	for _, b := range bindingsFor(t.format) {
-		if slices.Contains(b.Keys, key) && valuesOf(t, b.Field) != nil {
-			return true
-		}
-	}
-	return false
 }
 
 // mergeField fills field f of t from other: an empty string or zero int takes
@@ -531,6 +451,86 @@ func (t *Tags) Filter(predicate func(string) bool) iter.Seq2[string, []string] {
 			}
 		}
 	}
+}
+
+// setName records name as the spelling of key, unless it is spelled as key.
+func (t *Tags) setName(key, name string) {
+	if name == key {
+		return
+	}
+	if t.names == nil {
+		t.names = make(map[string]string)
+	}
+	t.names[key] = name
+}
+
+// syncKey recomputes every typed field bound to key on a bound Tags: each
+// such field is decoded from the highest-precedence bound key still present
+// in raw, or cleared if none is. Fields not bound to key are never touched.
+func (t *Tags) syncKey(key string) {
+	if t.format == FormatUnknown {
+		return
+	}
+	for _, b := range bindingsFor(t.format) {
+		if !slices.Contains(b.Keys, key) {
+			continue
+		}
+		decoded := false
+		for _, k := range b.Keys {
+			if decodeField(t, t.format, b.Field, k, t.raw[k]) {
+				decoded = true
+				break
+			}
+		}
+		if !decoded {
+			setFieldValues(t, b.Field, nil)
+		}
+	}
+}
+
+// mergeRaw copies the raw keys of other that t may take (see [Tags.Merge]) and
+// returns the fields those keys now fill, which the typed merge must leave as
+// the sync made them. Eligibility is judged on t as it was before the merge,
+// so the result does not depend on map order.
+func (t *Tags) mergeRaw(other *Tags) (owned [fieldCount]bool) { //nolint:nonamedreturns // the names document the results
+	if t.format != FormatUnknown && other.format != FormatUnknown && t.format != other.format {
+		return owned
+	}
+	var take []string
+	for _, key := range slices.Sorted(maps.Keys(other.raw)) {
+		if _, has := t.raw[key]; !has && !t.holdsFieldBoundTo(key) {
+			take = append(take, key)
+		}
+	}
+	if len(take) > 0 && t.raw == nil {
+		t.raw = make(map[string][]string, len(take))
+	}
+	for _, key := range take {
+		t.raw[key] = slices.Clone(other.raw[key])
+		if name, ok := other.names[key]; ok {
+			t.setName(key, name)
+		}
+	}
+	for _, key := range take {
+		t.syncKey(key)
+		for _, b := range bindingsFor(t.format) {
+			if slices.Contains(b.Keys, key) {
+				owned[b.Field] = true
+			}
+		}
+	}
+	return owned
+}
+
+// holdsFieldBoundTo reports whether t already holds a typed field that key
+// fills in t's format.
+func (t *Tags) holdsFieldBoundTo(key string) bool {
+	for _, b := range bindingsFor(t.format) {
+		if slices.Contains(b.Keys, key) && valuesOf(t, b.Field) != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // mergeUnique appends elements from b to a, skipping duplicates.

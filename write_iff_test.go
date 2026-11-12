@@ -27,7 +27,7 @@ func writeBytes(t *testing.T, path string, edit func(f *audiometa.File)) []byte 
 // chunkIDs lists every chunk ID of an IFF file, in order.
 func chunkIDs(t *testing.T, data []byte) []string {
 	t.Helper()
-	var ids []string
+	ids := make([]string, 0, len(iffChunks(t, data)))
 	for _, c := range iffChunks(t, data) {
 		ids = append(ids, c.id)
 	}

@@ -28,7 +28,8 @@ func parseBytes(t *testing.T, data []byte) *types.File {
 }
 
 func TestParse_UntaggedStillParsesTechnicalAndChapters(t *testing.T) {
-	mvhd := createMvhdAtom(0, 1000, 180_000) // 180 s
+	t.Parallel()
+	mvhd := createMvhdAtom(1000, 180_000) // 180 s
 	chpl := createChplAtom([]struct {
 		time  int64
 		title string
@@ -47,6 +48,7 @@ func TestParse_UntaggedStillParsesTechnicalAndChapters(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			moov := createMockAtom("moov", bytes.Join(tt.moovChildren, nil))
 			data := append(m4bFtyp(), moov...)
 
@@ -66,7 +68,8 @@ func TestParse_UntaggedStillParsesTechnicalAndChapters(t *testing.T) {
 }
 
 func TestParse_CorruptUdtaWarnsButKeepsDuration(t *testing.T) {
-	mvhd := createMvhdAtom(0, 1000, 180_000)
+	t.Parallel()
+	mvhd := createMvhdAtom(1000, 180_000)
 	// udta whose child claims more bytes than udta holds.
 	bad := []byte{0, 0, 0xFF, 0, 'm', 'e', 't', 'a'}
 	moov := createMockAtom("moov", append(append([]byte{}, mvhd...), createMockAtom("udta", bad)...))
@@ -87,7 +90,8 @@ func TestParse_CorruptUdtaWarnsButKeepsDuration(t *testing.T) {
 }
 
 func TestParse_NamesTheMP4Container(t *testing.T) {
-	moov := createMockAtom("moov", createMvhdAtom(0, 1000, 1000))
+	t.Parallel()
+	moov := createMockAtom("moov", createMvhdAtom(1000, 1000))
 	tests := map[string][]byte{
 		"minimal m4b": createMinimalM4B("T", "A", "B"),
 		"no moov":     m4bFtyp(),
@@ -95,6 +99,7 @@ func TestParse_NamesTheMP4Container(t *testing.T) {
 	}
 	for name, data := range tests {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			if got := parseBytes(t, data).Audio.Container; got != "MP4" {
 				t.Errorf("Container = %q, want MP4", got)
 			}

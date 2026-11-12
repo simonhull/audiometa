@@ -16,6 +16,7 @@ func assertNotRegular(t *testing.T, err error) {
 }
 
 func TestOpen_DirectoryIsNotRegular(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	_, err := Open(dir)
 	assertNotRegular(t, err)

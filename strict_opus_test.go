@@ -57,6 +57,7 @@ func minimalOpus() []byte {
 }
 
 func TestStrictParsing_ValidOpus(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "sample.opus")
 	if err := os.WriteFile(path, minimalOpus(), 0o600); err != nil {
 		t.Fatal(err)

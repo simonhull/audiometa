@@ -23,6 +23,7 @@ func testData(n int) []byte {
 }
 
 func TestCopyRange(t *testing.T) {
+	t.Parallel()
 	data := testData(3 << 20)
 	for _, off := range []int64{0, 1} {
 		var buf bytes.Buffer
@@ -38,6 +39,7 @@ func TestCopyRange(t *testing.T) {
 }
 
 func TestCopyRange_Concurrent(t *testing.T) {
+	t.Parallel()
 	data := testData(3 << 20)
 	var wg sync.WaitGroup
 	for i := range 8 {
@@ -71,6 +73,7 @@ func BenchmarkCopyRange(b *testing.B) {
 }
 
 func TestCopyRange_Canceled(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	var buf bytes.Buffer
@@ -84,6 +87,7 @@ func TestCopyRange_Canceled(t *testing.T) {
 }
 
 func TestCopyRange_ShortSource(t *testing.T) {
+	t.Parallel()
 	_, err := CopyRange(context.Background(), io.Discard, bytes.NewReader(testData(10)), 5, 10)
 	if !errors.Is(err, io.ErrUnexpectedEOF) {
 		t.Errorf("err = %v, want io.ErrUnexpectedEOF", err)
@@ -91,12 +95,14 @@ func TestCopyRange_ShortSource(t *testing.T) {
 }
 
 func TestCopyRange_InvalidRange(t *testing.T) {
+	t.Parallel()
 	if _, err := CopyRange(context.Background(), io.Discard, bytes.NewReader(nil), -1, 1); err == nil {
 		t.Error("negative offset: want error")
 	}
 }
 
 func TestDigestRange(t *testing.T) {
+	t.Parallel()
 	data := testData(2<<20 + 17)
 	got, err := DigestRange(context.Background(), bytes.NewReader(data), 3, int64(len(data))-10)
 	if err != nil {
@@ -109,6 +115,7 @@ func TestDigestRange(t *testing.T) {
 }
 
 func TestCountingWriter(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	cw := &CountingWriter{W: &buf}
 	_, _ = cw.Write([]byte("abc"))
@@ -119,6 +126,7 @@ func TestCountingWriter(t *testing.T) {
 }
 
 func TestDigestRanges(t *testing.T) {
+	t.Parallel()
 	data := testData(1000)
 	got, err := DigestRanges(context.Background(), bytes.NewReader(data), []registry.Range{{Off: 0, End: 10}, {Off: 500, End: 500}, {Off: 900, End: 1000}})
 	if err != nil {

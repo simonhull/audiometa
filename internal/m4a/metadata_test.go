@@ -66,6 +66,7 @@ func firstMetadataValue(sr *audiobinary.SafeReader, atom *Atom) (string, error) 
 }
 
 func TestParseMetadataValues_String(t *testing.T) {
+	t.Parallel()
 	// Create ©nam (title) item - 0xA9 = © in MP4 tags
 	data := createMetadataItem([]byte{0xA9, 'n', 'a', 'm'}, "Test Title")
 
@@ -88,6 +89,7 @@ func TestParseMetadataValues_String(t *testing.T) {
 }
 
 func TestParseMetadataValues_EmptyData(t *testing.T) {
+	t.Parallel()
 	// Create item with no data atom
 	buf := &bytes.Buffer{}
 	itemSize := uint32(8) // just header
@@ -109,15 +111,13 @@ func TestParseMetadataValues_EmptyData(t *testing.T) {
 }
 
 func TestExtractIlstMetadata(t *testing.T) {
+	t.Parallel()
 	// Create ilst atom with multiple items
 	titleItem := createMetadataItem([]byte{0xA9, 'n', 'a', 'm'}, "My Book")      // ©nam
 	artistItem := createMetadataItem([]byte{0xA9, 'A', 'R', 'T'}, "Author Name") // ©ART
 	albumItem := createMetadataItem([]byte{0xA9, 'a', 'l', 'b'}, "Album Name")   // ©alb
 
-	var ilstData []byte
-	ilstData = append(ilstData, titleItem...)
-	ilstData = append(ilstData, artistItem...)
-	ilstData = append(ilstData, albumItem...)
+	ilstData := slices.Concat(titleItem, artistItem, albumItem)
 
 	ilst := createMockAtom("ilst", ilstData)
 
@@ -144,6 +144,7 @@ func TestExtractIlstMetadata(t *testing.T) {
 }
 
 func TestIlstItemFillsField(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		tag      string
 		value    string
@@ -204,6 +205,7 @@ func createTrackDataAtom(trackNum, trackTotal uint16) []byte {
 }
 
 func TestParseTrackNumber_Success(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name          string
 		trackNum      uint16
@@ -220,6 +222,7 @@ func TestParseTrackNumber_Success(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			// Create trkn atom with data atom inside
 			dataAtom := createTrackDataAtom(tt.trackNum, tt.trackTotal)
 
@@ -254,6 +257,7 @@ func TestParseTrackNumber_Success(t *testing.T) {
 }
 
 func TestParseTrackNumber_NoDataAtom(t *testing.T) {
+	t.Parallel()
 	// Create trkn atom with no data atom inside
 	buf := &bytes.Buffer{}
 	trknSize := uint32(8) // just header
@@ -271,6 +275,7 @@ func TestParseTrackNumber_NoDataAtom(t *testing.T) {
 }
 
 func TestParseTrackNumber_StaysInsideDataAtom(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name             string
 		payload          []byte
@@ -283,6 +288,7 @@ func TestParseTrackNumber_StaysInsideDataAtom(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			// The next item's bytes must not be read as part of trkn.
 			f := runIlst(t, createTypedMetadataItem([]byte("trkn"), 0, tt.payload),
 				createTypedMetadataItem([]byte("\xa9nam"), 1, []byte("Title")))
@@ -326,6 +332,7 @@ func runIlst(t *testing.T, items ...[]byte) *types.File {
 }
 
 func TestParseMetadataValues_Integer(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		typ     uint32
@@ -342,6 +349,7 @@ func TestParseMetadataValues_Integer(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			item := createTypedMetadataItem([]byte{0xA9, 'm', 'v', 'i'}, tt.typ, tt.payload)
 			sr := audiobinary.NewSafeReader(bytes.NewReader(item), int64(len(item)), "test.m4b")
 			atom, _ := readAtomHeader(sr, 0, int64(len(item)))
@@ -357,6 +365,7 @@ func TestParseMetadataValues_Integer(t *testing.T) {
 }
 
 func TestIlstSeriesPartInteger(t *testing.T) {
+	t.Parallel()
 	file := runIlst(t,
 		createMetadataItem([]byte{0xA9, 'm', 'v', 'n'}, "The Expanse"),
 		createTypedMetadataItem([]byte{0xA9, 'm', 'v', 'i'}, 21, []byte{0x00, 0x05}),
@@ -367,6 +376,7 @@ func TestIlstSeriesPartInteger(t *testing.T) {
 }
 
 func TestIlstSeriesPartZeroIgnored(t *testing.T) {
+	t.Parallel()
 	file := runIlst(t, createTypedMetadataItem([]byte{0xA9, 'm', 'v', 'i'}, 21, []byte{0x00, 0x00}))
 	if file.Tags.SeriesPart != "" {
 		t.Errorf("SeriesPart = %q, want empty", file.Tags.SeriesPart)
@@ -374,6 +384,7 @@ func TestIlstSeriesPartZeroIgnored(t *testing.T) {
 }
 
 func TestIlstDate(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		value    string
 		wantYear int
@@ -385,6 +396,7 @@ func TestIlstDate(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.value, func(t *testing.T) {
+			t.Parallel()
 			file := runIlst(t, createMetadataItem([]byte{0xA9, 'd', 'a', 'y'}, tt.value))
 			if file.Tags.Year != tt.wantYear || file.Tags.Date != tt.wantDate {
 				t.Errorf("Year=%d Date=%q, want %d %q", file.Tags.Year, file.Tags.Date, tt.wantYear, tt.wantDate)
@@ -394,13 +406,14 @@ func TestIlstDate(t *testing.T) {
 }
 
 func TestIlstNewFields(t *testing.T) {
+	t.Parallel()
 	file := runIlst(t,
 		createMetadataItem([]byte("aART"), "Album Artist"),
 		createMetadataItem([]byte("cprt"), "(c) Someone"),
-		createMetadataItem([]byte{0xA9, 'l', 'y', 'r'}, "la la"),
+		createMetadataItem([]byte{0xA9, 'l', 'y', 'r'}, "sing song"),
 		createTypedMetadataItem([]byte("disk"), 0, []byte{0, 0, 0, 2, 0, 3}),
 	)
-	if file.Tags.AlbumArtist != "Album Artist" || file.Tags.Copyright != "(c) Someone" || file.Tags.Lyrics != "la la" {
+	if file.Tags.AlbumArtist != "Album Artist" || file.Tags.Copyright != "(c) Someone" || file.Tags.Lyrics != "sing song" {
 		t.Errorf("unexpected tags: %+v", file.Tags)
 	}
 	if file.Tags.DiscNumber != 2 || file.Tags.DiscTotal != 3 {
@@ -409,6 +422,7 @@ func TestIlstNewFields(t *testing.T) {
 }
 
 func TestIlstDescriptionPriority(t *testing.T) {
+	t.Parallel()
 	item := func(typ, v string) []byte { return createMetadataItem([]byte(typ), v) }
 	des := []byte{0xA9, 'd', 'e', 's'}
 	tests := []struct {
@@ -423,6 +437,7 @@ func TestIlstDescriptionPriority(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := runIlst(t, tt.items...).Tags.Description; got != tt.want {
 				t.Errorf("Description = %q, want %q", got, tt.want)
 			}
@@ -441,6 +456,7 @@ func (m *maxReadReaderAt) ReadAt(p []byte, off int64) (int, error) {
 }
 
 func TestIlstSkipsCoverData(t *testing.T) {
+	t.Parallel()
 	ilst := createMockAtom("ilst", bytes.Join([][]byte{
 		createMetadataItem([]byte{0xA9, 'n', 'a', 'm'}, "Title"),
 		createTypedMetadataItem([]byte("covr"), 13, make([]byte, 65536)),
@@ -466,13 +482,20 @@ func TestIlstSkipsCoverData(t *testing.T) {
 }
 
 func TestExtractIlstMetadata_RepeatedAtomsFirstWins(t *testing.T) {
-	var ilstData []byte
-	for _, it := range []struct{ tag, val string }{
-		{"\xA9ART", "Artist A"}, {"\xA9ART", "Artist B"},
-		{"\xA9nam", "Title 1"}, {"\xA9nam", "Title 2"},
-		{"\xA9alb", "Album 1"}, {"\xA9alb", "Album 2"},
-		{"desc", "short"}, {"ldes", "long 1"}, {"ldes", "long 2"},
-	} {
+	t.Parallel()
+	items := []struct{ tag, val string }{
+		{"\xA9ART", "Artist A"},
+		{"\xA9ART", "Artist B"},
+		{"\xA9nam", "Title 1"},
+		{"\xA9nam", "Title 2"},
+		{"\xA9alb", "Album 1"},
+		{"\xA9alb", "Album 2"},
+		{"desc", "short"},
+		{"ldes", "long 1"},
+		{"ldes", "long 2"},
+	}
+	ilstData := make([]byte, 0, 32*len(items))
+	for _, it := range items {
 		ilstData = append(ilstData, createMetadataItem([]byte(it.tag), it.val)...)
 	}
 	ilst := createMockAtom("ilst", ilstData)
@@ -494,7 +517,7 @@ func TestExtractIlstMetadata_RepeatedAtomsFirstWins(t *testing.T) {
 
 // multiValueItem builds an ilst item with one UTF-8 data atom per value.
 func multiValueItem(itemType string, values ...string) []byte {
-	var body []byte
+	body := make([]byte, 0, len(values))
 	for _, v := range values {
 		body = append(body, createDataAtom(v)...)
 	}
@@ -502,6 +525,7 @@ func multiValueItem(itemType string, values ...string) []byte {
 }
 
 func TestExtractIlst_MultiValueArtist(t *testing.T) {
+	t.Parallel()
 	file := runIlst(t, multiValueItem("\xA9ART", "A", "B"))
 	tg := file.Tags
 	if tg.Artist != "A" || !slices.Equal(tg.Artists, []string{"A", "B"}) {
@@ -513,6 +537,7 @@ func TestExtractIlst_MultiValueArtist(t *testing.T) {
 }
 
 func TestExtractIlst_MultiValueGenre(t *testing.T) {
+	t.Parallel()
 	file := runIlst(t, multiValueItem("\xA9gen", "Rock", "Jazz"), multiValueItem("\xA9wrt", "C1", "C2"))
 	tg := file.Tags
 	if !slices.Equal(tg.Genres, []string{"Rock", "Jazz"}) || !slices.Equal(tg.Get("\xA9gen"), []string{"Rock", "Jazz"}) {
@@ -524,6 +549,7 @@ func TestExtractIlst_MultiValueGenre(t *testing.T) {
 }
 
 func TestExtractIlst_MultiValueSingleField(t *testing.T) {
+	t.Parallel()
 	file := runIlst(t, multiValueItem("\xA9nam", "First", "Second"))
 	if file.Tags.Title != "First" || !slices.Equal(file.Tags.Get("\xA9nam"), []string{"First", "Second"}) {
 		t.Errorf("Title = %q, raw = %q", file.Tags.Title, file.Tags.Get("\xA9nam"))
@@ -531,6 +557,7 @@ func TestExtractIlst_MultiValueSingleField(t *testing.T) {
 }
 
 func TestExtractIlst_GnreRaw(t *testing.T) {
+	t.Parallel()
 	file := runIlst(t, createTypedMetadataItem([]byte("gnre"), 0, []byte{0x00, 0x12}))
 	if got := file.Tags.Get("gnre"); !slices.Equal(got, []string{"17"}) {
 		t.Errorf("gnre raw = %q, want [17]", got)
@@ -546,6 +573,7 @@ func TestExtractIlst_GnreRaw(t *testing.T) {
 // Some taggers label integer items implicit (type 0); like ©mvi, they read as
 // their number, not as raw bytes.
 func TestParse_ImplicitIntegerItems(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		key  string
 		item []byte
@@ -564,6 +592,7 @@ func TestParse_ImplicitIntegerItems(t *testing.T) {
 }
 
 func TestExtractIlstMetadata_MovementIndexDataTypes(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		dataType uint32
@@ -583,6 +612,7 @@ func TestExtractIlstMetadata_MovementIndexDataTypes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			ilst := createMockAtom("ilst", ilstInt(itemMvi, tt.dataType, tt.value))
 			sr := audiobinary.NewSafeReader(bytes.NewReader(ilst), int64(len(ilst)), "test.m4b")
 			ilstAtom, err := readAtomHeader(sr, 0, int64(len(ilst)))

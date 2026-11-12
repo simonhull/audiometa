@@ -24,6 +24,17 @@ const (
 
 const mib = 1 << 20
 
+// The budgets: bytes allowed per input byte, plus a fixed allowance in MiB. The markup rows
+// are the formats whose ID3 chunks can carry MediaMarkers.
+const (
+	readPerByte        = 4
+	readFixedMiB       = 32
+	readMarkupPerByte  = 32
+	writePerByte       = 16
+	writeFixedMiB      = 64
+	writeMarkupPerByte = 64
+)
+
 // Budget bounds the bytes one operation may allocate for an n-byte input:
 // PerByte*n + Fixed.
 type Budget struct {
@@ -47,21 +58,21 @@ func (b Budget) Limit(n int) uint64 {
 // For returns the budget of op on format.
 func For(op Op, format types.Format) Budget {
 	if op == Write {
-		b := Budget{PerByte: 16, Fixed: 64 * mib}
+		b := Budget{PerByte: writePerByte, Fixed: writeFixedMiB * mib}
 		switch format {
 		case types.FormatMP3, types.FormatWAV, types.FormatAIFF:
 			// ID3 chunks can carry MediaMarkers, whose XML decoding costs 18-24 B per byte.
-			b.PerByte = 64
+			b.PerByte = writeMarkupPerByte
 		case types.FormatFLAC, types.FormatM4A, types.FormatM4B, types.FormatOgg, types.FormatOpus, types.FormatUnknown:
 			// The default budget applies.
 		}
 		return b
 	}
-	b := Budget{PerByte: 4, Fixed: 32 * mib}
+	b := Budget{PerByte: readPerByte, Fixed: readFixedMiB * mib}
 	switch format {
 	case types.FormatMP3, types.FormatWAV, types.FormatAIFF:
 		// ID3 chunks can carry MediaMarkers, whose XML decoding costs 18-24 B per byte.
-		b.PerByte = 32
+		b.PerByte = readMarkupPerByte
 	case types.FormatFLAC, types.FormatOgg, types.FormatOpus, types.FormatM4A, types.FormatM4B, types.FormatUnknown:
 		// The default budget applies.
 	}

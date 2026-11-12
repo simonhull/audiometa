@@ -23,6 +23,7 @@ func addArt(typ types.ArtworkType, data byte) types.ArtworkOp {
 }
 
 func TestWriteOpusArtwork(t *testing.T) {
+	t.Parallel()
 	src := readCorpus(t, "sample.opus")
 	if len(artworkOf(t, src)) != 0 {
 		t.Fatal("the sample has artwork")
@@ -70,6 +71,7 @@ func TestWriteOpusArtwork(t *testing.T) {
 }
 
 func TestPictureEntryHelpers(t *testing.T) {
+	t.Parallel()
 	entry := []byte(pictureComment(bytes.Repeat([]byte{1}, 50)))
 	if !isPictureEntry(entry) || !isPictureEntry(append([]byte("metadata_block_picture="), "x"...)) {
 		t.Error("picture entries not recognized")

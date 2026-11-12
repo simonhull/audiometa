@@ -11,6 +11,7 @@ import (
 // fixture. Durations are exact: a LAME tag's encoder delay and padding are
 // trimmed, as ffmpeg does.
 func TestOpen_MP3TechnicalInfo(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		path       string
 		vbr        bool
@@ -28,6 +29,7 @@ func TestOpen_MP3TechnicalInfo(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
+			t.Parallel()
 			f, err := audiometa.Open(tt.path)
 			if err != nil {
 				t.Fatal(err)

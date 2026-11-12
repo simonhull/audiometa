@@ -27,6 +27,7 @@ func parseAll(t *testing.T, format types.Format, comments ...string) *types.Tags
 // the one derivation rule (the first non-empty value of the highest-precedence
 // decodable key); the CHANGELOG names it.
 func TestFieldParity(t *testing.T) {
+	t.Parallel()
 	text := func(f func(*types.Tags) string) func(*types.Tags) any {
 		return func(tg *types.Tags) any { return f(tg) }
 	}
@@ -96,6 +97,7 @@ func TestFieldParity(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := tt.got(parseAll(t, types.FormatFLAC, tt.comments...))
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("got %#v, want %#v", got, tt.want)

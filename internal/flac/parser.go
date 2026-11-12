@@ -34,7 +34,7 @@ const (
 type parser struct{}
 
 // Parse parses a FLAC file and extracts metadata.
-func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path string) (*types.File, error) { //nolint:gocyclo // Block processing requires multiple conditional branches
+func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path string) (*types.File, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -67,62 +67,11 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		types.Warn(file, types.StageMetadata, 0, nil, fmt.Sprintf("non-standard ID3v2 tag of %d bytes before the FLAC stream; its frames are ignored", start))
 	}
 
-	var vorbisComments []string
-	var vorbisSource types.TagSource // the first Vorbis comment block, when Kind is set
-	var audioStart int64             // first audio byte; 0 until the chain's last block is read
-	for b, err := range blocks(ctx, sr, start, size) {
-		if err != nil {
-			if ctxErr := ctx.Err(); ctxErr != nil {
-				return nil, ctxErr
-			}
-			types.Warn(file, types.StageMetadata, b.off, err, fmt.Sprintf("metadata block chain at offset %d: %v", b.off, err))
-			break
-		}
-		offset, blockLength := b.payload(), b.n
-		switch b.typ {
-		case blockTypeStreamInfo:
-			if err := parseStreamInfo(sr, offset, blockLength, file); err != nil {
-				types.Warn(file, types.StageMetadata, offset, err, fmt.Sprintf("failed to parse STREAMINFO: %v", err))
-			}
-
-		case blockTypeVorbisComment:
-			comments, err := parseVorbisComment(ctx, sr, b, size, file)
-			vorbisComments = append(vorbisComments, comments...)
-			if vorbisSource.Kind == "" {
-				vorbisSource = types.TagSource{Kind: types.TagVorbisComment, Used: err == nil}
-			}
-			if err != nil {
-				if ctxErr := ctx.Err(); ctxErr != nil {
-					return nil, ctxErr
-				}
-				types.Warn(file, types.StageMetadata, offset, err, fmt.Sprintf("failed to parse Vorbis comments: %v", err))
-			}
-
-		case blockTypePicture:
-			// PICTURE blocks are read by ExtractArtwork.
-
-		case blockTypePadding:
-			// Padding blocks are ignored
-
-		case blockTypeApplication:
-			// APPLICATION blocks carry no metadata audiometa reads.
-
-		case blockTypeSeekTable:
-			// Seek table is not needed for metadata extraction
-
-		case blockTypeCueSheet:
-			if err := parseCueSheet(sr, offset, blockLength, file); err != nil {
-				types.Warn(file, types.StageChapters, offset, err, fmt.Sprintf("failed to parse CUESHEET: %v", err))
-			}
-
-		default:
-			// Unknown block type - skip it
-		}
-
-		if b.last {
-			audioStart = b.end()
-		}
+	chain, err := readChain(ctx, sr, start, size, file)
+	if err != nil {
+		return nil, err
 	}
+	vorbisComments, vorbisSource, audioStart := chain.comments, chain.source, chain.audioStart
 
 	// CHAPTERxxx= comments carry titles and are what audiobook taggers write; they take
 	// precedence over CUESHEET track markers. Runs after the loop so block order doesn't matter
@@ -140,18 +89,8 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		types.AddTagSource(file, leadingID3v2Source(sr))
 	}
 
-	// Approximate bitrate from audio frames only (metadata such as cover art excluded).
-	// Unknown when the metadata chain never reached its last block.
-	// Trailing APEv2, Lyrics3v2 and ID3v1 tags are not audio either.
-	if audioStart > 0 && audioStart < size {
-		audioEnd, blocks, err := trailer.Scan(ctx, sr, audioStart, size)
-		if err != nil {
-			return nil, err
-		}
-		trailer.AddSources(file, blocks, false)
-		if file.Audio.Duration > 0 {
-			file.Audio.Bitrate = types.AverageBitrate(audioEnd-audioStart, file.Audio.Duration)
-		}
+	if err := addAudioTail(ctx, sr, file, audioStart, size); err != nil {
+		return nil, err
 	}
 
 	// Set container and codec
@@ -162,6 +101,84 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	replaygain.Apply(file)
 
 	return file, nil
+}
+
+// metadataChain is what the metadata block chain contributes to a file beyond what
+// readChain writes into the File itself.
+type metadataChain struct {
+	comments   []string        // Vorbis comment entries, for the chapter parser and the tag decoder
+	source     types.TagSource // the first Vorbis comment block, when Kind is set
+	audioStart int64           // first audio byte; 0 until the chain's last block is read
+}
+
+// readChain walks the metadata blocks from start, decoding STREAMINFO, Vorbis comments and
+// the cue sheet into file. A broken chain ends the walk with a warning; only a canceled
+// context is an error.
+func readChain(ctx context.Context, sr *binary.SafeReader, start, size int64, file *types.File) (metadataChain, error) {
+	var chain metadataChain
+	for b, err := range blocks(ctx, sr, start, size) {
+		if err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return chain, ctxErr
+			}
+			types.Warn(file, types.StageMetadata, b.off, err, fmt.Sprintf("metadata block chain at offset %d: %v", b.off, err))
+			break
+		}
+		if err := chain.read(ctx, sr, b, size, file); err != nil {
+			return chain, err
+		}
+		if b.last {
+			chain.audioStart = b.end()
+		}
+	}
+	return chain, nil
+}
+
+// read decodes one metadata block. Padding, seek table, application and unknown blocks carry
+// nothing audiometa reads, and PICTURE blocks are read by ExtractArtwork.
+func (c *metadataChain) read(ctx context.Context, sr *binary.SafeReader, b block, size int64, file *types.File) error {
+	offset := b.payload()
+	switch b.typ {
+	case blockTypeStreamInfo:
+		if err := parseStreamInfo(sr, offset, b.n, file); err != nil {
+			types.Warn(file, types.StageMetadata, offset, err, fmt.Sprintf("failed to parse STREAMINFO: %v", err))
+		}
+	case blockTypeVorbisComment:
+		comments, err := parseVorbisComment(ctx, sr, b, size, file)
+		c.comments = append(c.comments, comments...)
+		if c.source.Kind == "" {
+			c.source = types.TagSource{Kind: types.TagVorbisComment, Used: err == nil}
+		}
+		if err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return ctxErr
+			}
+			types.Warn(file, types.StageMetadata, offset, err, fmt.Sprintf("failed to parse Vorbis comments: %v", err))
+		}
+	case blockTypeCueSheet:
+		if err := parseCueSheet(sr, offset, b.n, file); err != nil {
+			types.Warn(file, types.StageChapters, offset, err, fmt.Sprintf("failed to parse CUESHEET: %v", err))
+		}
+	}
+	return nil
+}
+
+// addAudioTail records the trailing tags after the audio and derives the bitrate from the
+// audio frames alone (metadata such as cover art excluded). The bitrate stays unknown when
+// the metadata chain never reached its last block.
+func addAudioTail(ctx context.Context, sr *binary.SafeReader, file *types.File, audioStart, size int64) error {
+	if audioStart <= 0 || audioStart >= size {
+		return nil
+	}
+	audioEnd, tail, err := trailer.Scan(ctx, sr, audioStart, size)
+	if err != nil {
+		return err
+	}
+	trailer.AddSources(file, tail, false)
+	if file.Audio.Duration > 0 {
+		file.Audio.Bitrate = types.AverageBitrate(audioEnd-audioStart, file.Audio.Duration)
+	}
+	return nil
 }
 
 // leadingID3v2Source describes the ID3v2 tag in front of the FLAC stream. Its

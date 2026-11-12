@@ -27,6 +27,7 @@ func hugeExtendedAtomFile() []byte {
 }
 
 func TestFindAtom_RejectsSizeBeyondParent(t *testing.T) {
+	t.Parallel()
 	data := hugeExtendedAtomFile()
 	sr := audiobinary.NewSafeReader(bytes.NewReader(data), int64(len(data)), "huge.m4a")
 
@@ -51,6 +52,7 @@ func TestFindAtom_RejectsSizeBeyondParent(t *testing.T) {
 }
 
 func TestParse_HugeExtendedAtomTerminates(t *testing.T) {
+	t.Parallel()
 	data := hugeExtendedAtomFile()
 
 	done := make(chan error, 1)

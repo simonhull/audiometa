@@ -35,6 +35,7 @@ func framesWithID(frames []wframe, id string) []wframe {
 }
 
 func TestWTag_VerbatimRoundTrip(t *testing.T) {
+	t.Parallel()
 	for _, v := range []byte{3, 4} {
 		ctoc := append([]byte("toc\x00\x03\x01"), "ch0\x00"...)
 		tag := id3TagFlags(v, 0, 64,
@@ -42,7 +43,7 @@ func TestWTag_VerbatimRoundTrip(t *testing.T) {
 			id3Frame(v, "TXXX", txxxPayload(0, "Narrator", "Someone")),
 			id3Frame(v, "XYZW", []byte{1, 2, 3, 4}),
 			id3Frame(v, "PRIV", []byte("owner\x00secret")),
-			id3Frame(v, "CHAP", chapFrameBody("ch0", 0, 1000, id3Frame(v, "TIT2", latin1Text("One")))),
+			id3Frame(v, "CHAP", chapFrameBody("ch0", id3Frame(v, "TIT2", latin1Text("One")))),
 			id3Frame(v, "CTOC", ctoc),
 			id3Frame(v, "APIC", apicPayload("image/jpeg", 3, "", []byte{0xFF, 0xD8, 0xFF, 0xE0})),
 		)
@@ -61,6 +62,7 @@ func TestWTag_VerbatimRoundTrip(t *testing.T) {
 }
 
 func TestWTag_V23TagUnsync(t *testing.T) {
+	t.Parallel()
 	// The tag body is unsynchronised: the title byte FF is stored as FF 00.
 	// v2.3 frame sizes count the decoded bytes.
 	frame := id3Frame(3, "TIT2", []byte{0, 'a', 0xFF, 'x'})
@@ -85,6 +87,7 @@ func TestWTag_V23TagUnsync(t *testing.T) {
 }
 
 func TestWTag_V24FrameUnsync(t *testing.T) {
+	t.Parallel()
 	src := file(id3Tag(4, id3FrameFlags(4, "TIT2", v24FrameUnsync, []byte{0, 'a', 0xFF, 0x00, 'x'})))
 	tag, err := framesOf(t, src).serialize()
 	if err != nil {
@@ -97,6 +100,7 @@ func TestWTag_V24FrameUnsync(t *testing.T) {
 }
 
 func TestWTag_V24CompressedPreserved(t *testing.T) {
+	t.Parallel()
 	frame := id3FrameFlags(4, "XYZW", v24FrameCompression|v24FrameDataLength, []byte{0, 0, 0, 10, 0x78, 0x9C, 1, 2, 3})
 	src := file(id3Tag(4, frame))
 	tag, err := framesOf(t, src).serialize()
@@ -109,6 +113,7 @@ func TestWTag_V24CompressedPreserved(t *testing.T) {
 }
 
 func TestWTag_V22ConvertsToV24(t *testing.T) {
+	t.Parallel()
 	src := file(v22Tag())
 	wt := framesOf(t, src)
 	if want := []string{"TIT2", "TPE1", "TALB", "TRCK", "MVNM", "COMM", "APIC"}; !slices.Equal(frameIDs(wt.frames), want) {
@@ -121,7 +126,7 @@ func TestWTag_V22ConvertsToV24(t *testing.T) {
 	if tag[3] != 4 {
 		t.Errorf("version byte = %d, want 4", tag[3])
 	}
-	out := append(tag, src[wt.oldTotal:]...)
+	out := slices.Concat(tag, src[wt.oldTotal:])
 	before, after := parseBytes(t, src).Tags, parseBytes(t, out).Tags
 	if after.Title != before.Title || after.Artist != before.Artist || after.Album != before.Album {
 		t.Errorf("tags %q/%q/%q, want %q/%q/%q", after.Title, after.Artist, after.Album, before.Title, before.Artist, before.Album)
@@ -143,6 +148,7 @@ func mustArtwork(t *testing.T, data []byte) []types.Artwork {
 }
 
 func TestWTag_V22UnconvertibleRefused(t *testing.T) {
+	t.Parallel()
 	src := file(v22Tag(id3v22Frame("TDA", latin1Text("0101"))))
 	_, err := readWTag(context.Background(), srOf(src), int64(len(src)))
 	if !errors.Is(err, types.ErrUnsupportedWrite) {
@@ -151,6 +157,7 @@ func TestWTag_V22UnconvertibleRefused(t *testing.T) {
 }
 
 func TestWTag_UnsupportedVersionRefused(t *testing.T) {
+	t.Parallel()
 	for _, v := range []byte{0, 1, 5} {
 		src := file(id3Tag(v, id3Frame(4, "TIT2", latin1Text("x"))))
 		if _, err := tryWrite(src, &types.EditSet{Orig: &types.Tags{}, Final: &types.Tags{}}); !errors.Is(err, types.ErrUnsupportedWrite) {
@@ -164,6 +171,7 @@ func TestWTag_UnsupportedVersionRefused(t *testing.T) {
 }
 
 func TestWTag_FrameOverrunsTag(t *testing.T) {
+	t.Parallel()
 	frame := id3Frame(3, "TIT2", latin1Text("Title"))
 	frame[7] = 100 // declare 100 bytes in a tag that holds far fewer
 	src := file(id3Tag(3, frame))
@@ -174,6 +182,7 @@ func TestWTag_FrameOverrunsTag(t *testing.T) {
 }
 
 func TestWTag_Untagged(t *testing.T) {
+	t.Parallel()
 	wt := framesOf(t, audioTail)
 	if wt.oldTotal != 0 || wt.outVersion != 4 || len(wt.frames) != 0 {
 		t.Errorf("oldTotal %d, outVersion %d, %d frames", wt.oldTotal, wt.outVersion, len(wt.frames))
@@ -184,6 +193,7 @@ func TestWTag_Untagged(t *testing.T) {
 }
 
 func TestCheckTagSize(t *testing.T) {
+	t.Parallel()
 	if err := checkTagSize(0x0FFFFFFF); err != nil {
 		t.Errorf("0x0FFFFFFF: %v", err)
 	}
@@ -199,6 +209,7 @@ func TestCheckTagSize(t *testing.T) {
 }
 
 func TestWTag_Padding(t *testing.T) {
+	t.Parallel()
 	src := file(id3TagFlags(4, 0, 100, id3Frame(4, "TIT2", latin1Text("A long title"))))
 	oldTotal := len(src) - len(audioTail)
 
@@ -237,6 +248,7 @@ func serializedFramesLen(t *testing.T, wt *wtag) int {
 }
 
 func TestApply_TextKeyEdit(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		value   string
 		version byte
@@ -273,6 +285,7 @@ func TestApply_TextKeyEdit(t *testing.T) {
 }
 
 func TestApply_TXXXPreservesDescriptionCase(t *testing.T) {
+	t.Parallel()
 	src := file(id3Tag(3, id3Frame(3, "TXXX", txxxPayload(0, "Narrator", "Old"))))
 	out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.Set("NARRATOR", "X") }))
 	txxx := framesWithID(framesOf(t, out).frames, "TXXX")
@@ -282,6 +295,7 @@ func TestApply_TXXXPreservesDescriptionCase(t *testing.T) {
 }
 
 func TestApply_FieldEdits(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		version byte
@@ -304,6 +318,7 @@ func TestApply_FieldEdits(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			frames := append([][]byte{id3Frame(tt.version, "TSSE", latin1Text("enc"))}, tt.frames...)
 			src := file(id3Tag(tt.version, frames...))
 			out, err := tryWrite(src, editsFor(t, src, tt.mutate))
@@ -329,6 +344,7 @@ func TestApply_FieldEdits(t *testing.T) {
 }
 
 func TestApply_CommentKeepsLanguageAndClears(t *testing.T) {
+	t.Parallel()
 	src := file(id3Tag(3,
 		id3Frame(3, "COMM", commPayload("fra", "", "Bonjour")),
 		id3Frame(3, "COMM", commPayload("eng", "iTunNORM", " 0000")),
@@ -349,6 +365,7 @@ func TestApply_CommentKeepsLanguageAndClears(t *testing.T) {
 }
 
 func TestApply_SourceKeyOnly(t *testing.T) {
+	t.Parallel()
 	src := file(id3Tag(4,
 		id3Frame(4, "GRP1", latin1Text("Old")),
 		id3Frame(4, "TIT1", latin1Text("Content")),
@@ -370,6 +387,7 @@ func TestApply_SourceKeyOnly(t *testing.T) {
 }
 
 func TestApply_NoCrossFieldWrites(t *testing.T) {
+	t.Parallel()
 	v1 := id3v1Trailer("Book 3", "Someone", "", "2020", "", 0)
 	src := append(file(id3Tag(4,
 		id3Frame(4, "TCOM", latin1Text("C")),
@@ -404,6 +422,7 @@ func TestApply_NoCrossFieldWrites(t *testing.T) {
 }
 
 func TestApply_MultiValue(t *testing.T) {
+	t.Parallel()
 	for _, v := range []byte{3, 4} {
 		src := file(id3Tag(v, id3Frame(v, "TPE1", latin1Text("X"))))
 		out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) {
@@ -417,6 +436,7 @@ func TestApply_MultiValue(t *testing.T) {
 }
 
 func TestApply_VersionSpecificKeyRefused(t *testing.T) {
+	t.Parallel()
 	src := file(id3Tag(3, id3Frame(3, "TIT2", latin1Text("x"))))
 	if _, err := tryWrite(src, editsFor(t, src, func(tg *types.Tags) { tg.Set("TDRC", "2020") })); !errors.Is(err, types.ErrUnsupportedWrite) {
 		t.Errorf("TDRC on v2.3: err = %v, want ErrUnsupportedWrite", err)
@@ -434,6 +454,7 @@ func TestApply_VersionSpecificKeyRefused(t *testing.T) {
 }
 
 func TestApply_CompressedTXXXRefused(t *testing.T) {
+	t.Parallel()
 	src := file(id3Tag(4,
 		id3FrameFlags(4, "TXXX", v24FrameCompression|v24FrameDataLength, []byte{0, 0, 0, 9, 0x78, 0x9C, 1}),
 		id3Frame(4, "TIT2", latin1Text("x")),
@@ -459,6 +480,7 @@ func testPNG(t *testing.T) []byte {
 }
 
 func TestApply_Artwork(t *testing.T) {
+	t.Parallel()
 	jpeg := []byte{0xFF, 0xD8, 0xFF, 0xE0, 0, 0, 0, 0}
 	src := file(id3Tag(3,
 		id3Frame(3, "TIT2", latin1Text("x")),
@@ -510,6 +532,7 @@ func TestApply_Artwork(t *testing.T) {
 }
 
 func TestApply_DRM(t *testing.T) {
+	t.Parallel()
 	tests := map[string][]byte{
 		"v2.4 encrypted": file(id3Tag(4, id3FrameFlags(4, "TIT2", v24FrameEncryption, []byte{1, 0, 0}))),
 		"v2.3 encrypted": file(id3Tag(3, id3FrameFlags(3, "XYZW", v23FrameEncryption, []byte{1, 0, 0}))),
@@ -524,6 +547,7 @@ func TestApply_DRM(t *testing.T) {
 }
 
 func TestApply_InvalidUTF8Refused(t *testing.T) {
+	t.Parallel()
 	src := file(id3Tag(4, id3Frame(4, "TIT2", latin1Text("x"))))
 	for _, v := range []string{"bad \xff", "nul\x00inside"} {
 		edits := editsFor(t, src, nil)
@@ -535,6 +559,7 @@ func TestApply_InvalidUTF8Refused(t *testing.T) {
 }
 
 func TestApply_MediaMarkersRefused(t *testing.T) {
+	t.Parallel()
 	src := file(id3Tag(4, id3Frame(4, "TIT2", latin1Text("x"))))
 	for _, mutate := range []func(*types.Tags){
 		func(tg *types.Tags) { tg.Set("OVERDRIVE MEDIAMARKERS", "x") },
@@ -552,8 +577,9 @@ func TestApply_MediaMarkersRefused(t *testing.T) {
 
 // Maintainer addendum: any key can be deleted; chapters are never touched.
 func TestApply_DeleteKeys(t *testing.T) {
+	t.Parallel()
 	for _, v := range []byte{3, 4} {
-		chap := id3Frame(v, "CHAP", chapFrameBody("ch0", 0, 1000, id3Frame(v, "TIT2", latin1Text("One"))))
+		chap := id3Frame(v, "CHAP", chapFrameBody("ch0", id3Frame(v, "TIT2", latin1Text("One"))))
 		ctoc := id3Frame(v, "CTOC", append([]byte("toc\x00\x03\x01"), "ch0\x00"...))
 		apic := id3Frame(v, "APIC", apicPayload("image/jpeg", 3, "", []byte{0xFF, 0xD8, 0xFF, 0xE0}))
 		src := file(id3Tag(v,
@@ -600,6 +626,7 @@ func TestApply_DeleteKeys(t *testing.T) {
 }
 
 func TestApply_V22KeysNormalized(t *testing.T) {
+	t.Parallel()
 	src := file(v22Tag(id3v22Frame("TYE", latin1Text("2020")), id3v22Frame("TEN", latin1Text("enc"))))
 	out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) {
 		tg.Year = 1999
@@ -617,6 +644,7 @@ func TestApply_V22KeysNormalized(t *testing.T) {
 // A raw edit of the key an ID3v2.2 tag exposes for its year lands in the
 // ID3v2.4 frame the tag is rewritten with: TYER becomes TDRC.
 func TestApply_V22RawYearKeyLandsInTDRC(t *testing.T) {
+	t.Parallel()
 	src := file(v22Tag(id3v22Frame("TYE", latin1Text("2020"))))
 	out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.Set("TYER", "1999") }))
 	if wt := framesOf(t, out); wt.inVersion != 4 || len(framesWithID(wt.frames, "TYER")) != 0 {
@@ -632,6 +660,7 @@ func TestApply_V22RawYearKeyLandsInTDRC(t *testing.T) {
 }
 
 func TestApply_SortFramesInEitherVersion(t *testing.T) {
+	t.Parallel()
 	for _, v := range []byte{3, 4} {
 		for _, id := range []string{"TSOT", "TSOA", "TSOP"} {
 			src := file(id3Tag(v, id3Frame(v, "TIT2", latin1Text("T"))))
@@ -647,6 +676,7 @@ func TestApply_SortFramesInEitherVersion(t *testing.T) {
 }
 
 func TestApply_SortFrameRewrittenInV23(t *testing.T) {
+	t.Parallel()
 	src := file(id3Tag(3, id3Frame(3, "TSOP", latin1Text("Old")), id3Frame(3, "TIT2", latin1Text("T"))))
 	out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.Set("TSOP", "New") }))
 	if got := frameIDs(framesOf(t, out).frames); !slices.Equal(got, []string{"TSOP", "TIT2"}) {
@@ -658,6 +688,7 @@ func TestApply_SortFrameRewrittenInV23(t *testing.T) {
 }
 
 func TestApply_OtherV24FramesStayRefusedInV23(t *testing.T) {
+	t.Parallel()
 	src := file(id3Tag(3, id3Frame(3, "TIT2", latin1Text("T"))))
 	for _, id := range []string{"TDRC", "TDOR", "TDRL", "TDEN", "TDTG", "TIPL", "TMCL", "TMOO", "TPRO", "TSST"} {
 		if _, err := tryWrite(src, editsFor(t, src, func(tg *types.Tags) { tg.Set(id, "x") })); !errors.Is(err, types.ErrUnsupportedWrite) {
@@ -669,6 +700,7 @@ func TestApply_OtherV24FramesStayRefusedInV23(t *testing.T) {
 // The reader keeps only ID3 years from 1900 to 2100, so the writer refuses
 // the others instead of writing a year that reads back as 0.
 func TestApply_YearOutsideReadableRangeRefused(t *testing.T) {
+	t.Parallel()
 	for _, v := range []byte{3, 4} {
 		src := file(id3Tag(v, id3Frame(v, "TIT2", latin1Text("x"))))
 		for _, year := range []int{1899, 2101, -5, 10000} {
@@ -687,6 +719,7 @@ func TestApply_YearOutsideReadableRangeRefused(t *testing.T) {
 }
 
 func TestValidID3Year(t *testing.T) {
+	t.Parallel()
 	for year, want := range map[int]bool{1899: false, 1900: true, 2000: true, 2100: true, 2101: false, 0: false} {
 		if got := validID3Year(year); got != want {
 			t.Errorf("validID3Year(%d) = %v, want %v", year, got, want)
@@ -697,6 +730,7 @@ func TestValidID3Year(t *testing.T) {
 // A TXXX frame described "tit2" is read under the raw key TIT2, so editing or
 // deleting TIT2 must replace it too.
 func TestApply_TextKeyReplacesShadowTXXX(t *testing.T) {
+	t.Parallel()
 	for _, v := range []byte{3, 4} {
 		src := file(id3Tag(v,
 			id3Frame(v, "TIT2", latin1Text("Title")),
@@ -722,6 +756,7 @@ func TestApply_TextKeyReplacesShadowTXXX(t *testing.T) {
 }
 
 func TestApply_InvalidKeyRefused(t *testing.T) {
+	t.Parallel()
 	src := file(id3Tag(4, id3Frame(4, "TIT2", latin1Text("x"))))
 	for _, key := range []string{"FOO\x00BAR", "OverDrive MediaMarkers\x00x", "BAD\xffKEY"} {
 		edits := editsFor(t, src, nil)
@@ -733,6 +768,7 @@ func TestApply_InvalidKeyRefused(t *testing.T) {
 }
 
 func TestApply_YearMixedVersions(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		version  byte
@@ -750,6 +786,7 @@ func TestApply_YearMixedVersions(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			frames := append([][]byte{id3Frame(tt.version, "TSSE", latin1Text("enc"))}, tt.frames...)
 			src := file(id3Tag(tt.version, frames...))
 			out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) { tg.Year = tt.year }))

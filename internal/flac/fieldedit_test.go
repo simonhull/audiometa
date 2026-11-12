@@ -10,6 +10,7 @@ import (
 // raw key LANG on a file holding LANGUAGE. The field edit sees the key edit, so it removes
 // LANG too, and Language does not come back from it on the next read.
 func TestFieldEditSeesKeyEdits(t *testing.T) {
+	t.Parallel()
 	src := simpleFLAC(1024, "LANGUAGE=eng")
 	edits := editsFor(t, src, nil)
 	edits.Keys = []types.KeyEdit{{Key: "LANG", Values: []string{"fre"}}}

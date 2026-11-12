@@ -11,7 +11,7 @@ import (
 
 // id3PrefixedFLAC writes sample.flac behind sample.mp3's ID3v2.3 tag, as
 // some taggers leave FLAC files, and returns the path and the tag.
-func id3PrefixedFLAC(t *testing.T) (path string, prefix []byte) {
+func id3PrefixedFLAC(t *testing.T) (path string, prefix []byte) { //nolint:nonamedreturns // the names document the results
 	t.Helper()
 	mp3, err := os.ReadFile("testdata/sample.mp3")
 	if err != nil {
@@ -26,6 +26,7 @@ func id3PrefixedFLAC(t *testing.T) (path string, prefix []byte) {
 }
 
 func TestOpen_ID3PrefixedFLAC(t *testing.T) {
+	t.Parallel()
 	path, _ := id3PrefixedFLAC(t)
 	f := openSample(t, path)
 	if f.Format != FormatFLAC || f.Tags.Title != "Test Title" || f.Audio.SampleRate != 44100 {
@@ -47,8 +48,10 @@ func TestOpen_ID3PrefixedFLAC(t *testing.T) {
 }
 
 func TestWrite_ID3PrefixedFLACKeepsPrefix(t *testing.T) {
+	t.Parallel()
 	for name, opts := range map[string][]WriteOption{"atomic": nil, "in place": {WithInPlace()}} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			path, prefix := id3PrefixedFLAC(t)
 			if err := Write(path, func(f *File) error { f.Tags.Title = "New"; return nil }, opts...); err != nil {
 				t.Fatal(err)

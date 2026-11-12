@@ -33,13 +33,14 @@ func noHang(t *testing.T, fifo string, fn func() error) error {
 		if w, err := os.OpenFile(fifo, os.O_WRONLY|syscall.O_NONBLOCK, 0); err == nil {
 			_ = w.Close()
 		}
-		<-done
+		t.Logf("open returned: %v", <-done)
 		t.Fatal("blocked opening a FIFO")
 		return nil
 	}
 }
 
 func TestOpen_RefusesNonRegularFiles(t *testing.T) {
+	t.Parallel()
 	fifo := mkfifo(t)
 	link := filepath.Join(t.TempDir(), "link.mp3")
 	if err := os.Symlink(fifo, link); err != nil {
@@ -51,6 +52,7 @@ func TestOpen_RefusesNonRegularFiles(t *testing.T) {
 		"character device": os.DevNull,
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			assertNotRegular(t, noHang(t, fifo, func() error {
 				f, err := OpenContext(t.Context(), path)
 				if err == nil {
@@ -72,13 +74,14 @@ func TestOpen_RefusesNonRegularFiles(t *testing.T) {
 // TestOpenFlags_DoNotBlockOnFIFO covers a path that becomes a FIFO between
 // the stat and the open: the open itself must return at once.
 func TestOpenFlags_DoNotBlockOnFIFO(t *testing.T) {
+	t.Parallel()
 	fifo := mkfifo(t)
 	err := noHang(t, fifo, func() error {
 		f, err := os.OpenFile(fifo, openFlags, 0)
 		if err == nil {
 			_ = f.Close()
 		}
-		return err
+		return err //nolint:wrapcheck // test helper returns the error for the test to report
 	})
 	if err != nil {
 		t.Errorf("open with openFlags: %v", err)

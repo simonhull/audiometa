@@ -16,7 +16,8 @@ func flacBlock(last bool, blockType byte, payload []byte) []byte {
 }
 
 // streamInfoPayload returns a 34-byte STREAMINFO body for 16-bit stereo.
-func streamInfoPayload(sampleRate, totalSamples uint64) []byte {
+func streamInfoPayload(totalSamples uint64) []byte {
+	const sampleRate uint64 = 44100
 	buf := &bytes.Buffer{}
 	_ = binary.Write(buf, binary.BigEndian, uint16(4096)) // min block size
 	_ = binary.Write(buf, binary.BigEndian, uint16(4096)) // max block size

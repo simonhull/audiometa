@@ -21,7 +21,7 @@ const (
 	m4bFixture = "../../testdata/sample.m4b"
 )
 
-func runCLI(t *testing.T, args ...string) (code int, stdout, stderr string) {
+func runCLI(t *testing.T, args ...string) (code int, stdout, stderr string) { //nolint:nonamedreturns // the names document the results
 	t.Helper()
 	var out, errb bytes.Buffer
 	code = run(args, &out, &errb)
@@ -42,6 +42,7 @@ func ndjson(t *testing.T, s string) []map[string]any {
 }
 
 func TestVersion(t *testing.T) {
+	t.Parallel()
 	code, out, _ := runCLI(t, "version")
 	if code != exitOK || !strings.HasPrefix(out, "audiometa ") || !strings.Contains(out, audiometa.GetVersion()) {
 		t.Fatalf("code=%d out=%q", code, out)
@@ -59,6 +60,7 @@ func TestVersion(t *testing.T) {
 }
 
 func TestNoArgsAndHelp(t *testing.T) {
+	t.Parallel()
 	code, out, errs := runCLI(t)
 	if code != exitUsage || out != "" || !strings.Contains(errs, "Usage:") {
 		t.Fatalf("code=%d out=%q err=%q", code, out, errs)
@@ -70,6 +72,7 @@ func TestNoArgsAndHelp(t *testing.T) {
 }
 
 func TestUnknownFlag(t *testing.T) {
+	t.Parallel()
 	for _, args := range [][]string{{"inspect", "--bogus", mp3Fixture}, {"--bogus"}, {"chapters", "-x"}} {
 		code, _, errs := runCLI(t, args...)
 		if code != exitUsage || !strings.Contains(errs, "Usage:") {
@@ -79,12 +82,14 @@ func TestUnknownFlag(t *testing.T) {
 }
 
 func TestInspectNoFiles(t *testing.T) {
+	t.Parallel()
 	if code, _, _ := runCLI(t, "inspect"); code != exitUsage {
 		t.Fatalf("code=%d", code)
 	}
 }
 
 func TestBareFileIsInspect(t *testing.T) {
+	t.Parallel()
 	code, bare, _ := runCLI(t, mp3Fixture)
 	_, explicit, _ := runCLI(t, "inspect", mp3Fixture)
 	if code != exitOK || bare != explicit || !strings.Contains(bare, "Title:") {
@@ -97,6 +102,7 @@ func TestBareFileIsInspect(t *testing.T) {
 }
 
 func TestInspectJSONGoodAndMissing(t *testing.T) {
+	t.Parallel()
 	code, out, errs := runCLI(t, "inspect", "--json", mp3Fixture, filepath.Join(t.TempDir(), "missing.mp3"))
 	if code != exitFail {
 		t.Fatalf("code=%d", code)
@@ -127,6 +133,7 @@ func TestInspectJSONGoodAndMissing(t *testing.T) {
 }
 
 func TestInspectMissingHumanGoesToStderr(t *testing.T) {
+	t.Parallel()
 	code, out, errs := runCLI(t, "inspect", "nope.mp3")
 	if code != exitFail || out != "" || !strings.HasPrefix(errs, "nope.mp3: ") {
 		t.Fatalf("code=%d out=%q err=%q", code, out, errs)
@@ -134,6 +141,7 @@ func TestInspectMissingHumanGoesToStderr(t *testing.T) {
 }
 
 func TestChapters(t *testing.T) {
+	t.Parallel()
 	code, out, _ := runCLI(t, "chapters", m4bFixture)
 	if code != exitOK || !strings.Contains(out, "[1] 00:00:00.000 → 00:00:01.000  Chapter One") {
 		t.Fatalf("code=%d out=%q", code, out)
@@ -152,6 +160,7 @@ func TestChapters(t *testing.T) {
 }
 
 func TestChapterDTOOmitsEmptySource(t *testing.T) {
+	t.Parallel()
 	b, err := json.Marshal(chapterDTO{Index: 1, Title: "x"})
 	if err != nil {
 		t.Fatal(err)
@@ -162,6 +171,7 @@ func TestChapterDTOOmitsEmptySource(t *testing.T) {
 }
 
 func TestChaptersNone(t *testing.T) {
+	t.Parallel()
 	flac := "../../testdata/sample.flac"
 	_, out, _ := runCLI(t, "chapters", flac)
 	if out != "" {
@@ -174,6 +184,7 @@ func TestChaptersNone(t *testing.T) {
 }
 
 func TestDTOGolden(t *testing.T) {
+	t.Parallel()
 	var f audiometa.File
 	f.Path = "book.m4b"
 	f.Format = audiometa.FormatOgg
@@ -200,6 +211,7 @@ func TestDTOGolden(t *testing.T) {
 }
 
 func TestDTOInvalidUTF8(t *testing.T) {
+	t.Parallel()
 	bad := "bad\xffvalue"
 	var f audiometa.File
 	f.Path = "p\xfe"
@@ -229,18 +241,21 @@ func TestDTOInvalidUTF8(t *testing.T) {
 }
 
 func TestCleanTextStripsControls(t *testing.T) {
+	t.Parallel()
 	if got := cleanText("a\x1b[31mb\nc\xff"); strings.ContainsAny(got, "\x1b\n") || !utf8.ValidString(got) {
 		t.Errorf("cleanText = %q", got)
 	}
 }
 
 func TestArtworkRequiresOut(t *testing.T) {
+	t.Parallel()
 	if code, _, errs := runCLI(t, "artwork", mp3Fixture); code != exitUsage || !strings.Contains(errs, "--out") {
 		t.Fatalf("code=%d err=%q", code, errs)
 	}
 }
 
 func TestArtworkExtAllowlist(t *testing.T) {
+	t.Parallel()
 	cases := map[string]string{
 		"image/jpeg": ".jpg", "image/jpg": ".jpg", "IMAGE/PNG": ".png", "image/gif": ".gif",
 		"image/bmp": ".bmp", "image/webp": ".webp", "image/tiff": ".tiff",
@@ -254,6 +269,7 @@ func TestArtworkExtAllowlist(t *testing.T) {
 }
 
 func TestArtworkBase(t *testing.T) {
+	t.Parallel()
 	cases := map[string]string{
 		"dir/song.flac": "song", "..": "artwork", "": "artwork", "a/..": "artwork", "x.tar.gz": "x.tar",
 	}
@@ -265,6 +281,7 @@ func TestArtworkBase(t *testing.T) {
 }
 
 func TestWriteNewRefusesOverwrite(t *testing.T) {
+	t.Parallel()
 	dest := filepath.Join(t.TempDir(), "a.bin")
 	if err := writeNew(dest, []byte("one"), false); err != nil {
 		t.Fatal(err)
@@ -284,6 +301,7 @@ func TestWriteNewRefusesOverwrite(t *testing.T) {
 }
 
 func TestArtworkNoArtworkFile(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "out")
 	code, out, errs := runCLI(t, "artwork", "--out", dir, "../../testdata/sample.wav")
 	if code != exitOK || out != "" || errs != "" {
@@ -295,6 +313,7 @@ func TestArtworkNoArtworkFile(t *testing.T) {
 }
 
 func TestArtworkNumbersExtraImages(t *testing.T) {
+	t.Parallel()
 	src, err := os.ReadFile("../../testdata/sample.flac")
 	if err != nil {
 		t.Fatal(err)
@@ -343,6 +362,7 @@ func writeTemp(t *testing.T, data []byte) string {
 func ftyp() []byte { return atom("ftyp", []byte("M4A \x00\x00\x00\x00M4A mp42isom")) }
 
 func TestAtomsValidTree(t *testing.T) {
+	t.Parallel()
 	meta := atom("meta", []byte{0, 0, 0, 0}, atom("ilst", atom("free")))
 	data := append(ftyp(), atom("moov", atom("udta", meta))...)
 	code, out, errs := runCLI(t, "atoms", writeTemp(t, data))
@@ -364,6 +384,7 @@ func TestAtomsValidTree(t *testing.T) {
 }
 
 func TestAtomsExtendedSizeOverflow(t *testing.T) {
+	t.Parallel()
 	hostile := binary.BigEndian.AppendUint32(nil, 1)
 	hostile = append(hostile, "free"...)
 	hostile = binary.BigEndian.AppendUint64(hostile, ^uint64(0))
@@ -374,6 +395,7 @@ func TestAtomsExtendedSizeOverflow(t *testing.T) {
 }
 
 func TestAtomsTooSmallSize(t *testing.T) {
+	t.Parallel()
 	small := binary.BigEndian.AppendUint32(nil, 4)
 	small = append(small, "free"...)
 	_, out, _ := runCLI(t, "atoms", writeTemp(t, append(ftyp(), small...)))
@@ -383,6 +405,7 @@ func TestAtomsTooSmallSize(t *testing.T) {
 }
 
 func TestAtomsExtendsToEOF(t *testing.T) {
+	t.Parallel()
 	zero := binary.BigEndian.AppendUint32(nil, 0)
 	zero = append(zero, "mdat"...)
 	zero = append(zero, make([]byte, 10)...)
@@ -393,6 +416,7 @@ func TestAtomsExtendsToEOF(t *testing.T) {
 }
 
 func TestAtomsDepthLimit(t *testing.T) {
+	t.Parallel()
 	inner := atom("free")
 	for range 40 {
 		inner = atom("moov", inner)
@@ -410,6 +434,7 @@ func TestAtomsDepthLimit(t *testing.T) {
 }
 
 func TestAtomsNotMP4(t *testing.T) {
+	t.Parallel()
 	code, out, errs := runCLI(t, "atoms", mp3Fixture)
 	if code != exitFail || out != "" || !strings.Contains(errs, "not an MP4 container") {
 		t.Fatalf("code=%d out=%q err=%q", code, out, errs)
@@ -417,6 +442,7 @@ func TestAtomsNotMP4(t *testing.T) {
 }
 
 func TestAtomsRealFile(t *testing.T) {
+	t.Parallel()
 	code, out, _ := runCLI(t, "atoms", m4bFixture)
 	if code != exitOK || !strings.Contains(out, "moov") {
 		t.Fatalf("code=%d out=%q", code, out)
@@ -424,6 +450,7 @@ func TestAtomsRealFile(t *testing.T) {
 }
 
 func TestArtworkForceReplacesSymlink(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	victim := filepath.Join(root, "victim")
 	if err := os.WriteFile(victim, []byte("keep"), 0o600); err != nil {
@@ -459,6 +486,7 @@ func TestArtworkForceReplacesSymlink(t *testing.T) {
 }
 
 func TestArtworkForceRefusesDirectory(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	if err := os.Mkdir(filepath.Join(dir, "sample.jpg"), 0o750); err != nil {
 		t.Fatal(err)
@@ -472,12 +500,13 @@ func TestArtworkForceRefusesDirectory(t *testing.T) {
 }
 
 func TestArtworkNameCollision(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	data, err := os.ReadFile(mp3Fixture)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var inputs []string
+	inputs := make([]string, 0, len([]string{"a", "b"}))
 	for _, sub := range []string{"a", "b"} {
 		p := filepath.Join(root, sub, "song.mp3")
 		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {

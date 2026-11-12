@@ -86,6 +86,7 @@ func (w *fakeWriter) callCount() int {
 // inPlaceFake is a fakeWriter that can also patch in place.
 type inPlaceFake struct {
 	fakeWriter
+
 	off     int64
 	patch   []byte
 	fits    bool
@@ -261,12 +262,21 @@ func TestWriteTo_EditSets(t *testing.T) {
 		wantKeys   []types.KeyEdit
 		wantFields []types.FieldEdit
 	}{
-		{"typed field", func(f *File) { f.Tags.Title = "New" },
-			nil, []types.FieldEdit{{Field: types.FieldTitle, Values: []string{"New"}}}},
-		{"raw key", func(f *File) { f.Tags.Set("TITLE", "New") },
-			[]types.KeyEdit{{Key: "TITLE", Values: []string{"New"}}}, nil},
-		{"delete key", func(f *File) { f.Tags.Delete("TITLE") },
-			[]types.KeyEdit{{Key: "TITLE", Values: nil}}, nil},
+		{
+			"typed field", func(f *File) { f.Tags.Title = "New" },
+			nil,
+			[]types.FieldEdit{{Field: types.FieldTitle, Values: []string{"New"}}},
+		},
+		{
+			"raw key", func(f *File) { f.Tags.Set("TITLE", "New") },
+			[]types.KeyEdit{{Key: "TITLE", Values: []string{"New"}}},
+			nil,
+		},
+		{
+			"delete key", func(f *File) { f.Tags.Delete("TITLE") },
+			[]types.KeyEdit{{Key: "TITLE", Values: nil}},
+			nil,
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -407,7 +417,7 @@ func TestSafely(t *testing.T) {
 	}
 }
 
-func TestArtworkEdits(t *testing.T) {
+func TestArtworkEdits(t *testing.T) { //nolint:cyclop,gocyclo // one setup shared by many short scenarios; splitting would repeat the setup
 	fw := &fakeWriter{}
 	useWriter(t, fw)
 	f := openSample(t, sampleFLAC)
@@ -483,6 +493,7 @@ func TestArtworkEdits(t *testing.T) {
 }
 
 func TestArtworkEdits_Concurrent(t *testing.T) {
+	t.Parallel()
 	f := openSample(t, sampleFLAC)
 	pngData := tinyPNG(t)
 	var wg sync.WaitGroup
@@ -627,7 +638,7 @@ func TestWrite_FollowsSymlink(t *testing.T) {
 	}
 }
 
-func TestWrite_InPlace(t *testing.T) {
+func TestWrite_InPlace(t *testing.T) { //nolint:cyclop,gocognit,gocyclo // one setup shared by many short scenarios; splitting would repeat the setup
 	edit := func(f *File) error { f.Tags.Title = "New"; return nil }
 
 	t.Run("patch applied", func(t *testing.T) {
@@ -754,6 +765,7 @@ func TestWrite_InPlace(t *testing.T) {
 // its digest calls.
 type rangedFake struct {
 	inPlaceFake
+
 	ranges      [][]registry.Range // returned by successive PreservedRanges calls; the last repeats
 	rangeCalls  int
 	digestCalls int
@@ -772,7 +784,7 @@ func (w *rangedFake) PreservedDigest(ctx context.Context, src io.ReaderAt, size 
 
 // TestWrite_InPlaceRanges covers verifying an in-place patch
 // by its preserved ranges instead of by digests.
-func TestWrite_InPlaceRanges(t *testing.T) {
+func TestWrite_InPlaceRanges(t *testing.T) { //nolint:cyclop,gocognit,gocyclo // one setup shared by many short scenarios; splitting would repeat the setup
 	edit := func(f *File) error { f.Tags.Title = "New"; return nil }
 	mtime := time.Date(2001, 2, 3, 4, 5, 6, 0, time.UTC)
 	outside := func(off int64, n, size int) []registry.Range {
@@ -871,11 +883,13 @@ func TestWrite_InPlaceRanges(t *testing.T) {
 		off, patch := titlePatch(t, data)
 		calls := 0
 		honest := digestOutside(off, len(patch))
-		useWriter(t, &inPlaceFake{off: off, patch: patch, fits: true,
+		useWriter(t, &inPlaceFake{
+			off: off, patch: patch, fits: true,
 			preserved: func(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error) {
 				calls++
 				return honest(ctx, src, size)
-			}})
+			},
+		})
 		if err := Write(path, edit, WithInPlace()); err != nil {
 			t.Fatal(err)
 		}
@@ -925,14 +939,16 @@ func TestWrite_Canceled(t *testing.T) {
 		off, patch := titlePatch(t, data)
 		calls := 0
 		honest := digestOutside(off, len(patch))
-		useWriter(t, &inPlaceFake{off: off, patch: patch, fits: true,
+		useWriter(t, &inPlaceFake{
+			off: off, patch: patch, fits: true,
 			preserved: func(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error) {
 				if calls++; calls == 2 { // the first call digests the source, the second verifies
 					cancel()
 					return nil, ctx.Err()
 				}
 				return honest(ctx, src, size)
-			}})
+			},
+		})
 		err := WriteContext(ctx, path, edit, WithInPlace())
 		if !errors.Is(err, context.Canceled) || !errors.Is(err, ErrVerifyFailed) {
 			t.Errorf("err = %v, want context.Canceled and ErrVerifyFailed", err)
@@ -1073,6 +1089,7 @@ func TestWrite_ConcurrentDelete(t *testing.T) {
 // parsers: re-setting any raw key of a parsed corpus file to its own values
 // leaves every typed field as the parser produced it.
 func TestSetSync_MatchesParser(t *testing.T) {
+	t.Parallel()
 	paths, err := filepath.Glob("testdata/*.*")
 	if err != nil {
 		t.Fatal(err)
@@ -1086,6 +1103,7 @@ func TestSetSync_MatchesParser(t *testing.T) {
 			continue
 		}
 		t.Run(filepath.Base(path), func(t *testing.T) {
+			t.Parallel()
 			f := openSample(t, path)
 			for key, values := range f.Tags.All() {
 				tags := f.Tags.Clone()

@@ -8,6 +8,7 @@ import (
 )
 
 func TestTags_All(t *testing.T) {
+	t.Parallel()
 	tags := &Tags{}
 	tags.Set("TITLE", "Test Song")
 	tags.Set("ARTIST", "Test Artist")
@@ -40,6 +41,7 @@ func TestTags_All(t *testing.T) {
 }
 
 func TestTags_All_NilRaw(t *testing.T) {
+	t.Parallel()
 	tags := &Tags{}
 
 	count := 0
@@ -53,6 +55,7 @@ func TestTags_All_NilRaw(t *testing.T) {
 }
 
 func TestTags_Get(t *testing.T) {
+	t.Parallel()
 	tags := &Tags{}
 	tags.Set("ARTIST", "Test Artist")
 	tags.Set("GENRE", "Rock", "Pop")
@@ -75,6 +78,7 @@ func TestTags_Get(t *testing.T) {
 }
 
 func TestTags_Get_ReturnsClone(t *testing.T) {
+	t.Parallel()
 	tags := &Tags{}
 	tags.Set("GENRE", "Rock", "Pop")
 
@@ -88,6 +92,7 @@ func TestTags_Get_ReturnsClone(t *testing.T) {
 }
 
 func TestTags_Get_NilRaw(t *testing.T) {
+	t.Parallel()
 	tags := &Tags{}
 	got := tags.Get("ANYTHING")
 	if got != nil {
@@ -96,6 +101,7 @@ func TestTags_Get_NilRaw(t *testing.T) {
 }
 
 func TestTags_GetFirst(t *testing.T) {
+	t.Parallel()
 	tags := &Tags{}
 	tags.Set("ARTIST", "Main Artist")
 	tags.Set("GENRE", "Rock", "Pop")
@@ -118,6 +124,7 @@ func TestTags_GetFirst(t *testing.T) {
 }
 
 func TestTags_GetBest(t *testing.T) {
+	t.Parallel()
 	tags := &Tags{}
 	tags.Set("TPE1", "ID3 Artist")
 	tags.Set("ARTIST", "Vorbis Artist")
@@ -134,6 +141,7 @@ func TestTags_GetBest(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := tags.GetBest(tc.candidates...)
 			if got != tc.want {
 				t.Errorf("GetBest(%v) = %q, want %q", tc.candidates, got, tc.want)
@@ -143,6 +151,7 @@ func TestTags_GetBest(t *testing.T) {
 }
 
 func TestTags_Set(t *testing.T) {
+	t.Parallel()
 	tags := &Tags{}
 
 	// Set single value
@@ -165,6 +174,7 @@ func TestTags_Set(t *testing.T) {
 }
 
 func TestTags_Set_ClonesValues(t *testing.T) {
+	t.Parallel()
 	tags := &Tags{}
 	values := []string{"Rock", "Pop"}
 	tags.Set("GENRE", values...)
@@ -178,7 +188,9 @@ func TestTags_Set_ClonesValues(t *testing.T) {
 }
 
 func TestTags_Merge(t *testing.T) {
+	t.Parallel()
 	t.Run("merge into empty", func(t *testing.T) {
+		t.Parallel()
 		tags := &Tags{}
 		other := &Tags{
 			Title:  "Other Title",
@@ -200,6 +212,7 @@ func TestTags_Merge(t *testing.T) {
 	})
 
 	t.Run("non-empty wins", func(t *testing.T) {
+		t.Parallel()
 		tags := &Tags{
 			Title: "Original Title",
 			Year:  0,
@@ -220,6 +233,7 @@ func TestTags_Merge(t *testing.T) {
 	})
 
 	t.Run("merge slices unique", func(t *testing.T) {
+		t.Parallel()
 		tags := &Tags{
 			Genres: []string{"Rock"},
 		}
@@ -235,6 +249,7 @@ func TestTags_Merge(t *testing.T) {
 	})
 
 	t.Run("merge nil", func(t *testing.T) {
+		t.Parallel()
 		tags := &Tags{Title: "Test"}
 		tags.Merge(nil)
 
@@ -244,6 +259,7 @@ func TestTags_Merge(t *testing.T) {
 	})
 
 	t.Run("merge raw tags", func(t *testing.T) {
+		t.Parallel()
 		tags := &Tags{}
 		tags.Set("CUSTOM", "Original")
 
@@ -263,6 +279,7 @@ func TestTags_Merge(t *testing.T) {
 }
 
 func TestTags_Clone(t *testing.T) {
+	t.Parallel()
 	original := &Tags{
 		Title:       "Test Title",
 		Artist:      "Test Artist",
@@ -305,6 +322,7 @@ func TestTags_Clone(t *testing.T) {
 }
 
 func TestTags_Clone_Nil(t *testing.T) {
+	t.Parallel()
 	var tags *Tags
 	clone := tags.Clone()
 	if clone != nil {
@@ -313,6 +331,7 @@ func TestTags_Clone_Nil(t *testing.T) {
 }
 
 func TestTags_Equal(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		a    *Tags
@@ -371,6 +390,7 @@ func TestTags_Equal(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := tc.a.Equal(tc.b)
 			if got != tc.want {
 				t.Errorf("Equal() = %v, want %v", got, tc.want)
@@ -380,6 +400,7 @@ func TestTags_Equal(t *testing.T) {
 }
 
 func TestTags_Equal_RawTags(t *testing.T) {
+	t.Parallel()
 	a := &Tags{}
 	a.Set("CUSTOM", "Value")
 
@@ -397,6 +418,7 @@ func TestTags_Equal_RawTags(t *testing.T) {
 }
 
 func TestTags_Filter(t *testing.T) {
+	t.Parallel()
 	tags := &Tags{}
 	tags.Set("MUSICBRAINZ_TRACKID", "abc123")
 	tags.Set("MUSICBRAINZ_ALBUMID", "def456")
@@ -419,10 +441,11 @@ func TestTags_Filter(t *testing.T) {
 }
 
 func TestTags_Filter_NilRaw(t *testing.T) {
+	t.Parallel()
 	tags := &Tags{}
 
 	count := 0
-	for range tags.Filter(func(k string) bool { return true }) {
+	for range tags.Filter(func(string) bool { return true }) {
 		count++
 	}
 
@@ -432,6 +455,7 @@ func TestTags_Filter_NilRaw(t *testing.T) {
 }
 
 func TestMergeUnique(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		a    []string
@@ -466,6 +490,7 @@ func TestMergeUnique(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := mergeUnique(tc.a, tc.b)
 			if !slices.Equal(got, tc.want) {
 				t.Errorf("mergeUnique(%v, %v) = %v, want %v", tc.a, tc.b, got, tc.want)
@@ -502,6 +527,7 @@ func assertOnlyChanged(t *testing.T, before, after map[Field][]string, changed .
 }
 
 func TestSet_UnboundTouchesRawOnly(t *testing.T) {
+	t.Parallel()
 	tags := &Tags{}
 	tags.Set("TITLE", "x")
 	if tags.Title != "" {
@@ -513,6 +539,7 @@ func TestSet_UnboundTouchesRawOnly(t *testing.T) {
 }
 
 func TestSet_SyncsTypedField(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		format Format
@@ -532,6 +559,7 @@ func TestSet_SyncsTypedField(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			tags := boundTags(tc.format)
 			before := snapshotFields(tags)
 			tags.Set(tc.key, tc.values...)
@@ -549,6 +577,7 @@ func TestSet_SyncsTypedField(t *testing.T) {
 }
 
 func TestSet_DeleteZeroesField(t *testing.T) {
+	t.Parallel()
 	tags := boundTags(FormatMP3)
 	tags.Set("TIT2", "T")
 	tags.Set("TIT2")
@@ -558,6 +587,7 @@ func TestSet_DeleteZeroesField(t *testing.T) {
 }
 
 func TestSet_LowerPrecedenceKeyDoesNotOverride(t *testing.T) {
+	t.Parallel()
 	tags := boundTags(FormatFLAC)
 	tags.Set("SERIES", "A")
 	tags.Set("MVNM", "B")
@@ -571,6 +601,7 @@ func TestSet_LowerPrecedenceKeyDoesNotOverride(t *testing.T) {
 }
 
 func TestSet_MP3YearFallsBackPastOutOfRangeKey(t *testing.T) {
+	t.Parallel()
 	tags := boundTags(FormatMP3)
 	tags.Set("TYER", "1987")
 	tags.Set("TDRC", "0001")
@@ -580,6 +611,7 @@ func TestSet_MP3YearFallsBackPastOutOfRangeKey(t *testing.T) {
 }
 
 func TestClone_PreservesBinding(t *testing.T) {
+	t.Parallel()
 	tags := boundTags(FormatMP3)
 	clone := tags.Clone()
 	clone.Set("TIT2", "x")
@@ -592,6 +624,7 @@ func TestClone_PreservesBinding(t *testing.T) {
 }
 
 func TestEqual_IgnoresBinding(t *testing.T) {
+	t.Parallel()
 	a := &Tags{Title: "x"}
 	b := boundTags(FormatMP3)
 	b.Title = "x"
@@ -615,6 +648,7 @@ func sentinelTags(format Format) *Tags {
 }
 
 func TestSet_NoCrossFieldSync(t *testing.T) {
+	t.Parallel()
 	type keys struct{ composer, grouping, title string }
 	formats := map[Format]keys{
 		FormatMP3:  {"TCOM", "GRP1", "TIT2"},
@@ -626,6 +660,7 @@ func TestSet_NoCrossFieldSync(t *testing.T) {
 	}
 	for format, k := range formats {
 		t.Run(format.String(), func(t *testing.T) {
+			t.Parallel()
 			cases := []struct {
 				key   string
 				value string
@@ -650,6 +685,7 @@ func TestSet_NoCrossFieldSync(t *testing.T) {
 }
 
 func TestDelete_RemovesUnmappedKey(t *testing.T) {
+	t.Parallel()
 	tags := boundTags(FormatFLAC)
 	tags.AddRaw("SHOW", "Foo")
 	tags.Set("TITLE", "T")
@@ -665,6 +701,7 @@ func TestDelete_RemovesUnmappedKey(t *testing.T) {
 }
 
 func TestDelete_ZeroesTypedField(t *testing.T) {
+	t.Parallel()
 	tags := boundTags(FormatMP3)
 	tags.Set("TIT2", "T")
 	tags.Delete("TIT2")
@@ -674,6 +711,7 @@ func TestDelete_ZeroesTypedField(t *testing.T) {
 }
 
 func TestDelete_MultipleAndMissingKeys(t *testing.T) {
+	t.Parallel()
 	tags := &Tags{}
 	tags.Delete("A", "missing") // nil raw map: no panic
 	tags.Set("A", "1")
@@ -689,6 +727,7 @@ func TestDelete_MultipleAndMissingKeys(t *testing.T) {
 }
 
 func TestSet_VorbisTrackNumberSyncsSuffixTotal(t *testing.T) {
+	t.Parallel()
 	tags := boundTags(FormatFLAC)
 	tags.Set("TRACKNUMBER", "3/12")
 	if tags.TrackNumber != 3 || tags.TrackTotal != 12 {
@@ -701,6 +740,7 @@ func TestSet_VorbisTrackNumberSyncsSuffixTotal(t *testing.T) {
 }
 
 func TestDelete_ReDerivesFromRemainingKey(t *testing.T) {
+	t.Parallel()
 	tags := boundTags(FormatFLAC)
 	tags.Set("SERIES", "A")
 	tags.Set("MVNM", "B")
@@ -723,39 +763,50 @@ func mergeValue(f Field, n int) string {
 // Tags, empty or already holding the field, and checks that Diff accepts the
 // result and that t keeps what it had.
 func TestMerge_NeverConflicts(t *testing.T) {
+	t.Parallel()
 	for _, format := range bindingFormats {
 		for _, b := range FieldBindings(format) {
 			for _, key := range b.Keys {
 				t.Run(format.String()+"/"+b.Field.String()+"/"+key, func(t *testing.T) {
-					for _, held := range []bool{false, true} {
-						tags := boundTags(format)
-						if held {
-							tags.Set(b.Keys[0], mergeValue(b.Field, 1))
-						}
-						orig := tags.Clone()
-						other := &Tags{}
-						other.Set(key, mergeValue(b.Field, 2))
-
-						tags.Merge(other)
-
-						if _, _, err := Diff(orig, tags, format); err != nil {
-							t.Fatalf("held=%v: Diff after Merge: %v", held, err)
-						}
-						want := orig.Clone()
-						if !held {
-							want.Set(key, mergeValue(b.Field, 2))
-						}
-						if got, w := valuesOf(tags, b.Field), valuesOf(want, b.Field); !slices.Equal(got, w) {
-							t.Errorf("held=%v: %s = %q, want %q", held, b.Field, got, w)
-						}
-					}
+					t.Parallel()
+					checkMergeNeverConflicts(t, format, b, key)
 				})
 			}
 		}
 	}
 }
 
+// checkMergeNeverConflicts merges a value under key into tags that do and do not hold the
+// field already, and checks that the merge keeps what is held, adds what is not, and leaves
+// tags that Diff can still turn into edits.
+func checkMergeNeverConflicts(t *testing.T, format Format, b FieldBinding, key string) {
+	t.Helper()
+	for _, held := range []bool{false, true} {
+		tags := boundTags(format)
+		if held {
+			tags.Set(b.Keys[0], mergeValue(b.Field, 1))
+		}
+		orig := tags.Clone()
+		other := &Tags{}
+		other.Set(key, mergeValue(b.Field, 2))
+
+		tags.Merge(other)
+
+		if _, _, err := Diff(orig, tags, format); err != nil {
+			t.Fatalf("held=%v: Diff after Merge: %v", held, err)
+		}
+		want := orig.Clone()
+		if !held {
+			want.Set(key, mergeValue(b.Field, 2))
+		}
+		if got, w := valuesOf(tags, b.Field), valuesOf(want, b.Field); !slices.Equal(got, w) {
+			t.Errorf("held=%v: %s = %q, want %q", held, b.Field, got, w)
+		}
+	}
+}
+
 func TestMerge_KeepsExistingRawValues(t *testing.T) {
+	t.Parallel()
 	tags := &Tags{}
 	tags.Set("CUSTOM", "Original")
 	other := &Tags{}
@@ -771,6 +822,7 @@ func TestMerge_KeepsExistingRawValues(t *testing.T) {
 }
 
 func TestMerge_NoRawKeysAcrossFormats(t *testing.T) {
+	t.Parallel()
 	tags := boundTags(FormatFLAC)
 	other := boundTags(FormatMP3)
 	other.Set("TIT2", "From MP3")
@@ -784,6 +836,7 @@ func TestMerge_NoRawKeysAcrossFormats(t *testing.T) {
 }
 
 func TestMerge_KeepsOtherSpelling(t *testing.T) {
+	t.Parallel()
 	tags := &Tags{}
 	other := &Tags{}
 	other.SetNamed("MusicBrainz Album Id", "id")
@@ -794,6 +847,7 @@ func TestMerge_KeepsOtherSpelling(t *testing.T) {
 }
 
 func TestMerge_DoesNotAliasOther(t *testing.T) {
+	t.Parallel()
 	tags := &Tags{}
 	other := &Tags{Genres: []string{"Rock"}}
 	other.Set("K", "v")

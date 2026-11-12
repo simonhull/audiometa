@@ -65,6 +65,7 @@ func setTitle(title string) func(*audiometa.File) error {
 }
 
 func TestWriteID3v1_KeepIsDefault(t *testing.T) {
+	t.Parallel()
 	const src = "testdata/sample_v24.mp3"
 	want := trailerOf(readTestdata(t, src))
 	if want == nil {
@@ -75,6 +76,7 @@ func TestWriteID3v1_KeepIsDefault(t *testing.T) {
 		"keep":    {audiometa.WithID3v1(audiometa.ID3v1Keep)},
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			p := writeTempCopy(t, src)
 			if err := audiometa.Write(p, setTitle("Updated"), opts...); err != nil {
 				t.Fatal(err)
@@ -87,6 +89,7 @@ func TestWriteID3v1_KeepIsDefault(t *testing.T) {
 }
 
 func TestWriteID3v1_Update(t *testing.T) {
+	t.Parallel()
 	p := writeTempCopy(t, "testdata/sample_v24.mp3")
 	before := audioDigestOf(t, p)
 	old := trailerOf(readFileBytes(t, p))
@@ -114,6 +117,7 @@ func TestWriteID3v1_Update(t *testing.T) {
 }
 
 func TestWriteID3v1_UpdateWithoutTrailer(t *testing.T) {
+	t.Parallel()
 	keep := writeTempCopy(t, "testdata/sample.mp3")
 	update := writeTempCopy(t, "testdata/sample.mp3")
 	if err := audiometa.Write(keep, setTitle("Updated")); err != nil {
@@ -131,6 +135,7 @@ func TestWriteID3v1_UpdateWithoutTrailer(t *testing.T) {
 }
 
 func TestWriteID3v1_Remove(t *testing.T) {
+	t.Parallel()
 	keep := writeTempCopy(t, "testdata/sample_v24.mp3")
 	remove := writeTempCopy(t, "testdata/sample_v24.mp3")
 	before := audioDigestOf(t, remove)
@@ -156,6 +161,7 @@ func TestWriteID3v1_Remove(t *testing.T) {
 }
 
 func TestWriteID3v1_ModeAloneWrites(t *testing.T) {
+	t.Parallel()
 	noEdit := func(*audiometa.File) error { return nil }
 	old := time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC)
 	prepare := func(t *testing.T) string {
@@ -168,6 +174,7 @@ func TestWriteID3v1_ModeAloneWrites(t *testing.T) {
 	}
 
 	t.Run("remove", func(t *testing.T) {
+		t.Parallel()
 		p := prepare(t)
 		if err := audiometa.Write(p, noEdit, audiometa.WithID3v1(audiometa.ID3v1Remove)); err != nil {
 			t.Fatal(err)
@@ -177,6 +184,7 @@ func TestWriteID3v1_ModeAloneWrites(t *testing.T) {
 		}
 	})
 	t.Run("keep leaves the file untouched", func(t *testing.T) {
+		t.Parallel()
 		p := prepare(t)
 		want := readFileBytes(t, p)
 		if err := audiometa.Write(p, noEdit, audiometa.WithID3v1(audiometa.ID3v1Keep)); err != nil {
@@ -191,6 +199,7 @@ func TestWriteID3v1_ModeAloneWrites(t *testing.T) {
 		}
 	})
 	t.Run("update syncs the trailer to the tags", func(t *testing.T) {
+		t.Parallel()
 		p := prepare(t)
 		// The ID3v2 tag and the trailer of the sample can disagree; the first
 		// Update makes them agree, the second has nothing to do.
@@ -215,6 +224,7 @@ func TestWriteID3v1_ModeAloneWrites(t *testing.T) {
 }
 
 func TestWriteID3v1_InPlaceFallsBack(t *testing.T) {
+	t.Parallel()
 	p := writeTempCopy(t, "testdata/sample_v24.mp3")
 	if err := audiometa.Write(p, setTitle("Updated"), audiometa.WithInPlace(), audiometa.WithID3v1(audiometa.ID3v1Remove)); err != nil {
 		t.Fatal(err)
@@ -229,6 +239,7 @@ func TestWriteID3v1_InPlaceFallsBack(t *testing.T) {
 }
 
 func TestWriteID3v1_InPlaceKeepsWorkingForKeep(t *testing.T) {
+	t.Parallel()
 	p := writeTempCopy(t, "testdata/sample_v24.mp3")
 	want := trailerOf(readFileBytes(t, p))
 	if err := audiometa.Write(p, setTitle("Updated"), audiometa.WithInPlace(), audiometa.WithID3v1(audiometa.ID3v1Keep)); err != nil {
@@ -240,6 +251,7 @@ func TestWriteID3v1_InPlaceKeepsWorkingForKeep(t *testing.T) {
 }
 
 func TestWriteID3v1_OtherFormatsIgnoreIt(t *testing.T) {
+	t.Parallel()
 	p := writeTempCopy(t, "testdata/sample.flac")
 	if err := audiometa.Write(p, setTitle("Updated"), audiometa.WithID3v1(audiometa.ID3v1Remove)); err != nil {
 		t.Fatal(err)

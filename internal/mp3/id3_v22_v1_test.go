@@ -32,6 +32,7 @@ func hasWarning(f *types.File, sub string) bool {
 }
 
 func TestID3v2Header_TotalSize(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		h    id3v2Header
 		want int64
@@ -48,6 +49,7 @@ func TestID3v2Header_TotalSize(t *testing.T) {
 }
 
 func TestParse_UnsupportedID3VersionSkipsTag(t *testing.T) {
+	t.Parallel()
 	body := make([]byte, 40)
 	copy(body[20:], []byte{0xFF, 0xFB, 0x50, 0x00}) // false sync (64 kbps) inside the tag
 	data := append(id3Tag(5, body), mpegFrame...)
@@ -61,8 +63,8 @@ func TestParse_UnsupportedID3VersionSkipsTag(t *testing.T) {
 }
 
 func v22Tag(extra ...[]byte) []byte {
-	pic := []byte{0x00, 'J', 'P', 'G', 0x03, 0x00}
-	pic = append(pic, 0xFF, 0xD8, 0xFF, 0xE0, 0, 0, 0xFF, 0xFB, 0x50, 0x00) // false sync inside the picture
+	// The picture ends in a false sync.
+	pic := []byte{0x00, 'J', 'P', 'G', 0x03, 0x00, 0xFF, 0xD8, 0xFF, 0xE0, 0, 0, 0xFF, 0xFB, 0x50, 0x00}
 	frames := [][]byte{
 		id3v22Frame("TT2", latin1Text("Title")),
 		id3v22Frame("TP1", utf16Text("Artist")),
@@ -72,10 +74,11 @@ func v22Tag(extra ...[]byte) []byte {
 		id3v22Frame("COM", []byte("\x00eng\x00note")),
 		id3v22Frame("PIC", pic),
 	}
-	return id3Tag(2, append(frames, extra...)...)
+	return id3Tag(2, slices.Concat(frames, extra)...)
 }
 
 func TestParse_ID3v22(t *testing.T) {
+	t.Parallel()
 	f := parseBytes(t, append(v22Tag(), mpegFrame...))
 	tags := f.Tags
 	if tags.Title != "Title" || tags.Artist != "Artist" || tags.Album != "Albé" {
@@ -96,6 +99,7 @@ func TestParse_ID3v22(t *testing.T) {
 }
 
 func TestExtractArtwork_ID3v22(t *testing.T) {
+	t.Parallel()
 	data := append(v22Tag(), mpegFrame...)
 	art, err := (&parser{}).ExtractArtwork(context.Background(), bytes.NewReader(data), int64(len(data)), "t.mp3")
 	if err != nil || len(art) != 1 {
@@ -107,6 +111,7 @@ func TestExtractArtwork_ID3v22(t *testing.T) {
 }
 
 func TestParse_ID3v22Compressed(t *testing.T) {
+	t.Parallel()
 	tag := v22Tag()
 	tag[5] = 0x40
 	f := parseBytes(t, append(tag, mpegFrame...))
@@ -122,6 +127,7 @@ func TestParse_ID3v22Compressed(t *testing.T) {
 }
 
 func TestParse_ID3v1Only(t *testing.T) {
+	t.Parallel()
 	data := append(audioBytes(16000), id3v1Trailer("T\xe9", "Artist", "Album", "1999", "c", 0)...)
 	f := parseBytes(t, data)
 	tags := f.Tags
@@ -134,6 +140,7 @@ func TestParse_ID3v1Only(t *testing.T) {
 }
 
 func TestParse_ID3v11Track(t *testing.T) {
+	t.Parallel()
 	data := append(audioBytes(16000), id3v1Trailer("T", "A", "B", "2001", "comment", 7)...)
 	f := parseBytes(t, data)
 	if f.Tags.TrackNumber != 7 || f.Tags.Comment != "comment" {
@@ -142,6 +149,7 @@ func TestParse_ID3v11Track(t *testing.T) {
 }
 
 func TestParse_ID3v1IgnoredWhenV2HasTags(t *testing.T) {
+	t.Parallel()
 	data := append(id3Tag(3, id3Frame(3, "TIT2", latin1Text("V2"))), audioBytes(16000)...)
 	data = append(data, id3v1Trailer("V1", "V1Artist", "Alb", "1999", "", 0)...)
 	f := parseBytes(t, data)

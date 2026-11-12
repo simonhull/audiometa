@@ -15,19 +15,19 @@ import (
 )
 
 // testWriter returns the Opus writer.
-func testWriter(t testing.TB) *writer {
-	t.Helper()
+func testWriter(tb testing.TB) *writer {
+	tb.Helper()
 	w, ok := registry.GetWriter(types.FormatOpus).(*writer)
 	if !ok {
-		t.Fatal("no Opus writer registered")
+		tb.Fatal("no Opus writer registered")
 	}
 	return w
 }
 
 // writerFor returns the registered writer for the codec of src's first page:
 // Vorbis for a Vorbis stream, Opus for anything else.
-func writerFor(t testing.TB, src []byte) *writer {
-	t.Helper()
+func writerFor(tb testing.TB, src []byte) *writer {
+	tb.Helper()
 	format := types.FormatOpus
 	if page, _, err := newPageStream(bytes.NewReader(src), int64(len(src)), "x", false).next(); err == nil {
 		if c := detectCodec(page.Data); c != nil {
@@ -36,26 +36,26 @@ func writerFor(t testing.TB, src []byte) *writer {
 	}
 	w, ok := registry.GetWriter(format).(*writer)
 	if !ok {
-		t.Fatalf("no %s writer registered", format)
+		tb.Fatalf("no %s writer registered", format)
 	}
 	return w
 }
 
-func tryWrite(t testing.TB, src []byte, edits *types.EditSet) ([]byte, error) {
-	t.Helper()
+func tryWrite(tb testing.TB, src []byte, edits *types.EditSet) ([]byte, error) {
+	tb.Helper()
 	var buf bytes.Buffer
-	n, err := writerFor(t, src).WriteFile(t.Context(), &buf, bytes.NewReader(src), int64(len(src)), edits)
+	n, err := writerFor(tb, src).WriteFile(tb.Context(), &buf, bytes.NewReader(src), int64(len(src)), edits)
 	if n != int64(buf.Len()) {
-		t.Fatalf("WriteFile reported %d bytes, wrote %d", n, buf.Len())
+		tb.Fatalf("WriteFile reported %d bytes, wrote %d", n, buf.Len())
 	}
 	return buf.Bytes(), err
 }
 
-func writeBytes(t testing.TB, src []byte, edits *types.EditSet) []byte {
-	t.Helper()
-	out, err := tryWrite(t, src, edits)
+func writeBytes(tb testing.TB, src []byte, edits *types.EditSet) []byte {
+	tb.Helper()
+	out, err := tryWrite(tb, src, edits)
 	if err != nil {
-		t.Fatalf("WriteFile: %v", err)
+		tb.Fatalf("WriteFile: %v", err)
 	}
 	return out
 }
@@ -85,8 +85,8 @@ func keyEdit(key string, values ...string) *types.EditSet {
 }
 
 // rawPagesAndTail splits data into whole pages and the bytes after the last.
-func rawPagesAndTail(t testing.TB, data []byte) (pages []rawPage, tail []byte) {
-	t.Helper()
+func rawPagesAndTail(tb testing.TB, data []byte) (pages []rawPage, tail []byte) { //nolint:nonamedreturns // the names document the results
+	tb.Helper()
 	s := newPageStream(bytes.NewReader(data), int64(len(data)), "x", false)
 	for s.off < int64(len(data)) {
 		off := s.off
@@ -104,53 +104,53 @@ func rawPagesAndTail(t testing.TB, data []byte) (pages []rawPage, tail []byte) {
 // numbers run on from the first page's without a gap, BOS is on the first page
 // only, EOS on the last only, and a page continues a packet exactly when the
 // page before it ended on a lacing value of 255.
-func checkStructure(t testing.TB, name string, data []byte) {
-	t.Helper()
-	pages, _ := rawPagesAndTail(t, data)
+func checkStructure(tb testing.TB, name string, data []byte) {
+	tb.Helper()
+	pages, _ := rawPagesAndTail(tb, data)
 	if len(pages) < 3 {
-		t.Fatalf("%s: %d pages", name, len(pages))
+		tb.Fatalf("%s: %d pages", name, len(pages))
 	}
 	for i, p := range pages {
 		zeroed := slices.Clone(p.raw)
 		clear(zeroed[pageCRCOffset : pageCRCOffset+4])
 		if got := crcUpdate(0, zeroed); got != p.stored {
-			t.Errorf("%s page %d: crc %#08x, stored %#08x", name, i, got, p.stored)
+			tb.Errorf("%s page %d: crc %#08x, stored %#08x", name, i, got, p.stored)
 		}
 		if want := pages[0].page.SequenceNumber + uint32(i); p.page.SequenceNumber != want {
-			t.Errorf("%s page %d: sequence %d, want %d", name, i, p.page.SequenceNumber, want)
+			tb.Errorf("%s page %d: sequence %d, want %d", name, i, p.page.SequenceNumber, want)
 		}
 		if bos := p.page.HeaderType&0x02 != 0; bos != (i == 0) {
-			t.Errorf("%s page %d: BOS %v", name, i, bos)
+			tb.Errorf("%s page %d: BOS %v", name, i, bos)
 		}
 		if eos := p.page.HeaderType&pageEOS != 0; eos && i != len(pages)-1 {
-			t.Errorf("%s page %d: EOS before the last page", name, i)
+			tb.Errorf("%s page %d: EOS before the last page", name, i)
 		}
 		prevOpen := i > 0 && pages[i-1].page.Lacing[len(pages[i-1].page.Lacing)-1] == 255
 		if cont := p.page.HeaderType&pageContinued != 0; cont != prevOpen {
-			t.Errorf("%s page %d: continued %v, previous page open %v", name, i, cont, prevOpen)
+			tb.Errorf("%s page %d: continued %v, previous page open %v", name, i, cont, prevOpen)
 		}
 	}
 }
 
 // preserved asserts that out holds the same audio as src: the audio digest
 // and the preserved digest are both unchanged.
-func preserved(t testing.TB, name string, src, out []byte) {
-	t.Helper()
-	w := writerFor(t, src)
-	ctx := t.Context()
+func preserved(tb testing.TB, name string, src, out []byte) {
+	tb.Helper()
+	w := writerFor(tb, src)
+	ctx := tb.Context()
 	for what, f := range map[string]func(context.Context, io.ReaderAt, int64) ([]byte, error){
 		"AudioDigest": w.AudioDigest, "PreservedDigest": w.PreservedDigest,
 	} {
 		a, err := f(ctx, bytes.NewReader(src), int64(len(src)))
 		if err != nil {
-			t.Fatalf("%s %s of the source: %v", name, what, err)
+			tb.Fatalf("%s %s of the source: %v", name, what, err)
 		}
 		b, err := f(ctx, bytes.NewReader(out), int64(len(out)))
 		if err != nil {
-			t.Fatalf("%s %s of the output: %v", name, what, err)
+			tb.Fatalf("%s %s of the output: %v", name, what, err)
 		}
 		if !bytes.Equal(a, b) {
-			t.Errorf("%s: %s changed", name, what)
+			tb.Errorf("%s: %s changed", name, what)
 		}
 	}
 }
@@ -159,8 +159,10 @@ func preserved(t testing.TB, name string, src, out []byte) {
 // a comment header holding comments, and audioPages pages of audio, the last
 // ending the stream.
 func syntheticOpus(commentComments []string, audioPages int) []byte {
-	pages := []pageSpec{{headerType: 0x02, serial: 5, lacing: lacingFor(len(opusHeadPacket())), data: opusHeadPacket()}}
-	pages = append(pages, splitAcrossPages(commentPacket("OpusTags", false, commentComments...), 0, 5)...)
+	pages := slices.Concat(
+		[]pageSpec{{headerType: 0x02, serial: 5, lacing: lacingFor(len(opusHeadPacket())), data: opusHeadPacket()}},
+		splitAcrossPages(commentPacket("OpusTags", false, commentComments...), 5),
+	)
 	for i := range audioPages {
 		p := pageSpec{serial: 5, granule: uint64(960 * (i + 1)), lacing: lacingFor(100 + i), data: bytes.Repeat([]byte{byte(i + 1)}, 100+i)}
 		if i == audioPages-1 {
@@ -187,6 +189,7 @@ func withCRCs(data []byte) []byte {
 }
 
 func TestWriter_Registered(t *testing.T) {
+	t.Parallel()
 	if _, ok := registry.GetWriter(types.FormatOpus).(*writer); !ok {
 		t.Error("no Opus writer registered")
 	}
@@ -202,6 +205,7 @@ func TestWriter_Registered(t *testing.T) {
 // header that grows by a page (every later page renumbered) and one that
 // shrinks back.
 func TestWriteCorpus(t *testing.T) {
+	t.Parallel()
 	big := strings.Repeat("x", 70_000)
 	for _, name := range []string{"sample.opus", "sample_retagged.opus", "bench/book.opus", "sample.ogg", "sample_retagged.ogg"} {
 		src := readCorpus(t, name)
@@ -255,6 +259,7 @@ func TestWriteCorpus(t *testing.T) {
 }
 
 func TestWriteOpusTagsReadBack(t *testing.T) {
+	t.Parallel()
 	src := readCorpus(t, "sample.opus")
 	out := writeBytes(t, src, editsFor(t, src, func(tg *types.Tags) {
 		tg.Title = "Nouveau titre ✓ 日本語"
@@ -280,6 +285,7 @@ func TestWriteOpusTagsReadBack(t *testing.T) {
 }
 
 func TestWriteOpusNoOpIsByteIdentical(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"sample.opus", "bench/book.opus", "sample.ogg"} {
 		src := readCorpus(t, name)
 		for label, edits := range map[string]*types.EditSet{
@@ -295,6 +301,7 @@ func TestWriteOpusNoOpIsByteIdentical(t *testing.T) {
 }
 
 func TestWriteOpusIsDeterministic(t *testing.T) {
+	t.Parallel()
 	src := readCorpus(t, "sample.opus")
 	edit := func() *types.EditSet {
 		return editsFor(t, src, func(tg *types.Tags) { tg.Title = "T"; tg.Set("BIG", strings.Repeat("y", 70_000)) })
@@ -305,6 +312,7 @@ func TestWriteOpusIsDeterministic(t *testing.T) {
 }
 
 func TestWriteOpusKeepsVendorAndTail(t *testing.T) {
+	t.Parallel()
 	// OpusTags with the LSB-1 binary data RFC 7845 §5.2 says to preserve, then zero padding.
 	body := commentPacket("OpusTags", false, "TITLE=Old")
 	body = append(body, 0x01, 0xAA, 0xBB, 0, 0, 0)
@@ -326,6 +334,7 @@ func TestWriteOpusKeepsVendorAndTail(t *testing.T) {
 }
 
 func TestWriteOpusTrailingBytesCarriedThrough(t *testing.T) {
+	t.Parallel()
 	src := slices.Concat(readCorpus(t, "sample.opus"), []byte("TAG appended after the last page"))
 	for name, mutate := range map[string]func(*types.Tags){
 		"same pages": func(tg *types.Tags) { tg.Title = "T" },
@@ -345,11 +354,11 @@ func TestWriteOpusTrailingBytesCarriedThrough(t *testing.T) {
 
 // withSerial returns data, which must be whole pages, with every page moved
 // to the stream serial.
-func withSerial(t testing.TB, data []byte, serial uint32) []byte {
-	t.Helper()
+func withSerial(tb testing.TB, data []byte, serial uint32) []byte {
+	tb.Helper()
 	out := slices.Clone(data)
 	off := 0
-	for _, p := range mustPages(t, data) {
+	for _, p := range mustPages(tb, data) {
 		ebinary.LittleEndian.PutUint32(out[off+14:], serial)
 		off += len(p.raw)
 	}
@@ -357,6 +366,7 @@ func withSerial(t testing.TB, data []byte, serial uint32) []byte {
 }
 
 func TestWriteOpusRefusals(t *testing.T) {
+	t.Parallel()
 	good := readCorpus(t, "sample.opus")
 	l, err := layoutOf(t, good)
 	if err != nil {
@@ -402,6 +412,7 @@ func TestWriteOpusRefusals(t *testing.T) {
 }
 
 func TestWriteOpusRefusesBadEdits(t *testing.T) {
+	t.Parallel()
 	src := readCorpus(t, "sample.opus")
 	tests := map[string]*types.EditSet{
 		"key with =":      keyEdit("A=B", "v"),
@@ -419,6 +430,7 @@ func TestWriteOpusRefusesBadEdits(t *testing.T) {
 }
 
 func TestWriteOpusRefusesAHeaderBeyondTheReadersLimit(t *testing.T) {
+	t.Parallel()
 	src := readCorpus(t, "sample.opus")
 	huge := strings.Repeat("a", maxHeaderBytes)
 	if _, err := tryWrite(t, src, keyEdit("BIG", huge)); !errors.Is(err, types.ErrUnsupportedWrite) {
@@ -427,6 +439,7 @@ func TestWriteOpusRefusesAHeaderBeyondTheReadersLimit(t *testing.T) {
 }
 
 func TestWriteOpusCanceled(t *testing.T) {
+	t.Parallel()
 	src := readCorpus(t, "sample.opus")
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
@@ -442,6 +455,7 @@ func TestWriteOpusCanceled(t *testing.T) {
 // TestWriteOpusRenumbersManyPages rewrites a stream whose audio takes dozens of
 // pages: a long renumbering run crosses the flush size.
 func TestWriteOpusRenumbersManyPages(t *testing.T) {
+	t.Parallel()
 	src := syntheticOpus([]string{"TITLE=Old"}, 3000) // about 330 KB of audio
 	out := writeBytes(t, src, keyEdit("BIG", strings.Repeat("q", 70_000)))
 	checkStructure(t, "many pages", out)
@@ -451,16 +465,17 @@ func TestWriteOpusRenumbersManyPages(t *testing.T) {
 	}
 }
 
-func mustPages(t testing.TB, data []byte) []rawPage {
-	t.Helper()
-	pages, tail := rawPagesAndTail(t, data)
+func mustPages(tb testing.TB, data []byte) []rawPage {
+	tb.Helper()
+	pages, tail := rawPagesAndTail(tb, data)
 	if len(tail) != 0 {
-		t.Fatalf("%d bytes after the last page", len(tail))
+		tb.Fatalf("%d bytes after the last page", len(tail))
 	}
 	return pages
 }
 
 func TestPreservedDigest(t *testing.T) {
+	t.Parallel()
 	src := syntheticOpus([]string{"TITLE=Old"}, 5)
 	w := testWriter(t)
 	digest := func(data []byte) []byte {

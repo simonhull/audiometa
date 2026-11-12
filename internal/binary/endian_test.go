@@ -144,7 +144,7 @@ func TestReadEndian(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ReadEndian failed: %v", err)
 		}
-		// 0x01020304 = 16909060
+		// The bytes 01 02 03 04 read as 16909060.
 		if val != 16909060 {
 			t.Errorf("ReadEndian(BigEndian) = %d, want 16909060", val)
 		}
@@ -155,7 +155,7 @@ func TestReadEndian(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ReadEndian failed: %v", err)
 		}
-		// 0x04030201 = 67305985
+		// The bytes 04 03 02 01 read as 67305985.
 		if val != 67305985 {
 			t.Errorf("ReadEndian(LittleEndian) = %d, want 67305985", val)
 		}
@@ -227,7 +227,7 @@ func BenchmarkReadLE_Uint32(b *testing.B) {
 	sr := NewSafeReader(bytes.NewReader(data), int64(len(data)), "bench")
 
 	for b.Loop() {
-		sr.ReadLE[uint32](0, "uint32")
+		_, _ = sr.ReadLE[uint32](0, "uint32")
 	}
 }
 
@@ -236,6 +236,6 @@ func BenchmarkRead_Uint32_Legacy(b *testing.B) {
 	sr := NewSafeReader(bytes.NewReader(data), int64(len(data)), "bench")
 
 	for b.Loop() {
-		sr.Read[uint32](0, "uint32")
+		_, _ = sr.Read[uint32](0, "uint32")
 	}
 }

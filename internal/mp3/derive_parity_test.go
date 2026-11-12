@@ -14,6 +14,7 @@ import (
 // result that plan 089 moves to the one derivation rule (the first non-empty
 // value of the highest-precedence decodable key); the CHANGELOG names it.
 func TestFieldParity(t *testing.T) {
+	t.Parallel()
 	text := func(f func(*types.Tags) string) func(*types.Tags) any {
 		return func(tg *types.Tags) any { return f(tg) }
 	}
@@ -105,6 +106,7 @@ func TestFieldParity(t *testing.T) {
 	for _, tt := range tests {
 		for _, version := range []byte{3, 4} {
 			t.Run(fmt.Sprintf("v2.%d/%s", version, tt.name), func(t *testing.T) {
+				t.Parallel()
 				frames := make([][]byte, len(tt.frames))
 				for i, f := range tt.frames {
 					frames[i] = f(version)

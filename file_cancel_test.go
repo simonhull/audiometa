@@ -34,7 +34,7 @@ func createTestM4BFile(t *testing.T) string {
 	binary.Write(buf, binary.BigEndian, uint32(8))
 	buf.WriteString("moov")
 
-	tmpFile, err := os.CreateTemp("", "test*.m4b")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test*.m4b")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,11 +50,11 @@ func createTestM4BFile(t *testing.T) string {
 // TestOpenMany_Cancellation verifies that canceled operations report errors
 // for each file slot via the joined error.
 func TestOpenMany_Cancellation(t *testing.T) {
+	t.Parallel()
 	// Create test files
 	paths := make([]string, 5)
 	for i := range paths {
 		paths[i] = createTestM4BFile(t)
-		defer os.Remove(paths[i])
 	}
 
 	// Create a context that's already canceled
@@ -80,8 +80,8 @@ func TestOpenMany_Cancellation(t *testing.T) {
 // TestOpenMany_PartialFailure verifies that successful files are returned
 // alongside errors for the failed ones.
 func TestOpenMany_PartialFailure(t *testing.T) {
+	t.Parallel()
 	validPath := createTestM4BFile(t)
-	defer os.Remove(validPath)
 
 	paths := []string{
 		validPath,

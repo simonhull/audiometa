@@ -10,14 +10,15 @@ import (
 	"github.com/simonhull/audiometa/internal/types"
 )
 
-func layoutOf(t testing.TB, data []byte) (*layout, error) {
-	t.Helper()
-	return readLayout(t.Context(), bytes.NewReader(data), int64(len(data)), "x")
+func layoutOf(tb testing.TB, data []byte) (*layout, error) {
+	tb.Helper()
+	return readLayout(tb.Context(), bytes.NewReader(data), int64(len(data)), "x")
 }
 
 // TestReadLayoutCorpus checks the layout of each corpus file against what the
 // note on the files records and against the reader's own header scan.
 func TestReadLayoutCorpus(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		file        string
 		codec       *codec
@@ -66,6 +67,7 @@ func TestReadLayoutCorpus(t *testing.T) {
 
 // TestReadLayoutSpansPages reads headers whose comment packet needs several pages.
 func TestReadLayoutSpansPages(t *testing.T) {
+	t.Parallel()
 	comment := commentPacket("OpusTags", false, "TITLE=big", "BIG="+string(bytes.Repeat([]byte("x"), 100_000)))
 	file := multiPageFile(opusHeadPacket(), comment, 3, audioTail(3, 960))
 	l, err := layoutOf(t, file)
@@ -78,6 +80,7 @@ func TestReadLayoutSpansPages(t *testing.T) {
 }
 
 func TestReadLayoutRefusals(t *testing.T) {
+	t.Parallel()
 	id, head := vorbisIDPacket(), opusHeadPacket()
 	comment := commentPacket("OpusTags", false, "TITLE=x")
 	idPage := pageSpec{headerType: 0x02, serial: 1, lacing: lacingFor(len(head)), data: head}
@@ -126,6 +129,7 @@ func TestReadLayoutRefusals(t *testing.T) {
 }
 
 func TestReadLayoutCanceled(t *testing.T) {
+	t.Parallel()
 	data := readCorpus(t, "sample.opus")
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
@@ -135,11 +139,12 @@ func TestReadLayoutCanceled(t *testing.T) {
 }
 
 func TestScanStreams(t *testing.T) {
+	t.Parallel()
 	head, comment := opusHeadPacket(), commentPacket("OpusTags", false, "TITLE=x")
-	one := []pageSpec{
+	one := slices.Grow([]pageSpec{
 		{headerType: 0x02, serial: 1, lacing: lacingFor(len(head)), data: head},
 		pageOf(1, comment), audioTail(1, 960), audioTail(1, 1920),
-	}
+	}, 1)
 	file := buildOgg(one...)
 	if err := scanStreams(t.Context(), bytes.NewReader(file), int64(len(file)), 0, 1); err != nil {
 		t.Errorf("single stream: %v", err)

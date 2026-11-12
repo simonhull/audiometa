@@ -12,6 +12,7 @@ import (
 )
 
 func TestParse_CommentsAreCapped(t *testing.T) {
+	t.Parallel()
 	comments := slices.Repeat([]string{"GENRE=a"}, 1_000_000)
 	data := simpleFLAC(0, comments...)
 	var f *types.File

@@ -6,6 +6,7 @@ import (
 )
 
 func TestParse_ITunesTextFrames(t *testing.T) {
+	t.Parallel()
 	type want struct{ series, part, grouping string }
 	cases := []struct {
 		name   string
@@ -34,6 +35,7 @@ func TestParse_ITunesTextFrames(t *testing.T) {
 	for _, v := range []byte{3, 4} {
 		for _, tc := range cases {
 			t.Run(tc.name+"/v"+string('0'+v), func(t *testing.T) {
+				t.Parallel()
 				f := parseBytes(t, append(id3Tag(v, tc.frames(v)...), mpegFrame...))
 				if f.Tags.Series != tc.want.series || f.Tags.SeriesPart != tc.want.part || f.Tags.Grouping != tc.want.grouping {
 					t.Errorf("got series=%q part=%q grouping=%q, want %+v",
@@ -45,10 +47,11 @@ func TestParse_ITunesTextFrames(t *testing.T) {
 }
 
 func TestParse_ChapterTitles(t *testing.T) {
+	t.Parallel()
 	long := strings.Repeat("x", 200)
-	sub := func(v byte, id string, payload []byte) []byte { return id3Frame(v, id, payload) }
+	sub := id3Frame
 	chap := func(v byte, id string, subs ...[]byte) []byte {
-		return id3Frame(v, "CHAP", chapFrameBody(id, 0, 1000, subs...))
+		return id3Frame(v, "CHAP", chapFrameBody(id, subs...))
 	}
 	trunc := sub(3, "TIT2", latin1Text("abc"))
 	trunc[7] = 0xFF // declared size far exceeds remaining bytes
@@ -67,6 +70,7 @@ func TestParse_ChapterTitles(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			f := parseBytes(t, append(id3Tag(tc.v, tc.body), mpegFrame...))
 			if len(f.Chapters) != 1 {
 				t.Fatalf("got %d chapters, want 1", len(f.Chapters))

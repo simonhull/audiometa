@@ -155,7 +155,7 @@ const (
 // variable-length size (1-4 bytes, 7 bits each). It returns the payload
 // size and the position of the payload, or ok=false if the tag differs or
 // data runs out.
-func readDescriptorHeader(data []byte, pos int, want byte) (size, payload int, ok bool) {
+func readDescriptorHeader(data []byte, pos int, want byte) (size, payload int, ok bool) { //nolint:nonamedreturns // the names document the results
 	if pos < 0 || pos >= len(data) || data[pos] != want {
 		return 0, 0, false
 	}

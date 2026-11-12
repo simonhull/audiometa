@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -66,14 +67,16 @@ func eachFile(
 type row struct{ label, value string }
 
 func writeInspectText(p *printer, f *audiometa.File) {
-	rows := []row{
-		{"Path", f.Path},
-		{"Format", f.Format.String()},
-		{"Audio", f.Audio.String()},
-		{"Duration", formatTime(f.Audio.Duration)},
-	}
-	rows = append(rows, tagRows(&f.Tags)...)
-	rows = append(rows, row{"Chapters", strconv.Itoa(len(f.Chapters))})
+	rows := slices.Concat(
+		[]row{
+			{"Path", f.Path},
+			{"Format", f.Format.String()},
+			{"Audio", f.Audio.String()},
+			{"Duration", formatTime(f.Audio.Duration)},
+		},
+		tagRows(&f.Tags),
+		[]row{{"Chapters", strconv.Itoa(len(f.Chapters))}},
+	)
 	for _, r := range rows {
 		if r.value != "" {
 			p.printf("%-14s %s\n", r.label+":", cleanText(r.value))
@@ -101,19 +104,31 @@ func tagRows(t *audiometa.Tags) []row {
 		return fmt.Sprintf("%d/%d", n, total)
 	}
 	return []row{
-		{"Title", t.Title}, {"Subtitle", t.Subtitle},
-		{"Artist", t.Artist}, {"Album", t.Album}, {"Album Artist", t.AlbumArtist},
-		{"Narrator", t.Narrator}, {"Composers", strings.Join(t.Composers, ", ")},
-		{"Genres", strings.Join(t.Genres, ", ")}, {"Year", num(t.Year)}, {"Date", t.Date},
-		{"Track", of(t.TrackNumber, t.TrackTotal)}, {"Disc", of(t.DiscNumber, t.DiscTotal)},
-		{"Series", t.Series}, {"Series Part", t.SeriesPart}, {"Grouping", t.Grouping},
-		{"Publisher", t.Publisher}, {"Language", t.Language},
-		{"ISBN", t.ISBN}, {"ASIN", t.ASIN}, {"Comment", t.Comment},
+		{"Title", t.Title},
+		{"Subtitle", t.Subtitle},
+		{"Artist", t.Artist},
+		{"Album", t.Album},
+		{"Album Artist", t.AlbumArtist},
+		{"Narrator", t.Narrator},
+		{"Composers", strings.Join(t.Composers, ", ")},
+		{"Genres", strings.Join(t.Genres, ", ")},
+		{"Year", num(t.Year)},
+		{"Date", t.Date},
+		{"Track", of(t.TrackNumber, t.TrackTotal)},
+		{"Disc", of(t.DiscNumber, t.DiscTotal)},
+		{"Series", t.Series},
+		{"Series Part", t.SeriesPart},
+		{"Grouping", t.Grouping},
+		{"Publisher", t.Publisher},
+		{"Language", t.Language},
+		{"ISBN", t.ISBN},
+		{"ASIN", t.ASIN},
+		{"Comment", t.Comment},
 	}
 }
 
 // formatTime renders d as HH:MM:SS.mmm.
 func formatTime(d time.Duration) string {
-	ms := max(d.Milliseconds(), 0)
-	return fmt.Sprintf("%02d:%02d:%02d.%03d", ms/3600000, ms/60000%60, ms/1000%60, ms%1000)
+	d = max(d, 0)
+	return fmt.Sprintf("%02d:%02d:%02d.%03d", d/time.Hour, d%time.Hour/time.Minute, d%time.Minute/time.Second, d%time.Second/time.Millisecond)
 }
