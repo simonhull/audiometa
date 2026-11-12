@@ -4,6 +4,11 @@
 - `mise install` installs the pinned Go and golangci-lint (see `mise.toml`). `go.mod` targets Go 1.27.
 - Lint through `mise run lint` or `mise exec -- golangci-lint run ./...`. A stale global
   golangci-lint can report false typecheck errors.
+- `.golangci.yml` runs `default: all` and disables only `exhaustruct`, `wsl`, `nlreturn`, `varnamelen`,
+  `noinlineerr`, `testpackage`, `gosmopolitan`, `lll` and `tagalign` (style or idiom choices, each with its
+  reason in the file) plus the deprecated `gomodguard`. Tests are linted like library code; the few test-only
+  exclusions (for example `mnd`, `funlen`, `err113`, some gosec rules, `goconst`, `dupl`) are rules in the file,
+  and every exclusion rule there carries its reason.
 - Fast local gate: `mise run check` (build, race and 32-bit tests, lint, vet, gofmt, `go mod tidy -diff`,
   generated-code freshness). `mise run ci` runs everything CI runs: `check` plus `go mod verify`,
   govulncheck and the write gate. That needs network and `ffmpeg`, `ffprobe` and `flac` on PATH; CI also installs `ogginfo` and `opusinfo`
