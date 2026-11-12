@@ -48,38 +48,18 @@ func decodeBEInteger(b []byte, signed bool) string {
 	return strconv.FormatInt(int64(u<<shift)>>shift, 10) //nolint:gosec // G115: deliberate two's-complement reinterpretation; the arithmetic shift sign-extends the len(b)-byte value
 }
 
-// parseMetadataTag extracts the string value of the first data atom of an
-// iTunes metadata tag atom.
-func parseMetadataTag(sr *binary.SafeReader, tagAtom *Atom) (string, error) {
-	// Tag atoms contain a "data" atom with the actual value
-	// Format: tag atom → data atom → version/flags → value
-
-	if tagAtom.DataSize() == 0 {
-		return "", nil
-	}
-
-	// Find data atom inside tag
-	dataAtom, err := findAtom(sr, tagAtom.DataOffset(), tagAtom.DataOffset()+tagAtom.DataSize(), atomData)
-	if err != nil {
-		// No data atom found - return empty
-		return "", nil
-	}
-	return parseDataValue(sr, dataAtom)
-}
-
 // parseMetadataValues returns the non-empty text or integer value of every
 // data atom of an iTunes metadata tag atom, in order. Data atoms of other
-// types (images, UTF-16, floats) are skipped, and a malformed child atom
-// ends the list. Values past the file's tag value cap are not collected.
+// types (images, UTF-16, floats) are skipped. A malformed child atom ends the
+// list with its error, and the values before it are returned with it. Values
+// past the file's tag value cap are not collected.
 func parseMetadataValues(sr *binary.SafeReader, tagAtom *Atom, file *types.File) ([]string, error) {
 	var values []string
 	off, end := tagAtom.DataOffset(), tagAtom.DataOffset()+tagAtom.DataSize()
 	for off < end {
 		child, err := readAtomHeader(sr, off, end)
 		if err != nil {
-			// Like parseMetadataTag, a malformed child ends the item silently,
-			// keeping the values before it.
-			return values, nil
+			return values, err
 		}
 		if child.Type == atomData {
 			value, err := parseItemValue(sr, tagAtom, child)
@@ -192,14 +172,14 @@ func extractIlstMetadata(ctx context.Context, sr *binary.SafeReader, ilstAtom *A
 		switch tagAtom.Type {
 		case "trkn":
 			// Track number requires special binary parsing
-			trackData, err := parseTrackNumber(sr, tagAtom)
+			trk, err := parseTrackNumber(ctx, sr, tagAtom)
 			if err == nil && !haveTrack {
 				haveTrack = true
-				file.Tags.TrackNumber = trackData.Number
-				file.Tags.TrackTotal = trackData.Total
+				file.Tags.TrackNumber = trk.Number
+				file.Tags.TrackTotal = trk.Total
 			}
 		case "disk":
-			if d, err := parseTrackNumber(sr, tagAtom); err == nil && !haveDisc {
+			if d, err := parseTrackNumber(ctx, sr, tagAtom); err == nil && !haveDisc {
 				haveDisc = true
 				file.Tags.DiscNumber = d.Number
 				file.Tags.DiscTotal = d.Total
@@ -209,7 +189,7 @@ func extractIlstMetadata(ctx context.Context, sr *binary.SafeReader, ilstAtom *A
 			// ----: freeform atoms, handled by parseAudiobookTags.
 		case keyGnre:
 			// ID3v1 genre index: recorded raw only, never mapped into Genres.
-			if index, ok := parseGnre(sr, tagAtom); ok && types.TakeValue(file) {
+			if index, ok := parseGnre(ctx, sr, tagAtom); ok && types.TakeValue(file) {
 				file.Tags.AddRaw(keyGnre, strconv.Itoa(index))
 			}
 		default:
@@ -296,16 +276,13 @@ func mapTagToField(tag string, value string, file *types.File) {
 }
 
 // mapTextItem reads every value of a text or integer ilst item and maps it:
-// the first through mapTagToField, the rest through mapExtraValue.
+// the first through mapTagToField, the rest through mapExtraValue. A damaged
+// item adds a warning and still maps the values read before the damage.
 func mapTextItem(sr *binary.SafeReader, tagAtom *Atom, file *types.File) {
 	values, err := parseMetadataValues(sr, tagAtom, file)
 	if err != nil {
-		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-			Stage:   types.StageMetadata,
-			Message: fmt.Sprintf("failed to parse tag %s: %v", tagAtom.Type, err),
-			Err:     err,
-		})
-		return
+		// Keep the values read before the damage.
+		types.Warn(file, types.StageMetadata, 0, err, fmt.Sprintf("failed to parse tag %s: %v", tagAtom.Type, err))
 	}
 	if len(values) == 0 {
 		return
@@ -337,8 +314,8 @@ const keyGnre = "gnre"
 // parseGnre decodes a gnre item: its first data atom holds a 16-bit
 // big-endian ID3v1 genre index plus one. ok is false when the item is
 // malformed or holds 0 (no genre).
-func parseGnre(sr *binary.SafeReader, atom *Atom) (index int, ok bool) {
-	dataAtom, err := findAtom(sr, atom.DataOffset(), atom.DataOffset()+atom.DataSize(), atomData)
+func parseGnre(ctx context.Context, sr *binary.SafeReader, atom *Atom) (index int, ok bool) {
+	dataAtom, err := atom.child(ctx, sr, atomData)
 	if err != nil || dataAtom.DataSize() != 8+2 {
 		return 0, false
 	}
@@ -349,8 +326,8 @@ func parseGnre(sr *binary.SafeReader, atom *Atom) (index int, ok bool) {
 	return int(v) - 1, true
 }
 
-// TrackData holds track number information.
-type TrackData struct {
+// trackData holds track number information.
+type trackData struct {
 	Number int
 	Total  int
 }
@@ -361,11 +338,11 @@ var errShortNumberAtom = errors.New("track number atom too short")
 // parseTrackNumber extracts track number and total from a trkn or disk atom,
 // reading only inside its data atom: fewer than 4 payload bytes is an error,
 // 4-5 bytes give the number alone, and 6 or more give number and total.
-func parseTrackNumber(sr *binary.SafeReader, atom *Atom) (TrackData, error) {
-	result := TrackData{}
+func parseTrackNumber(ctx context.Context, sr *binary.SafeReader, atom *Atom) (trackData, error) {
+	result := trackData{}
 
 	// Find data atom
-	dataAtom, err := findAtom(sr, atom.DataOffset(), atom.DataOffset()+atom.DataSize(), atomData)
+	dataAtom, err := atom.child(ctx, sr, atomData)
 	if err != nil {
 		return result, err
 	}

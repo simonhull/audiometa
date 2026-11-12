@@ -85,8 +85,9 @@ func TestParseCodecDetails_AACProfile(t *testing.T) {
 			entry := mp4aSampleEntry(esdsPayload(0, tt.asc))
 			sr := audiobinary.NewSafeReader(bytes.NewReader(entry), int64(len(entry)), "test.m4a")
 			file := &types.File{}
-			if err := parseCodecDetails(sr, 0, uint32(len(entry)), "mp4a", file); err != nil {
-				t.Fatalf("parseCodecDetails: %v", err)
+			parseCodecDetails(sr, 0, uint32(len(entry)), "mp4a", file)
+			if len(file.Warnings) != 0 {
+				t.Fatalf("parseCodecDetails warned: %+v", file.Warnings)
 			}
 			if file.Audio.CodecProfile != tt.wantProfile {
 				t.Errorf("CodecProfile = %q, want %q", file.Audio.CodecProfile, tt.wantProfile)

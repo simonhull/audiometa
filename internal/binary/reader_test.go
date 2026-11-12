@@ -397,3 +397,33 @@ func TestSafeReader_ReadAt_ReturnsOutOfBoundsError(t *testing.T) {
 		})
 	}
 }
+
+func TestSafeReader_ZeroLengthReadAtEnd(t *testing.T) {
+	data := seqData(10)
+	cr := &countingReader{data: data}
+	sr := NewSafeReader(cr, int64(len(data)), "z.bin")
+	for _, tt := range []struct {
+		name string
+		b    []byte
+		off  int64
+		oob  bool
+	}{
+		{"nil at size", nil, 10, false},
+		{"empty at size", []byte{}, 10, false},
+		{"nil at zero", nil, 0, false},
+		{"nil past size", nil, 11, true},
+		{"nil negative", nil, -1, true},
+		{"one byte at size", make([]byte, 1), 10, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			err := sr.ReadAt(tt.b, tt.off, "x")
+			var oob *OutOfBoundsError
+			if got := errors.As(err, &oob); got != tt.oob || (err != nil) != tt.oob {
+				t.Errorf("err = %v, want out of bounds %v", err, tt.oob)
+			}
+		})
+	}
+	if cr.calls != 0 {
+		t.Errorf("underlying calls = %d, want 0", cr.calls)
+	}
+}

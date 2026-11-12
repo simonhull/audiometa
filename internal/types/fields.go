@@ -184,10 +184,10 @@ func intField(t *Tags, f Field) *int {
 	return nil
 }
 
-// fieldValues returns field f of t in a uniform encoding: nil when the field
+// valuesOf returns field f of t in a uniform encoding: nil when the field
 // is empty or zero, a one-element slice for string and int fields, and a copy
 // of the values for slice fields.
-func fieldValues(t *Tags, f Field) []string {
+func valuesOf(t *Tags, f Field) []string {
 	if p := stringField(t, f); p != nil {
 		if *p == "" {
 			return nil
@@ -209,7 +209,7 @@ func fieldValues(t *Tags, f Field) []string {
 	return nil
 }
 
-// setFieldValues is the inverse of fieldValues: a string field takes v[0],
+// setFieldValues is the inverse of valuesOf: a string field takes v[0],
 // a slice field a copy of v, and an int field strconv.Atoi(v[0]) (0 on error).
 // An empty v clears the field.
 func setFieldValues(t *Tags, f Field, v []string) {

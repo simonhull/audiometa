@@ -2,8 +2,11 @@ package m4a
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
+	"errors"
 	"testing"
+	"time"
 
 	audiobinary "github.com/simonhull/audiometa/internal/binary"
 )
@@ -125,7 +128,7 @@ func TestFindAtom_Found(t *testing.T) {
 
 	sr := audiobinary.NewSafeReader(bytes.NewReader(data), int64(len(data)), "test.m4b")
 
-	atom, err := findAtom(sr, 0, int64(len(data)), "moov")
+	atom, err := findAtom(t.Context(), sr, 0, int64(len(data)), "moov")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -148,7 +151,7 @@ func TestFindAtom_NotFound(t *testing.T) {
 
 	sr := audiobinary.NewSafeReader(bytes.NewReader(data), int64(len(data)), "test.m4b")
 
-	_, err := findAtom(sr, 0, int64(len(data)), "moov")
+	_, err := findAtom(t.Context(), sr, 0, int64(len(data)), "moov")
 	if err == nil {
 		t.Fatal("expected error when atom not found")
 	}
@@ -172,7 +175,7 @@ func TestFindAtom_Nested(t *testing.T) {
 	}
 
 	// Now find meta inside udta
-	foundMeta, err := findAtom(sr, udtaAtom.DataOffset(), udtaAtom.DataOffset()+udtaAtom.DataSize(), "meta")
+	foundMeta, err := findAtom(t.Context(), sr, udtaAtom.DataOffset(), udtaAtom.DataOffset()+udtaAtom.DataSize(), "meta")
 	if err != nil {
 		t.Fatalf("failed to find nested meta: %v", err)
 	}
@@ -225,5 +228,100 @@ func TestReadAtomHeader_ExtendedSizeBeyondInt64(t *testing.T) {
 		if err == nil {
 			t.Fatalf("size %#x: got atom %+v, want error", size, atom)
 		}
+	}
+}
+
+func TestDecodeAtomHeader(t *testing.T) {
+	ext := func(size uint64) []byte { return binary.BigEndian.AppendUint64(append(u32be(1), "free"...), size) }
+	tests := []struct {
+		name     string
+		b        []byte
+		room     int64
+		zero     SizeZero
+		wantSize int64
+		wantHdr  int64
+		wantErr  bool
+	}{
+		{"plain", append(u32be(16), "free"...), 100, SizeZeroInvalid, 16, 8, false},
+		{"extended", ext(40), 100, SizeZeroInvalid, 40, 16, false},
+		{"zero at top level runs to the end", append(u32be(0), "mdat"...), 100, SizeZeroToEnd, 100, 8, false},
+		{"zero inside a container", append(u32be(0), "mdat"...), 100, SizeZeroInvalid, 0, 0, true},
+		{"smaller than its header", append(u32be(4), "free"...), 100, SizeZeroInvalid, 0, 0, true},
+		{"larger than the room", append(u32be(200), "free"...), 100, SizeZeroInvalid, 0, 0, true},
+		{"extended overflow", ext(^uint64(0)), 100, SizeZeroInvalid, 0, 0, true},
+		{"truncated header", []byte{0, 0, 0}, 100, SizeZeroInvalid, 0, 0, true},
+		{"truncated extended size", append(u32be(1), "free"...), 100, SizeZeroInvalid, 0, 0, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h, err := DecodeAtomHeader(tt.b, tt.room, tt.zero)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err != nil {
+				return
+			}
+			if h.Size != tt.wantSize || h.HeaderLen != tt.wantHdr || h.Type != string(tt.b[4:8]) {
+				t.Errorf("header = %+v, want size %d, header length %d, type %q", h, tt.wantSize, tt.wantHdr, tt.b[4:8])
+			}
+		})
+	}
+
+	t.Run("size errors carry the declared size", func(t *testing.T) {
+		for _, tc := range []struct {
+			b    []byte
+			want uint64
+		}{
+			{append(u32be(4), "free"...), 4},
+			{ext(^uint64(0)), ^uint64(0)},
+		} {
+			_, err := DecodeAtomHeader(tc.b, 100, SizeZeroInvalid)
+			var sizeErr *AtomSizeError
+			if !errors.As(err, &sizeErr) || sizeErr.Size != tc.want {
+				t.Errorf("err = %v, want an *AtomSizeError with size %d", err, tc.want)
+			}
+		}
+	})
+	t.Run("short input is errAtomHeaderTruncated", func(t *testing.T) {
+		if _, err := DecodeAtomHeader([]byte{0, 0, 0}, 100, SizeZeroInvalid); !errors.Is(err, errAtomHeaderTruncated) {
+			t.Errorf("err = %v, want errAtomHeaderTruncated", err)
+		}
+	})
+}
+
+func TestParse_TopLevelMoovWithSizeZeroRunsToEnd(t *testing.T) {
+	moov := createMockAtom("moov", createMvhdAtom(0, 1000, 10000))
+	copy(moov, u32be(0)) // the size field of the last top-level atom, as the format allows
+
+	file := parseBytes(t, append(m4bFtyp(), moov...))
+
+	if file.Audio.Duration != 10*time.Second {
+		t.Errorf("duration = %v, want 10s", file.Audio.Duration)
+	}
+	if len(file.Warnings) != 0 {
+		t.Errorf("warnings = %+v, want none", file.Warnings)
+	}
+}
+
+func TestAtomChildAndPath(t *testing.T) {
+	ilst := createMockAtom("ilst", createMockAtom("\xa9nam", nil))
+	meta := fullAtom("meta", ilst) // full atom: 4 bytes of version/flags before its children
+	moov := createMockAtom("moov", createMockAtom("udta", meta))
+	sr := audiobinary.NewSafeReader(bytes.NewReader(moov), int64(len(moov)), "t.m4a")
+	root, err := readAtomHeader(sr, 0, int64(len(moov)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := root.path(t.Context(), sr, "udta", "meta", "ilst")
+	if err != nil || got.Type != "ilst" {
+		t.Fatalf("path = %+v, %v", got, err)
+	}
+	if _, err := root.child(t.Context(), sr, "trak"); !errors.Is(err, errAtomNotFound) {
+		t.Errorf("child(trak) err = %v, want errAtomNotFound", err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := root.child(ctx, sr, "udta"); !errors.Is(err, context.Canceled) {
+		t.Errorf("canceled child err = %v", err)
 	}
 }

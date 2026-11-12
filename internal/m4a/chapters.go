@@ -4,6 +4,7 @@ import (
 	"context"
 	stdbinary "encoding/binary"
 	"errors"
+	"fmt"
 	"math"
 	"slices"
 	"time"
@@ -13,59 +14,51 @@ import (
 	"github.com/simonhull/audiometa/internal/types"
 )
 
-// Tries in order: QuickTime chapter tracks (tref) -> Nero chapters (chpl).
+// errTruncatedTable reports a sample table or list that holds fewer entries
+// than it declares. Its readers return the entries they did read with it.
+var errTruncatedTable = errors.New("sample table cut short")
+
+// truncatedTable reports that the atom holds have of the want entries it declares.
+func truncatedTable(atom string, have, want int64) error {
+	return fmt.Errorf("%s holds %d of the %d entries it declares: %w", atom, have, want, errTruncatedTable)
+}
+
+// parseChapters tries QuickTime chapter tracks (tref), then Nero chapters
+// (chpl). Chapters read before damage are returned together with its error, so
+// a caller keeps them and reports the damage. An absent source is not an error.
 func parseChapters(ctx context.Context, sr *binary.SafeReader, moovAtom *Atom, fileDuration time.Duration) ([]types.Chapter, error) {
 	// Try QuickTime chapter tracks first (most common in professional audiobooks)
 	qtChapters, qtErr := parseQuickTimeChapters(ctx, sr, moovAtom, fileDuration)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if qtErr == nil && len(qtChapters) > 0 {
-		return qtChapters, nil
+	if len(qtChapters) > 0 {
+		return qtChapters, qtErr
 	}
 
 	// Fall back to Nero chpl format
-	chplChapters, chplErr := parseChplChapters(sr, moovAtom, fileDuration)
+	chplChapters, chplErr := parseChplChapters(ctx, sr, moovAtom, fileDuration)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if chplErr == nil && len(chplChapters) > 0 {
-		return chplChapters, nil
-	}
-
-	// If we got partial results, return them
 	if len(chplChapters) > 0 {
-		return chplChapters, nil
-	}
-	if len(qtChapters) > 0 {
-		return qtChapters, nil
+		return chplChapters, errors.Join(qtErr, chplErr)
 	}
 
-	// If both formats failed with errors (not just "not found"), return the error
-	if qtErr != nil && chplErr != nil {
-		return nil, qtErr // Return first error as representative
-	}
-
-	// No chapters found (not an error)
-	return nil, nil
+	return nil, errors.Join(qtErr, chplErr)
 }
 
 // parseChplChapters extracts chapter markers from the chpl atom (Nero format).
-func parseChplChapters(sr *binary.SafeReader, moovAtom *Atom, fileDuration time.Duration) ([]types.Chapter, error) {
-	// Find udta atom (user data)
-	// Path: moov -> udta
-	udtaAtom, err := findAtom(sr, moovAtom.DataOffset(), moovAtom.DataOffset()+moovAtom.DataSize(), "udta")
-	if err != nil {
-		// No udta - no chapters (not an error, just means no chapters)
+// An absent udta or chpl means no chapters; a corrupt one is an error, and a
+// list cut short returns the chapters before the cut with its error.
+func parseChplChapters(ctx context.Context, sr *binary.SafeReader, moovAtom *Atom, fileDuration time.Duration) ([]types.Chapter, error) {
+	// Path: moov -> udta -> chpl
+	chplAtom, err := moovAtom.path(ctx, sr, atomUdta, "chpl")
+	if errors.Is(err, errAtomNotFound) {
 		return nil, nil
 	}
-
-	// Find chpl atom (chapter list)
-	// Path: udta -> chpl
-	chplAtom, err := findAtom(sr, udtaAtom.DataOffset(), udtaAtom.DataOffset()+udtaAtom.DataSize(), "chpl")
 	if err != nil {
-		// No chpl - no chapters (not an error, just means no chapters)
-		return nil, nil
+		return nil, err
 	}
 
 	// Parse chpl atom
@@ -101,11 +94,17 @@ func parseChplChapters(sr *binary.SafeReader, moovAtom *Atom, fileDuration time.
 	chapters := make([]types.Chapter, 0, chapterCount)
 
 	// Read each chapter
+	// cut returns what was read so far, with err, when the list ends early.
+	cut := func(i uint8, err error) ([]types.Chapter, error) {
+		types.FillChapterEndTimes(chapters, fileDuration)
+		return chapters, fmt.Errorf("chpl chapter %d: %w: %w", i+1, errTruncatedTable, err)
+	}
+
 	for i := range chapterCount {
 		// Read start time (8 bytes, in 100-nanosecond units)
 		startTime100ns, err := sr.Read[uint64](offset, "chapter start time")
 		if err != nil {
-			return nil, err
+			return cut(i, err)
 		}
 		offset += 8
 
@@ -118,7 +117,7 @@ func parseChplChapters(sr *binary.SafeReader, moovAtom *Atom, fileDuration time.
 		// Read title length (1 byte)
 		titleLen, err := sr.Read[uint8](offset, "chapter title length")
 		if err != nil {
-			return nil, err
+			return cut(i, err)
 		}
 		offset++
 
@@ -127,7 +126,7 @@ func parseChplChapters(sr *binary.SafeReader, moovAtom *Atom, fileDuration time.
 		if titleLen > 0 {
 			titleBytes := make([]byte, titleLen)
 			if err := sr.ReadAt(titleBytes, offset, "chapter title"); err != nil {
-				return nil, err
+				return cut(i, err)
 			}
 			offset += int64(titleLen)
 			title = string(titleBytes)
@@ -182,7 +181,7 @@ func findChapterTrackReference(ctx context.Context, sr *binary.SafeReader, moovA
 		}
 
 		if trakAtom.Type == atomTrak {
-			trackID := extractChapterTrackID(sr, trakAtom)
+			trackID := extractChapterTrackID(ctx, sr, trakAtom)
 			if trackID != 0 {
 				return trackID
 			}
@@ -195,13 +194,13 @@ func findChapterTrackReference(ctx context.Context, sr *binary.SafeReader, moovA
 }
 
 // extractChapterTrackID reads the chapter track ID from tref->chap if present.
-func extractChapterTrackID(sr *binary.SafeReader, trakAtom *Atom) uint32 {
-	trefAtom, err := findAtom(sr, trakAtom.DataOffset(), trakAtom.DataOffset()+trakAtom.DataSize(), "tref")
+func extractChapterTrackID(ctx context.Context, sr *binary.SafeReader, trakAtom *Atom) uint32 {
+	trefAtom, err := trakAtom.child(ctx, sr, "tref")
 	if err != nil {
 		return 0
 	}
 
-	chapAtom, err := findAtom(sr, trefAtom.DataOffset(), trefAtom.DataOffset()+trefAtom.DataSize(), "chap")
+	chapAtom, err := trefAtom.child(ctx, sr, "chap")
 	if err != nil || chapAtom.DataSize() < 4 {
 		return 0
 	}
@@ -229,7 +228,7 @@ func findTrackByID(ctx context.Context, sr *binary.SafeReader, moovAtom *Atom, t
 		}
 
 		if trakAtom.Type == atomTrak {
-			trackID := readTrackID(sr, trakAtom)
+			trackID := readTrackID(ctx, sr, trakAtom)
 			if trackID == targetID {
 				return trakAtom
 			}
@@ -242,8 +241,8 @@ func findTrackByID(ctx context.Context, sr *binary.SafeReader, moovAtom *Atom, t
 }
 
 // readTrackID reads the track ID from a trak atom's tkhd.
-func readTrackID(sr *binary.SafeReader, trakAtom *Atom) uint32 {
-	tkhdAtom, err := findAtom(sr, trakAtom.DataOffset(), trakAtom.DataOffset()+trakAtom.DataSize(), "tkhd")
+func readTrackID(ctx context.Context, sr *binary.SafeReader, trakAtom *Atom) uint32 {
+	tkhdAtom, err := trakAtom.child(ctx, sr, "tkhd")
 	if err != nil {
 		return 0
 	}
@@ -269,58 +268,38 @@ func readTrackID(sr *binary.SafeReader, trakAtom *Atom) uint32 {
 	return trackID
 }
 
-// parseTextTrackChapters extracts chapter information from a text track.
+// parseTextTrackChapters extracts chapter information from a text track. A
+// missing table means no chapters. A table cut short still yields the chapters
+// it describes, and the returned error says which tables were cut.
 func parseTextTrackChapters(ctx context.Context, sr *binary.SafeReader, trakAtom *Atom, fileDuration time.Duration) ([]types.Chapter, error) {
 	// Find mdia -> minf -> stbl (sample table)
-	mdiaAtom, err := findAtom(sr, trakAtom.DataOffset(), trakAtom.DataOffset()+trakAtom.DataSize(), "mdia")
-	if err != nil {
-		return nil, err
-	}
-
-	minfAtom, err := findAtom(sr, mdiaAtom.DataOffset(), mdiaAtom.DataOffset()+mdiaAtom.DataSize(), "minf")
-	if err != nil {
-		return nil, err
-	}
-
-	stblAtom, err := findAtom(sr, minfAtom.DataOffset(), minfAtom.DataOffset()+minfAtom.DataSize(), "stbl")
-	if err != nil {
-		return nil, err
-	}
-
-	// Extract timescale
-	timescale, err := parseTrackTimescale(sr, mdiaAtom)
-	if err != nil {
-		return nil, err
-	}
-
-	// Parse chapter timings
-	chapterTimes, err := parseChapterTimings(ctx, sr, stblAtom, timescale)
-	if err != nil {
-		return nil, err
-	}
-
-	// Parse sample sizes
-	sampleSizes, err := parseSampleSizes(ctx, sr, stblAtom, len(chapterTimes))
-	if err != nil {
-		return nil, err
-	}
-
-	// Parse chunk offsets
-	chunkOffsets, err := parseChunkOffsets(ctx, sr, stblAtom, len(sampleSizes))
-	if err != nil {
-		return nil, err
-	}
-
-	if len(chunkOffsets) == 0 || len(sampleSizes) == 0 {
+	mdiaAtom, err := trakAtom.child(ctx, sr, "mdia")
+	if errors.Is(err, errAtomNotFound) {
 		return nil, nil
 	}
-
-	// Map samples to chunks (non-fatal if stsc is unreadable: legacy layout is used)
-	stsc, err := parseSampleToChunk(ctx, sr, stblAtom)
 	if err != nil {
-		stsc = nil
+		return nil, err
 	}
-	sampleOffsets := computeSampleOffsets(sampleSizes, chunkOffsets, stsc)
+	stblAtom, err := mdiaAtom.path(ctx, sr, "minf", "stbl")
+	if errors.Is(err, errAtomNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	tables, cuts, err := readChapterTables(ctx, sr, stblAtom, parseTrackTimescale(ctx, sr, mdiaAtom))
+	if errors.Is(err, errAtomNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if len(tables.chunkOffsets) == 0 || len(tables.sampleSizes) == 0 {
+		return nil, errors.Join(cuts...)
+	}
+	sampleOffsets := computeSampleOffsets(tables.sampleSizes, tables.chunkOffsets, tables.stsc)
+	chapterTimes, sampleSizes := tables.times, tables.sampleSizes
 
 	// Build chapters from text samples
 	chapters := buildChaptersFromText(ctx, sr, chapterTimes, sampleSizes, sampleOffsets)
@@ -331,43 +310,80 @@ func parseTextTrackChapters(ctx context.Context, sr *binary.SafeReader, trakAtom
 	// Calculate end times
 	types.FillChapterEndTimes(chapters, fileDuration)
 
-	return chapters, nil
+	return chapters, errors.Join(cuts...)
 }
 
-// parseTrackTimescale extracts the timescale from the mdhd atom.
-func parseTrackTimescale(sr *binary.SafeReader, mdiaAtom *Atom) (uint32, error) {
-	mdhdAtom, err := findAtom(sr, mdiaAtom.DataOffset(), mdiaAtom.DataOffset()+mdiaAtom.DataSize(), "mdhd")
+// chapterTables holds the sample tables of a chapter text track.
+type chapterTables struct {
+	times        []time.Duration
+	sampleSizes  []uint32
+	chunkOffsets []uint64
+	stsc         []stscEntry
+}
+
+// readChapterTables reads the tables of a chapter track's stbl. A table cut
+// short still contributes the entries it holds, and the damage is returned in
+// cuts. A missing stts, stsz or chunk table is an error wrapping errAtomNotFound.
+// Without a usable stsc the legacy layout is used, and the damage is reported.
+func readChapterTables(ctx context.Context, sr *binary.SafeReader, stblAtom *Atom, timescale uint32) (chapterTables, []error, error) {
+	var t chapterTables
+	var cuts []error
+	// cut records a table cut short, which the chapters are built from anyway,
+	// and returns any other error.
+	cut := func(err error) error {
+		if errors.Is(err, errTruncatedTable) {
+			cuts = append(cuts, err)
+			return nil
+		}
+		return err
+	}
+
+	var err error
+	t.times, err = parseChapterTimings(ctx, sr, stblAtom, timescale)
+	if err := cut(err); err != nil {
+		return t, cuts, err
+	}
+	t.sampleSizes, err = parseSampleSizes(ctx, sr, stblAtom, len(t.times))
+	if err := cut(err); err != nil {
+		return t, cuts, err
+	}
+	t.chunkOffsets, err = parseChunkOffsets(ctx, sr, stblAtom, len(t.sampleSizes))
+	if err := cut(err); err != nil {
+		return t, cuts, err
+	}
+
+	t.stsc, err = parseSampleToChunk(ctx, sr, stblAtom)
 	if err != nil {
-		return 0, err
+		cuts = append(cuts, err)
+		if !errors.Is(err, errTruncatedTable) {
+			t.stsc = nil
+		}
 	}
+	return t, cuts, nil
+}
 
-	mdhdOffset := mdhdAtom.DataOffset()
-	version, err := sr.Read[uint8](mdhdOffset, "mdhd version")
-	if err != nil {
-		return 1000, nil
+// defaultTimescale is the media timescale assumed for a chapter track whose
+// mdhd is absent or unusable.
+const defaultTimescale = 1000
+
+// parseTrackTimescale returns the timescale of mdiaAtom's media header, or
+// defaultTimescale when there is none or it is 0.
+func parseTrackTimescale(ctx context.Context, sr *binary.SafeReader, mdiaAtom *Atom) uint32 {
+	if timescale, ok := mdhdTimescale(ctx, sr, mdiaAtom); ok && timescale != 0 {
+		return timescale
 	}
-
-	var timescale uint32
-	if version == 1 {
-		timescale, err = sr.Read[uint32](mdhdOffset+20, "timescale")
-	} else {
-		timescale, err = sr.Read[uint32](mdhdOffset+12, "timescale")
-	}
-
-	if err != nil || timescale == 0 {
-		return 1000, nil
-	}
-
-	return timescale, nil
+	return defaultTimescale
 }
 
 // maxChapterSamples bounds the timings accumulated from stts; real audiobooks
 // have thousands of chapters, never a million.
 const maxChapterSamples = 1 << 20
 
-// parseChapterTimings extracts chapter start times from the stts atom.
+// parseChapterTimings extracts chapter start times from the stts atom. A table
+// that holds fewer entries than it declares returns the times it does hold,
+// with errTruncatedTable.
 func parseChapterTimings(ctx context.Context, sr *binary.SafeReader, stblAtom *Atom, timescale uint32) ([]time.Duration, error) {
-	sttsAtom, err := findAtom(sr, stblAtom.DataOffset(), stblAtom.DataOffset()+stblAtom.DataSize(), "stts")
+	sttsAtom, err := stblAtom.child(ctx, sr, "stts")
 	if err != nil {
 		return nil, err
 	}
@@ -376,6 +392,10 @@ func parseChapterTimings(ctx context.Context, sr *binary.SafeReader, stblAtom *A
 		return nil, nil
 	}
 
+	// version and flags (4), entry count (4), then entries of 8 bytes.
+	if sttsAtom.DataSize() < 8 {
+		return nil, corrupted(sr, sttsAtom.Offset, "stts atom too short")
+	}
 	offset := sttsAtom.DataOffset() + 4 // Skip version + flags
 	entryCount, err := sr.Read[uint32](offset, "stts entry count")
 	if err != nil {
@@ -386,18 +406,19 @@ func parseChapterTimings(ctx context.Context, sr *binary.SafeReader, stblAtom *A
 	var currentTime uint64
 	chapterTimes := []time.Duration{}
 
-	for i := range entryCount {
+	held := (sttsAtom.DataSize() - 8) / 8
+	for i := range min(int64(entryCount), held) {
 		if err := binary.Canceled(ctx, int(i)); err != nil {
 			return nil, err
 		}
 
 		sampleCount, err := sr.Read[uint32](offset, "sample count")
 		if err != nil {
-			break // Return partial results
+			return chapterTimes, fmt.Errorf("stts entry %d: %w: %w", i, errTruncatedTable, err)
 		}
 		sampleDuration, err := sr.Read[uint32](offset+4, "sample duration")
 		if err != nil {
-			break // Return partial results
+			return chapterTimes, fmt.Errorf("stts entry %d: %w: %w", i, errTruncatedTable, err)
 		}
 		offset += 8
 
@@ -410,16 +431,25 @@ func parseChapterTimings(ctx context.Context, sr *binary.SafeReader, stblAtom *A
 		}
 	}
 
+	if int64(entryCount) > held {
+		return chapterTimes, truncatedTable("stts", held, int64(entryCount))
+	}
 	return chapterTimes, nil
 }
 
-// parseSampleSizes extracts sample sizes from the stsz atom.
+// parseSampleSizes extracts sample sizes from the stsz atom, at most maxSamples
+// of them. A table that holds fewer than that returns the sizes it does hold,
+// with errTruncatedTable.
 func parseSampleSizes(ctx context.Context, sr *binary.SafeReader, stblAtom *Atom, maxSamples int) ([]uint32, error) {
-	stszAtom, err := findAtom(sr, stblAtom.DataOffset(), stblAtom.DataOffset()+stblAtom.DataSize(), "stsz")
+	stszAtom, err := stblAtom.child(ctx, sr, "stsz")
 	if err != nil {
 		return nil, err
 	}
 
+	// version and flags (4), default size (4), count (4), then entries of 4 bytes.
+	if stszAtom.DataSize() < 12 {
+		return nil, corrupted(sr, stszAtom.Offset, "stsz atom too short")
+	}
 	offset := stszAtom.DataOffset() + 4 // Skip version + flags
 
 	// Default sample size: if non-zero every sample has this size and no table follows
@@ -445,7 +475,8 @@ func parseSampleSizes(ctx context.Context, sr *binary.SafeReader, stblAtom *Atom
 		return slices.Repeat([]uint32{defaultSize}, n), nil
 	}
 
-	sampleSizes := make([]uint32, n)
+	held := int((stszAtom.DataSize() - 12) / 4)
+	sampleSizes := make([]uint32, min(n, held))
 	for i := range sampleSizes {
 		if err := binary.Canceled(ctx, i); err != nil {
 			return nil, err
@@ -453,12 +484,15 @@ func parseSampleSizes(ctx context.Context, sr *binary.SafeReader, stblAtom *Atom
 
 		size, err := sr.Read[uint32](offset, "sample size")
 		if err != nil {
-			break // Return partial results
+			return sampleSizes[:i], fmt.Errorf("stsz entry %d: %w: %w", i, errTruncatedTable, err)
 		}
 		sampleSizes[i] = size
 		offset += 4
 	}
 
+	if n > held {
+		return sampleSizes, truncatedTable("stsz", int64(held), int64(n))
+	}
 	return sampleSizes, nil
 }
 
@@ -468,16 +502,22 @@ type stscEntry struct {
 	samplesPerChunk uint32
 }
 
-// parseSampleToChunk reads stsc; returns nil, nil when the atom is absent.
+// parseSampleToChunk reads stsc; returns nil, nil when the atom is absent. A
+// table that holds fewer entries than it declares returns the entries it does
+// hold, with errTruncatedTable.
 func parseSampleToChunk(ctx context.Context, sr *binary.SafeReader, stblAtom *Atom) ([]stscEntry, error) {
-	stscAtom, err := findAtom(sr, stblAtom.DataOffset(), stblAtom.DataOffset()+stblAtom.DataSize(), "stsc")
+	stscAtom, err := stblAtom.child(ctx, sr, "stsc")
+	if errors.Is(err, errAtomNotFound) {
+		return nil, nil
+	}
 	if err != nil {
-		if errors.Is(err, errAtomNotFound) {
-			return nil, nil
-		}
 		return nil, err
 	}
 
+	// version and flags (4), entry count (4), then entries of 12 bytes.
+	if stscAtom.DataSize() < 8 {
+		return nil, corrupted(sr, stscAtom.Offset, "stsc atom too short")
+	}
 	offset := stscAtom.DataOffset() + 4 // Skip version + flags
 	entryCount, err := sr.Read[uint32](offset, "stsc entry count")
 	if err != nil {
@@ -486,23 +526,27 @@ func parseSampleToChunk(ctx context.Context, sr *binary.SafeReader, stblAtom *At
 	offset += 4
 
 	var entries []stscEntry
-	for i := range entryCount {
+	held := (stscAtom.DataSize() - 8) / 12
+	for i := range min(int64(entryCount), held) {
 		if err := binary.Canceled(ctx, int(i)); err != nil {
 			return nil, err
 		}
 
 		firstChunk, err := sr.Read[uint32](offset, "stsc first chunk")
 		if err != nil {
-			break // Return partial results
+			return entries, fmt.Errorf("stsc entry %d: %w: %w", i, errTruncatedTable, err)
 		}
 		perChunk, err := sr.Read[uint32](offset+4, "stsc samples per chunk")
 		if err != nil {
-			break
+			return entries, fmt.Errorf("stsc entry %d: %w: %w", i, errTruncatedTable, err)
 		}
 		entries = append(entries, stscEntry{firstChunk: firstChunk, samplesPerChunk: perChunk})
 		offset += 12 // skip sample_description_index
 	}
 
+	if int64(entryCount) > held {
+		return entries, truncatedTable("stsc", held, int64(entryCount))
+	}
 	return entries, nil
 }
 
@@ -549,17 +593,23 @@ func computeSampleOffsets(sampleSizes []uint32, chunkOffsets []uint64, stsc []st
 
 // parseChunkOffsets extracts chunk offsets from stco or co64 atom. It reads at
 // most maxChunks entries, and no more than the atom holds, whatever count the
-// atom declares: the caller needs one chunk per sample at most.
+// atom declares: the caller needs one chunk per sample at most. An atom that
+// holds fewer entries than it declares (up to maxChunks) returns the offsets it
+// does hold, with errTruncatedTable.
 func parseChunkOffsets(ctx context.Context, sr *binary.SafeReader, stblAtom *Atom, maxChunks int) ([]uint64, error) {
-	stcoAtom, err := findAtom(sr, stblAtom.DataOffset(), stblAtom.DataOffset()+stblAtom.DataSize(), "stco")
-	if err != nil {
+	stcoAtom, err := stblAtom.child(ctx, sr, "stco")
+	if errors.Is(err, errAtomNotFound) {
 		// Try co64 for 64-bit offsets
-		stcoAtom, err = findAtom(sr, stblAtom.DataOffset(), stblAtom.DataOffset()+stblAtom.DataSize(), "co64")
-		if err != nil {
-			return nil, err
-		}
+		stcoAtom, err = stblAtom.child(ctx, sr, "co64")
+	}
+	if err != nil {
+		return nil, err
 	}
 
+	// version and flags (4), entry count (4), then the entries.
+	if stcoAtom.DataSize() < 8 {
+		return nil, corrupted(sr, stcoAtom.Offset, stcoAtom.Type+" atom too short")
+	}
 	offset := stcoAtom.DataOffset() + 4 // Skip version + flags
 	chunkCount, err := sr.Read[uint32](offset, "chunk count")
 	if err != nil {
@@ -567,18 +617,16 @@ func parseChunkOffsets(ctx context.Context, sr *binary.SafeReader, stblAtom *Ato
 	}
 	offset += 4
 
-	elemSize := 4
+	elemSize := int64(4)
 	if stcoAtom.Type == "co64" {
 		elemSize = 8
-	}
-	if err := sr.CheckLen(offset, int(chunkCount), elemSize, "chunk table"); err != nil {
-		return nil, err
 	}
 	// The table cannot hold more entries than its atom, and nothing past the
 	// samples needed is read, so the slice is sized by neither a hostile count
 	// nor a table that merely fits in the file.
-	inAtom := max(stcoAtom.DataSize()-8, 0) / int64(elemSize)
-	n := min(int64(chunkCount), inAtom, int64(max(maxChunks, 0)))
+	held := (stcoAtom.DataSize() - 8) / elemSize
+	want := min(int64(chunkCount), int64(max(maxChunks, 0)))
+	n := min(want, held)
 	chunkOffsets := make([]uint64, n)
 	for i := range n {
 		if err := binary.Canceled(ctx, int(i)); err != nil {
@@ -586,20 +634,22 @@ func parseChunkOffsets(ctx context.Context, sr *binary.SafeReader, stblAtom *Ato
 		}
 
 		var readErr error
-		if stcoAtom.Type == "co64" {
+		if elemSize == 8 {
 			chunkOffsets[i], readErr = sr.Read[uint64](offset, "chunk offset")
-			offset += 8
 		} else {
 			var offset32 uint32
 			offset32, readErr = sr.Read[uint32](offset, "chunk offset")
 			chunkOffsets[i] = uint64(offset32)
-			offset += 4
 		}
 		if readErr != nil {
-			break // Return partial results
+			return chunkOffsets[:i], fmt.Errorf("%s entry %d: %w: %w", stcoAtom.Type, i, errTruncatedTable, readErr)
 		}
+		offset += elemSize
 	}
 
+	if n < want {
+		return chunkOffsets, truncatedTable(stcoAtom.Type, held, int64(chunkCount))
+	}
 	return chunkOffsets, nil
 }
 

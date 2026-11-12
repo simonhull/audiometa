@@ -1,6 +1,7 @@
 package m4a
 
 import (
+	"fmt"
 	"math"
 
 	"github.com/simonhull/audiometa/internal/binary"
@@ -55,13 +56,18 @@ func mapCodecName(fourCC string) string {
 	return fourCC
 }
 
-// parseCodecDetails enriches codec information with human-readable names.
-func parseCodecDetails(sr *binary.SafeReader, sampleEntryOffset int64, sampleEntrySize uint32, codec string, file *types.File) error {
+// parseCodecDetails enriches codec information with human-readable names. An
+// esds atom that cannot be read adds a technical warning and leaves the
+// profile and declared bitrate unset.
+func parseCodecDetails(sr *binary.SafeReader, sampleEntryOffset int64, sampleEntrySize uint32, codec string, file *types.File) {
 	file.Audio.CodecDescription = mapCodecName(codec)
 
 	// For AAC variants, attempt to parse ESDS for profile and bitrate
 	if codec == "mp4a" {
-		if es, err := parseESDS(sr, sampleEntryOffset, sampleEntrySize); err == nil {
+		es, err := parseESDS(sr, sampleEntryOffset, sampleEntrySize)
+		if err != nil {
+			warn(file, types.StageTechnical, fmt.Errorf("esds: %w", err))
+		} else {
 			applyESDescriptor(file, es)
 		}
 	}
@@ -70,8 +76,6 @@ func parseCodecDetails(sr *binary.SafeReader, sampleEntryOffset int64, sampleEnt
 	if codec == "mhm1" || codec == "mhm2" {
 		file.Audio.CodecProfile = "USAC"
 	}
-
-	return nil
 }
 
 // applyESDescriptor records the AAC profile and declared bitrate of es.
@@ -116,7 +120,10 @@ func parseESDS(sr *binary.SafeReader, sampleEntryOffset int64, sampleEntrySize u
 
 	// Read esds data
 	esdsSize, err := sr.Read[uint32](esdsOffset, "esds size")
-	if err != nil || esdsSize < 12 || esdsSize > 1024 {
+	if err != nil {
+		return esDescriptor{}, err
+	}
+	if esdsSize < 12 || esdsSize > 1024 {
 		return esDescriptor{}, nil
 	}
 

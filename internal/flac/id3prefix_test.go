@@ -52,12 +52,12 @@ func TestWriter_KeepsID3Prefix(t *testing.T) {
 	}
 
 	w := &writer{}
-	off, patch, ok, err := w.InPlacePatch(ctx, bytes.NewReader(src), int64(len(src)), edits)
-	if err != nil || !ok || off != int64(len(prefix)+len(flacMagic)) {
-		t.Fatalf("InPlacePatch = off %d, ok %v, err %v; want off %d", off, ok, err, len(prefix)+len(flacMagic))
+	p, err := w.InPlacePatch(ctx, bytes.NewReader(src), int64(len(src)), edits)
+	if err != nil || p == nil || p.Off != int64(len(prefix)+len(flacMagic)) {
+		t.Fatalf("InPlacePatch = %+v, err %v; want a patch at offset %d", p, err, len(prefix)+len(flacMagic))
 	}
 	patched := slices.Clone(src)
-	copy(patched[off:], patch)
+	copy(patched[p.Off:], p.Data)
 	if !bytes.Equal(patched, out) {
 		t.Error("the in-place patch does not give WriteFile's output")
 	}

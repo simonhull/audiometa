@@ -31,6 +31,20 @@ func TestExtractArtworkSkipsTail(t *testing.T) {
 	}
 }
 
+// TestExtractArtworkHugePictureLength gives the picture block a MIME length close to 4 GiB,
+// which wraps negative when converted to int on 32-bit platforms.
+func TestExtractArtworkHugePictureLength(t *testing.T) {
+	block := createTestPictureBlock(3, "image/jpeg", "cover", 1, 1, []byte{1, 2, 3})
+	binary.BigEndian.PutUint32(block[4:], 0xFFFFFFF0)
+	value := "METADATA_BLOCK_PICTURE=" + base64.StdEncoding.EncodeToString(block)
+	tail := pageSpec{headerType: 0x04, granule: 44100, serial: 7, lacing: lacingFor(100), data: make([]byte, 100)}
+	data := multiPageFile(vorbisIDPacket(), commentPacket("\x03vorbis", true, value), 7, tail)
+	art, err := (&parser{}).ExtractArtwork(context.Background(), bytes.NewReader(data), int64(len(data)), "x.ogg")
+	if err != nil || len(art) != 0 {
+		t.Errorf("ExtractArtwork = %d images, err %v; want no error and no images", len(art), err)
+	}
+}
+
 func TestParseMetadataBlockPicture(t *testing.T) {
 	// Create a valid METADATA_BLOCK_PICTURE
 	pic := createTestPictureBlock(3, "image/jpeg", "Front Cover", 100, 100, []byte{0xFF, 0xD8, 0xFF, 0xE0})

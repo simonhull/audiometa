@@ -122,7 +122,7 @@ func TestParseTXXXMediaMarkers(t *testing.T) {
 	for name, data := range tests {
 		t.Run(name, func(t *testing.T) {
 			var f types.File
-			parseTXXXFrame(ID3v2Frame{ID: "TXXX", Data: data}, &f)
+			parseTXXXFrame(id3v2Frame{ID: "TXXX", Data: data}, &f)
 			if len(f.Chapters) != 2 || f.Chapters[1].Title != "Chapter 2" {
 				t.Errorf("chapters = %+v (warnings %v)", f.Chapters, f.Warnings)
 			}
@@ -131,7 +131,7 @@ func TestParseTXXXMediaMarkers(t *testing.T) {
 
 	var f types.File
 	bad := append(append([]byte{0}, "OverDrive MediaMarkers\x00"...), "<Markers>"...)
-	parseTXXXFrame(ID3v2Frame{ID: "TXXX", Data: bad}, &f)
+	parseTXXXFrame(id3v2Frame{ID: "TXXX", Data: bad}, &f)
 	if len(f.Chapters) != 0 || len(f.Warnings) != 1 || f.Warnings[0].Stage != types.StageChapters {
 		t.Errorf("chapters %v warnings %v", f.Chapters, f.Warnings)
 	}

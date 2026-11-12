@@ -74,7 +74,7 @@ func TestApplyWarningPolicy_JoinsErrors(t *testing.T) {
 		{Message: "first", Err: errA},
 		{Message: "second", Err: errB},
 	}}
-	err := applyWarningPolicy(file, &openOptions{strictParsing: true})
+	err := applyWarningPolicy(file, &openOptions{warnings: warnStrict})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -134,6 +134,71 @@ func TestOpen_RecoversParserPanic(t *testing.T) {
 		if f != nil {
 			t.Errorf("files[%d] should be nil", i)
 		}
+	}
+}
+
+// preloadParser is a stub FLAC parser for the artwork-preload tests: Parse runs onParse,
+// and ExtractArtwork fails with extractErr or, once ctx is done, with ctx.Err().
+type preloadParser struct {
+	onParse    func()
+	extractErr error
+	artwork    []Artwork
+}
+
+func (p preloadParser) Parse(context.Context, io.ReaderAt, int64, string) (*types.File, error) {
+	if p.onParse != nil {
+		p.onParse()
+	}
+	return &types.File{}, nil
+}
+
+func (p preloadParser) ExtractArtwork(ctx context.Context, _ io.ReaderAt, _ int64, _ string) ([]Artwork, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return p.artwork, p.extractErr
+}
+
+func useFLACParser(t *testing.T, p FormatParser) {
+	t.Helper()
+	orig := registry.Get(types.FormatFLAC)
+	registry.Register(types.FormatFLAC, p)
+	t.Cleanup(func() { registry.Register(types.FormatFLAC, orig) })
+}
+
+func TestOpenContext_PreloadHonorsContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	useFLACParser(t, preloadParser{
+		onParse: cancel,
+		artwork: []Artwork{{Data: tinyPNG(t), Type: ArtworkFrontCover}},
+	})
+
+	f, err := OpenContext(ctx, writeTemp(t, "a.flac", oneWarningFLAC), WithArtworkPreload())
+	if f != nil {
+		_ = f.Close()
+	}
+	if !errors.Is(err, context.Canceled) || f != nil {
+		t.Errorf("OpenContext returned a file: %t, err = %v; want no file and context.Canceled", f != nil, err)
+	}
+}
+
+func TestOpenContext_PreloadFailureIsAWarning(t *testing.T) {
+	useFLACParser(t, preloadParser{extractErr: errors.New("bad picture")})
+
+	f, err := OpenContext(context.Background(), writeTemp(t, "a.flac", oneWarningFLAC), WithArtworkPreload())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	var n int
+	for _, w := range f.Warnings {
+		if w.Stage == StageArtwork {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("artwork warnings = %d (%v), want 1", n, f.Warnings)
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/simonhull/audiometa/internal/binary"
+	"github.com/simonhull/audiometa/internal/picture"
 	"github.com/simonhull/audiometa/internal/registry"
 	"github.com/simonhull/audiometa/internal/replaygain"
 	"github.com/simonhull/audiometa/internal/trailer"
@@ -63,10 +64,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		Audio:  types.AudioInfo{},
 	}
 	if start > 0 {
-		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-			Stage:   types.StageMetadata,
-			Message: fmt.Sprintf("non-standard ID3v2 tag of %d bytes before the FLAC stream; its frames are ignored", start),
-		})
+		types.Warn(file, types.StageMetadata, 0, nil, fmt.Sprintf("non-standard ID3v2 tag of %d bytes before the FLAC stream; its frames are ignored", start))
 	}
 
 	var vorbisComments []string
@@ -76,24 +74,14 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return nil, ctxErr
 			}
-			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-				Stage:   types.StageMetadata,
-				Message: fmt.Sprintf("metadata block chain at offset %d: %v", b.off, err),
-				Err:     err,
-				Offset:  b.off,
-			})
+			types.Warn(file, types.StageMetadata, b.off, err, fmt.Sprintf("metadata block chain at offset %d: %v", b.off, err))
 			break
 		}
 		offset, blockLength := b.payload(), b.n
 		switch b.typ {
 		case blockTypeStreamInfo:
 			if err := parseStreamInfo(sr, offset, blockLength, file); err != nil {
-				file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-					Stage:   types.StageMetadata,
-					Message: fmt.Sprintf("failed to parse STREAMINFO: %v", err),
-					Err:     err,
-					Offset:  offset,
-				})
+				types.Warn(file, types.StageMetadata, offset, err, fmt.Sprintf("failed to parse STREAMINFO: %v", err))
 			}
 
 		case blockTypeVorbisComment:
@@ -103,35 +91,24 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 				if ctxErr := ctx.Err(); ctxErr != nil {
 					return nil, ctxErr
 				}
-				file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-					Stage:   types.StageMetadata,
-					Message: fmt.Sprintf("failed to parse Vorbis comments: %v", err),
-					Err:     err,
-					Offset:  offset,
-				})
+				types.Warn(file, types.StageMetadata, offset, err, fmt.Sprintf("failed to parse Vorbis comments: %v", err))
 			}
 
 		case blockTypePicture:
-			// Pictures are handled lazily via ExtractArtwork()
-			// For now, just skip
+			// PICTURE blocks are read by ExtractArtwork.
 
 		case blockTypePadding:
 			// Padding blocks are ignored
 
 		case blockTypeApplication:
-			// Application blocks are ignored for now
+			// APPLICATION blocks carry no metadata audiometa reads.
 
 		case blockTypeSeekTable:
 			// Seek table is not needed for metadata extraction
 
 		case blockTypeCueSheet:
 			if err := parseCueSheet(sr, offset, blockLength, file); err != nil {
-				file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-					Stage:   types.StageChapters,
-					Message: fmt.Sprintf("failed to parse CUESHEET: %v", err),
-					Err:     err,
-					Offset:  offset,
-				})
+				types.Warn(file, types.StageChapters, offset, err, fmt.Sprintf("failed to parse CUESHEET: %v", err))
 			}
 
 		default:
@@ -201,7 +178,7 @@ func (p *parser) ExtractArtwork(ctx context.Context, r io.ReaderAt, size int64, 
 		if err != nil {
 			continue
 		}
-		if pic, err := decodePicture(payload); err == nil {
+		if pic, err := picture.Decode(payload); err == nil {
 			artwork = append(artwork, pic)
 		}
 	}
@@ -245,11 +222,7 @@ func parseStreamInfo(sr *binary.SafeReader, offset, blockLength int64, file *typ
 	}
 
 	if totalSamples == 0 {
-		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-			Stage:   types.StageTechnical,
-			Message: "STREAMINFO total samples is 0 (unknown); duration not available",
-			Offset:  offset,
-		})
+		types.Warn(file, types.StageTechnical, offset, nil, "STREAMINFO total samples is 0 (unknown); duration not available")
 	}
 
 	// Set audio properties
@@ -262,34 +235,15 @@ func parseStreamInfo(sr *binary.SafeReader, offset, blockLength int64, file *typ
 
 // parseVorbisComment decodes the VORBIS_COMMENT block b and maps each
 // comment onto file. Nothing outside the block's payload is read: a length
-// that runs past it ends the block with an error wrapping errShortVC. The
+// that runs past it ends the block with an error wrapping [vorbis.ErrTruncated]. The
 // comments decoded before an error are still applied and returned.
 func parseVorbisComment(ctx context.Context, sr *binary.SafeReader, b block, size int64, file *types.File) ([]string, error) {
 	payload, err := readPayload(sr, b, size)
 	if err != nil {
 		return nil, err
 	}
-	v, decodeErr := parseVC(payload)
-	comments := make([]string, 0, len(v.comments))
-	for i, c := range v.comments {
-		if err := binary.Canceled(ctx, i); err != nil {
-			return comments, err
-		}
-		if !types.TakeValue(file) {
-			break
-		}
-		comment := string(c)
-		comments = append(comments, comment)
-		if err := vorbis.ParseComment(comment, file); err != nil {
-			// Non-fatal - add warning and continue
-			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-				Stage:   types.StageMetadata,
-				Message: fmt.Sprintf("invalid Vorbis comment: %s", err),
-				Err:     err,
-			})
-		}
-	}
-	return comments, decodeErr
+	c, err := vorbis.Split(ctx, payload)
+	return vorbis.Apply(c.Entries, file), err
 }
 
 // init registers the FLAC parser.

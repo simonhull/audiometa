@@ -1,6 +1,8 @@
 package audiometa_test
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -100,5 +102,47 @@ func TestMaxArtworkSizeWithStrictParsing(t *testing.T) {
 	if err == nil {
 		_ = f.Close()
 		t.Fatal("expected strict parsing error")
+	}
+}
+
+// TestWarningPolicyOrder pins how strict and ignore combine: strict wins whichever
+// order the options come in.
+func TestWarningPolicyOrder(t *testing.T) {
+	t.Parallel()
+
+	oneWarning := []byte{'f', 'L', 'a', 'C', 0x80, 0, 0, 0} // a STREAMINFO block of length 0
+	path := filepath.Join(t.TempDir(), "w.flac")
+	if err := os.WriteFile(path, oneWarning, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name         string
+		opts         []audiometa.Option
+		wantFail     bool
+		wantWarnings bool
+	}{
+		{"neither", nil, false, true},
+		{"strict", []audiometa.Option{audiometa.WithStrictParsing()}, true, false},
+		{"ignore", []audiometa.Option{audiometa.WithIgnoreWarnings()}, false, false},
+		{"strict then ignore", []audiometa.Option{audiometa.WithStrictParsing(), audiometa.WithIgnoreWarnings()}, true, false},
+		{"ignore then strict", []audiometa.Option{audiometa.WithIgnoreWarnings(), audiometa.WithStrictParsing()}, true, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			f, err := audiometa.Open(path, tt.opts...)
+			if (err != nil) != tt.wantFail {
+				t.Fatalf("Open err = %v, want failure %v", err, tt.wantFail)
+			}
+			if err != nil {
+				return
+			}
+			defer f.Close()
+			if got := len(f.Warnings) > 0; got != tt.wantWarnings {
+				t.Errorf("warnings = %v, want present %v", f.Warnings, tt.wantWarnings)
+			}
+		})
 	}
 }

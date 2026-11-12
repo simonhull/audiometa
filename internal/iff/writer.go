@@ -228,11 +228,7 @@ func year(t *types.Tags, old string) []string {
 	if t.Year == 0 {
 		return nil
 	}
-	y := fmt.Sprintf("%04d", t.Year)
-	if len(old) > 4 && strings.Trim(old[:4], "0123456789") == "" {
-		return []string{y + old[4:]}
-	}
-	return []string{y}
+	return []string{types.YearValue(t.Year, old)}
 }
 
 // track mirrors the track number. Native text holds no total.

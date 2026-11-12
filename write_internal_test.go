@@ -97,11 +97,14 @@ type inPlaceFake struct {
 	preserved func(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error)
 }
 
-func (w *inPlaceFake) InPlacePatch(context.Context, io.ReaderAt, int64, *types.EditSet) (int64, []byte, bool, error) {
+func (w *inPlaceFake) InPlacePatch(context.Context, io.ReaderAt, int64, *types.EditSet) (*registry.Patch, error) {
 	if w.onPatch != nil {
 		w.onPatch()
 	}
-	return w.off, w.patch, w.fits, w.err
+	if w.err != nil || !w.fits {
+		return nil, w.err
+	}
+	return &registry.Patch{Off: w.off, Data: w.patch}, nil
 }
 
 func (w *inPlaceFake) PreservedDigest(ctx context.Context, src io.ReaderAt, size int64) ([]byte, error) {
@@ -359,6 +362,45 @@ func TestWriteTo_WriterPanic(t *testing.T) {
 	_, err := f.WriteTo(io.Discard)
 	if _, ok := errors.AsType[*CorruptedFileError](err); !ok {
 		t.Errorf("err = %v, want *CorruptedFileError", err)
+	}
+}
+
+// panicAfterWriter writes 10 bytes and then panics.
+type panicAfterWriter struct{ fakeWriter }
+
+func (w *panicAfterWriter) WriteFile(_ context.Context, out io.Writer, _ io.ReaderAt, _ int64, _ *types.EditSet) (int64, error) {
+	if _, err := out.Write(make([]byte, 10)); err != nil {
+		return 0, err
+	}
+	panic("late boom")
+}
+
+func TestWriteTo_PanicReportsBytesWritten(t *testing.T) {
+	useWriter(t, &panicAfterWriter{})
+	f := openSample(t, sampleFLAC)
+	f.Tags.Title = "x"
+	n, err := f.WriteTo(io.Discard)
+	if _, ok := errors.AsType[*CorruptedFileError](err); !ok {
+		t.Errorf("err = %v, want *CorruptedFileError", err)
+	}
+	if n != 10 {
+		t.Errorf("n = %d, want the 10 bytes that reached the writer", n)
+	}
+}
+
+func TestSafely(t *testing.T) {
+	t.Parallel()
+
+	v, err := safely("p", func() (int, error) { panic("boom") })
+	cerr, ok := errors.AsType[*CorruptedFileError](err)
+	if !ok || !strings.HasPrefix(cerr.Reason, "parser panic: boom") || v != 0 {
+		t.Errorf("safely(panic) = %d, %v; want 0 and a CorruptedFileError for the panic", v, err)
+	}
+
+	sentinel := errors.New("sentinel")
+	v, err = safely("p", func() (int, error) { return 7, sentinel })
+	if v != 7 || !errors.Is(err, sentinel) {
+		t.Errorf("safely(return) = %d, %v; want 7, sentinel", v, err)
 	}
 }
 

@@ -50,11 +50,11 @@ func (digester) AudioDigest(ctx context.Context, src io.ReaderAt, size int64) ([
 			return nil, fmt.Errorf("read Ogg page %d at offset %d: %w", i, off, err)
 		}
 		if i == 0 {
-			n, ok := headerPacketCount(detectOggCodec(page.Data))
-			if !ok {
+			c := detectCodec(page.Data)
+			if c == nil {
 				return nil, &types.CorruptedFileError{Reason: "unknown Ogg codec"}
 			}
-			serial, skip.remaining = page.SerialNumber, n
+			serial, skip.remaining = page.SerialNumber, c.headerPackets
 		}
 		off = next
 		if page.SerialNumber != serial {
@@ -71,20 +71,6 @@ func (digester) AudioDigest(ctx context.Context, src io.ReaderAt, size int64) ([
 	return h.Sum(nil), nil
 }
 
-// headerPacketCount returns how many header packets precede the audio in a
-// codec's logical stream: identification, comment and setup for Vorbis
-// (Vorbis I §4.2); OpusHead and OpusTags for Opus (RFC 7845 §3).
-func headerPacketCount(codec string) (int, bool) {
-	switch codec {
-	case codecVorbis:
-		return 3, true
-	case codecOpus:
-		return 2, true
-	default:
-		return 0, false
-	}
-}
-
 // headerSkip separates a logical stream's header packets from its audio.
 type headerSkip struct {
 	remaining int           // header packets not yet ended
@@ -94,7 +80,7 @@ type headerSkip struct {
 // audio returns the part of page's payload after the stream's header packets,
 // counting down each header packet that ends on the page. It returns nil while
 // header packets are still incomplete.
-func (s *headerSkip) audio(page *Page) []byte {
+func (s *headerSkip) audio(page *oggPage) []byte {
 	if s.remaining == 0 {
 		return page.Data
 	}

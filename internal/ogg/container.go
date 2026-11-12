@@ -23,11 +23,11 @@ import (
 // capturePattern starts every Ogg page.
 const capturePattern = "OggS"
 
-// Page represents an Ogg page.
+// oggPage represents an Ogg page.
 //
 // An Ogg page is the fundamental unit of the Ogg container format.
 // Each page contains a header and payload data.
-type Page struct {
+type oggPage struct {
 	Data            []byte
 	Lacing          []byte // segment table; each value < 255 terminates a packet
 	GranulePosition int64
@@ -50,8 +50,8 @@ type pageStream struct {
 	off    int64 // file offset of the next page
 	size   int64
 	path   string
-	shared bool // next reuses its buffers: the caller must not keep the page
-	page   Page // the page returned by next when shared
+	shared bool    // next reuses its buffers: the caller must not keep the page
+	page   oggPage // the page returned by next when shared
 	data   []byte
 	lacing []byte
 }
@@ -74,6 +74,13 @@ func newPageStream(r io.ReaderAt, size int64, path string, shared bool) *pageStr
 
 // check returns the error SafeReader reports for reading n bytes of what at off.
 func (s *pageStream) check(what string, off int64, n int) error {
+	// Mirrors binary.SafeReader.ReadAt: a zero-length read is valid anywhere in [0, size].
+	if n == 0 {
+		if off < 0 || off > s.size {
+			return &binary.OutOfBoundsError{Path: s.path, What: what, Offset: off, Length: n, Size: s.size}
+		}
+		return nil
+	}
 	if off < 0 || off >= s.size || off+int64(n) > s.size {
 		return &binary.OutOfBoundsError{Path: s.path, What: what, Offset: off, Length: n, Size: s.size}
 	}
@@ -143,7 +150,7 @@ func (s *pageStream) buffer(keep *[]byte, n int) []byte {
 
 // next reads the page at the stream's offset and advances past it. It returns
 // the page and the offset of the one after it.
-func (s *pageStream) next() (*Page, int64, error) {
+func (s *pageStream) next() (*oggPage, int64, error) {
 	off := s.off
 	fixed, err := s.header(off)
 	if err != nil {
@@ -174,9 +181,9 @@ func (s *pageStream) next() (*Page, int64, error) {
 
 	page := &s.page
 	if !s.shared {
-		page = new(Page)
+		page = new(oggPage)
 	}
-	*page = Page{
+	*page = oggPage{
 		HeaderType:      fixed[5],
 		GranulePosition: int64(ebinary.LittleEndian.Uint64(fixed[6:14])), //nolint:gosec // G115: RFC 3533 granule position is a signed field; all-ones (-1) means no packet ends on the page
 		SerialNumber:    ebinary.LittleEndian.Uint32(fixed[14:18]),
@@ -186,20 +193,6 @@ func (s *pageStream) next() (*Page, int64, error) {
 	}
 	s.off = dataOffset + int64(dataSize)
 	return page, s.off, nil
-}
-
-// laceValues returns the page's segment table, synthesizing one (a single
-// packet filling the page) for pages built without it.
-func (p *Page) laceValues() []byte {
-	if p.Lacing != nil {
-		return p.Lacing
-	}
-	n := len(p.Data)
-	lacing := make([]byte, 0, n/255+1)
-	for ; n >= 255; n -= 255 {
-		lacing = append(lacing, 255)
-	}
-	return append(lacing, byte(n)) //nolint:gosec // G115: the loop above leaves 0 <= n < 255
 }
 
 // pageContinued marks a page whose first segment continues the packet left
@@ -226,7 +219,7 @@ type packetTracker struct {
 //
 // The tracker's state is updated as each segment is yielded, so a caller that
 // stops early must not feed it further pages.
-func (t *packetTracker) segments(page *Page) iter.Seq[segment] {
+func (t *packetTracker) segments(page *oggPage) iter.Seq[segment] {
 	return func(yield func(segment) bool) {
 		if t.open && page.HeaderType&pageContinued == 0 {
 			t.open = false
@@ -235,7 +228,7 @@ func (t *packetTracker) segments(page *Page) iter.Seq[segment] {
 			}
 		}
 		data := page.Data
-		for _, lace := range page.laceValues() {
+		for _, lace := range page.Lacing {
 			n := min(int(lace), len(data))
 			seg := segment{data: data[:n], ends: lace < 255}
 			data = data[n:]
@@ -253,7 +246,7 @@ func (t *packetTracker) segments(page *Page) iter.Seq[segment] {
 //
 // Packets are assembled in two passes so each is allocated once at its final
 // size: the first sums the segment lengths, the second copies them.
-func splitPackets(pages []*Page) (packets [][]byte, open bool) {
+func splitPackets(pages []*oggPage) (packets [][]byte, open bool) {
 	var sizes []int
 	var t packetTracker
 	n := 0
@@ -296,7 +289,7 @@ func splitPackets(pages []*Page) (packets [][]byte, open bool) {
 
 // extractPackets extracts packets from a series of pages, including a trailing
 // unterminated packet. See splitPackets.
-func extractPackets(pages []*Page) [][]byte {
+func extractPackets(pages []*oggPage) [][]byte {
 	packets, _ := splitPackets(pages)
 	return packets
 }

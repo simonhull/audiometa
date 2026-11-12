@@ -38,7 +38,7 @@ func extractTestArtwork(t *testing.T, data []byte) []types.Artwork {
 func TestExtractArtwork_BadLastPictureStopsScan(t *testing.T) {
 	bad := make([]byte, 8)
 	binary.BigEndian.PutUint32(bad[0:], 3)
-	binary.BigEndian.PutUint32(bad[4:], 4096) // MIME length runs past EOF, so parsePicture fails
+	binary.BigEndian.PutUint32(bad[4:], 4096) // MIME length runs past EOF, so picture.Decode fails
 	data := buildFLAC(
 		flacBlock(false, blockTypeStreamInfo, streamInfoPayload(44100, 44100)),
 		flacBlock(true, blockTypePicture, bad),

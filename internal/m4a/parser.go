@@ -50,7 +50,7 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	}
 
 	// Find moov atom (movie container)
-	moovAtom, err := findAtomContext(ctx, sr, 0, size, "moov")
+	moovAtom, err := findTopAtom(ctx, sr, size, "moov")
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, ctxErr
@@ -63,53 +63,38 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	// and must not stop technical info or chapters from being parsed.
 	ilstAtom, err := findIlst(ctx, sr, moovAtom)
 	if err != nil && !errors.Is(err, errAtomNotFound) {
-		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-			Stage:   types.StageMetadata,
-			Message: err.Error(),
-			Err:     err,
-		})
+		types.Warn(file, types.StageMetadata, 0, err, err.Error())
 	}
 
 	// Extract metadata from ilst
 	if ilstAtom != nil {
 		if err := extractIlstMetadata(ctx, sr, ilstAtom, file); err != nil {
-			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-				Stage:   types.StageMetadata,
-				Message: err.Error(),
-				Err:     err,
-			})
+			types.Warn(file, types.StageMetadata, 0, err, err.Error())
 		}
 	}
 
-	// Parse technical info (duration, bitrate, codec, sample rate, channels)
-	if err := parseTechnicalInfo(ctx, sr, moovAtom, file); err != nil {
-		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-			Stage:   types.StageTechnical,
-			Message: err.Error(),
-			Err:     err,
-		})
+	// Technical info is two independent stages: the movie duration, and the
+	// audio track (codec, sample rate, channels, bitrate).
+	if err := parseDuration(ctx, sr, moovAtom, file); err != nil {
+		warn(file, types.StageTechnical, err)
+	}
+	if err := parseAudioTrack(ctx, sr, moovAtom, file); err != nil {
+		warn(file, types.StageTechnical, err)
 	}
 
 	// Parse chapters
 	chapters, err := parseChapters(ctx, sr, moovAtom, file.Audio.Duration)
 	if err != nil {
-		file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-			Stage:   types.StageChapters,
-			Message: err.Error(),
-			Err:     err,
-		})
-	} else if len(chapters) > 0 {
+		warn(file, types.StageChapters, err)
+	}
+	if len(chapters) > 0 {
 		file.Chapters = chapters
 	}
 
 	// Parse audiobook-specific tags (narrator, series, publisher, etc.)
 	if ilstAtom != nil {
 		if err := parseAudiobookTags(ctx, sr, ilstAtom, file); err != nil {
-			file.Warnings = types.AppendWarning(file.Warnings, types.Warning{
-				Stage:   types.StageMetadata,
-				Message: err.Error(),
-				Err:     err,
-			})
+			types.Warn(file, types.StageMetadata, 0, err, err.Error())
 		}
 	}
 
@@ -123,24 +108,15 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	return file, nil
 }
 
+// warn records err as a warning of stage on file.
+func warn(file *types.File, stage string, err error) {
+	types.Warn(file, stage, 0, err, err.Error())
+}
+
 // findIlst navigates moov → udta → meta → ilst and returns the ilst atom.
 // The returned error wraps errAtomNotFound when any level is simply absent.
 func findIlst(ctx context.Context, sr *binary.SafeReader, moovAtom *Atom) (*Atom, error) {
-	udtaAtom, err := findAtomContext(ctx, sr, moovAtom.DataOffset(), moovAtom.DataOffset()+moovAtom.DataSize(), "udta")
-	if err != nil {
-		return nil, err
-	}
-
-	metaAtom, err := findAtomContext(ctx, sr, udtaAtom.DataOffset(), udtaAtom.DataOffset()+udtaAtom.DataSize(), "meta")
-	if err != nil {
-		return nil, err
-	}
-
-	// meta is a full atom: 4 bytes of version+flags precede its children.
-	metaDataOffset := metaAtom.DataOffset() + 4
-	metaDataEnd := metaAtom.DataOffset() + metaAtom.DataSize()
-
-	return findAtomContext(ctx, sr, metaDataOffset, metaDataEnd, "ilst")
+	return moovAtom.path(ctx, sr, atomUdta, atomMeta, atomIlst)
 }
 
 // ExtractArtwork extracts embedded artwork from M4A/M4B files.

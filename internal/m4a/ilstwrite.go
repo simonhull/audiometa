@@ -395,7 +395,7 @@ func (e *ilstEditor) applyField(f types.FieldEdit) error {
 		return err
 	}
 	for _, key := range targets {
-		values := e.fieldKeyValues(f, key)
+		values := types.FieldValues(f, key, e.edits)
 		if f.Field == types.FieldSeriesPart && key == itemMvi && len(values) > 0 && !isMovementIndex(values[0]) {
 			return fmt.Errorf("%w: SeriesPart %q is not an integer from 1 to 32767, which \xA9mvi requires", types.ErrUnsupportedWrite, values[0])
 		}
@@ -427,64 +427,7 @@ func (e *ilstEditor) fieldTargets(f types.FieldEdit) ([]string, error) {
 	if !ok {
 		return nil, fmt.Errorf("%w: %s cannot be written to M4A", types.ErrUnsupportedWrite, f.Field)
 	}
-	var present []string
-	for _, b := range types.FieldBindings(types.FormatM4A) {
-		if b.Field != f.Field {
-			continue
-		}
-		for _, k := range b.Keys {
-			if e.edits.Orig.Get(k) != nil {
-				present = append(present, k)
-			}
-		}
-	}
-	switch {
-	case len(f.Values) == 0:
-		return present, nil
-	case len(present) > 0:
-		return present[:1], nil
-	default:
-		return []string{canonical}, nil
-	}
-}
-
-// fieldKeyValues returns the values a field edit writes to key; nil deletes it.
-func (e *ilstEditor) fieldKeyValues(f types.FieldEdit, key string) []string {
-	final, orig := e.edits.Final, e.edits.Orig
-	if f.Field == types.FieldYear {
-		if len(f.Values) == 0 {
-			return nil
-		}
-		year, err := strconv.Atoi(f.Values[0])
-		if err != nil || year == 0 {
-			return nil
-		}
-		return []string{yearValue(year, orig.GetFirst(key))}
-	}
-	if f.Field == types.FieldArtists {
-		return slices.Clone(final.Artists)
-	}
-	if f.Field != types.FieldArtist {
-		return slices.Clone(f.Values)
-	}
-	if final.Artist == "" {
-		return nil
-	}
-	values := []string{final.Artist}
-	if len(orig.Artists) > 1 {
-		values = append(values, orig.Artists[1:]...)
-	}
-	return values
-}
-
-// yearValue writes year into the existing value old: a longer date such as
-// "2021-05-03" keeps everything after its 4-digit year.
-func yearValue(year int, old string) string {
-	y := fmt.Sprintf("%04d", year)
-	if len(old) > 4 && strings.Trim(old[:4], "0123456789") == "" {
-		return y + old[4:]
-	}
-	return y
+	return types.FieldTargets(types.FormatM4A, f, e.edits, canonical, len(f.Values) > 0), nil
 }
 
 // setNumberPair writes a trkn (8-byte) or disk (6-byte) item holding n and
@@ -594,21 +537,12 @@ func subAtoms(b []byte) ([]subAtom, bool) {
 	var out []subAtom
 	for off := 0; off < len(b); {
 		rest := b[off:]
-		if len(rest) < 8 {
+		h, err := DecodeAtomHeader(rest, int64(len(rest)), SizeZeroInvalid)
+		if err != nil {
 			return nil, false
 		}
-		size, hdr := uint64(binary.BigEndian.Uint32(rest)), uint64(8)
-		if size == 1 {
-			if len(rest) < 16 {
-				return nil, false
-			}
-			size, hdr = binary.BigEndian.Uint64(rest[8:]), 16
-		}
-		if size < hdr || size > uint64(len(rest)) {
-			return nil, false
-		}
-		out = append(out, subAtom{typ: string(rest[4:8]), raw: rest[:size], body: rest[hdr:size]})
-		off += int(size) //nolint:gosec // G115: size <= len(rest)
+		out = append(out, subAtom{typ: h.Type, raw: rest[:h.Size], body: rest[h.HeaderLen:h.Size]})
+		off += int(h.Size)
 	}
 	return out, true
 }

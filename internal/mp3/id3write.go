@@ -121,7 +121,7 @@ func hasID3Magic(sr *binutil.SafeReader, size int64) bool {
 
 // extendedHeaderLen returns the length of the extended header at the start of
 // body, or 0 when there is none.
-func extendedHeaderLen(sr *binutil.SafeReader, header ID3v2Header, body []byte) (int, error) {
+func extendedHeaderLen(sr *binutil.SafeReader, header id3v2Header, body []byte) (int, error) {
 	if header.Version == 2 || header.Flags&flagExtendedHeader == 0 {
 		return 0, nil
 	}
@@ -142,7 +142,7 @@ func extendedHeaderLen(sr *binutil.SafeReader, header ID3v2Header, body []byte) 
 
 // walk splits body (from offset start) into frames, stopping at padding.
 // It is separate from id3v2Tag.frames: a write must refuse a damaged tag and keep each frame's original header, where reading warns and goes on.
-func (t *wtag) walk(ctx context.Context, sr *binutil.SafeReader, header ID3v2Header, body []byte, start int) error {
+func (t *wtag) walk(ctx context.Context, sr *binutil.SafeReader, header id3v2Header, body []byte, start int) error {
 	headerLen, idLen := 10, 4
 	if header.Version == 2 {
 		headerLen, idLen = 6, 3
@@ -188,7 +188,7 @@ func frameSizeFromHeader(version byte, coding frameSizeCoding, hdr []byte) uint6
 
 // newFrame builds a wframe from a frame's on-disk header and payload,
 // converting ID3v2.2 frames to ID3v2.4 and undoing ID3v2.4 unsynchronisation.
-func (t *wtag) newFrame(header ID3v2Header, hdr, payload []byte) (wframe, error) {
+func (t *wtag) newFrame(header id3v2Header, hdr, payload []byte) (wframe, error) {
 	if header.Version == 2 {
 		return convertV22Frame(string(hdr[:3]), payload)
 	}

@@ -32,7 +32,7 @@ func TestFindAtom_RejectsSizeBeyondParent(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		_, err := findAtom(sr, 0, int64(len(data)), "moov")
+		_, err := findAtom(t.Context(), sr, 0, int64(len(data)), "moov")
 		done <- err
 	}()
 

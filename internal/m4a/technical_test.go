@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"math"
 	"slices"
 	"testing"
@@ -12,6 +13,13 @@ import (
 	audiobinary "github.com/simonhull/audiometa/internal/binary"
 	"github.com/simonhull/audiometa/internal/types"
 )
+
+// parseTechnicalInfo runs both technical stages in the order Parse does and
+// joins their errors, so tests can read technical info without a whole file.
+func parseTechnicalInfo(ctx context.Context, sr *audiobinary.SafeReader, moovAtom *Atom, file *types.File) error {
+	durErr := parseDuration(ctx, sr, moovAtom, file)
+	return errors.Join(durErr, parseAudioTrack(ctx, sr, moovAtom, file))
+}
 
 // createMvhdAtom creates a movie header atom with duration.
 func createMvhdAtom(version byte, timescale, duration uint32) []byte {

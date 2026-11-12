@@ -1,4 +1,4 @@
-// Package registry manages format-specific parsers for audio file types.
+// Package registry maps formats to their parsers, artwork extractors, tag writers and audio digesters.
 package registry
 
 import (

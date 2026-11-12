@@ -2,6 +2,8 @@ package m4a
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"math"
 	"time"
 
@@ -9,65 +11,68 @@ import (
 	"github.com/simonhull/audiometa/internal/types"
 )
 
-// parseTechnicalInfo extracts duration, bitrate, sample rate, channels, and codec.
-// Returns nil (no error) even if atoms are missing - technical info is best-effort.
-func parseTechnicalInfo(ctx context.Context, sr *binary.SafeReader, moovAtom *Atom, file *types.File) error {
-	// Find mvhd (movie header) atom for duration
-	mvhdAtom, err := findAtom(sr, moovAtom.DataOffset(), moovAtom.DataOffset()+moovAtom.DataSize(), "mvhd")
+// parseDuration reads the movie duration from moov's mvhd. An absent mvhd is
+// not an error; an unreadable one is returned for a warning, and leaves the
+// duration unset.
+func parseDuration(ctx context.Context, sr *binary.SafeReader, moovAtom *Atom, file *types.File) error {
+	mvhdAtom, err := moovAtom.child(ctx, sr, "mvhd")
+	if errors.Is(err, errAtomNotFound) {
+		return nil
+	}
 	if err != nil {
-		return nil
+		return fmt.Errorf("mvhd: %w", err)
 	}
-
-	// Parse mvhd for duration
 	if err := parseMvhd(sr, mvhdAtom, file); err != nil {
-		return nil
+		return fmt.Errorf("mvhd: %w", err)
 	}
+	return nil
+}
 
+// parseAudioTrack reads the codec, sample rate, channels and bitrate of the
+// audio track. Absent atoms on the way to the sample description are not an
+// error; a corrupt or unreadable one is returned for a warning. The bitrate
+// divides by file.Audio.Duration, so parseDuration runs first.
+func parseAudioTrack(ctx context.Context, sr *binary.SafeReader, moovAtom *Atom, file *types.File) error {
 	// Find the audio trak for format info
 	// Path: moov -> trak (handler type "soun")
-	trakAtom := selectAudioTrak(sr, moovAtom)
-	if trakAtom == nil {
-		return nil
+	trakAtom, err := selectAudioTrak(ctx, sr, moovAtom)
+	if err != nil || trakAtom == nil {
+		return err
 	}
 
-	// Find mdia atom
-	// Path: trak -> mdia
-	mdiaAtom, err := findAtom(sr, trakAtom.DataOffset(), trakAtom.DataOffset()+trakAtom.DataSize(), "mdia")
-	if err != nil {
+	// Path: trak -> mdia -> minf -> stbl -> stsd
+	mdiaAtom, err := trakAtom.child(ctx, sr, "mdia")
+	if errors.Is(err, errAtomNotFound) {
 		return nil
 	}
-
-	// Find minf atom
-	// Path: mdia -> minf
-	minfAtom, err := findAtom(sr, mdiaAtom.DataOffset(), mdiaAtom.DataOffset()+mdiaAtom.DataSize(), "minf")
 	if err != nil {
+		return fmt.Errorf("mdia: %w", err)
+	}
+	stblAtom, err := mdiaAtom.path(ctx, sr, "minf", "stbl")
+	if errors.Is(err, errAtomNotFound) {
 		return nil
 	}
-
-	// Find stbl atom
-	// Path: minf -> stbl
-	stblAtom, err := findAtom(sr, minfAtom.DataOffset(), minfAtom.DataOffset()+minfAtom.DataSize(), "stbl")
 	if err != nil {
+		return fmt.Errorf("stbl: %w", err)
+	}
+	stsdAtom, err := stblAtom.child(ctx, sr, "stsd")
+	if errors.Is(err, errAtomNotFound) {
 		return nil
 	}
-
-	// Find stsd (sample description) atom
-	// Path: stbl -> stsd
-	stsdAtom, err := findAtom(sr, stblAtom.DataOffset(), stblAtom.DataOffset()+stblAtom.DataSize(), "stsd")
 	if err != nil {
-		return nil
+		return fmt.Errorf("stsd: %w", err)
 	}
 
 	// Parse stsd for codec, sample rate, channels
-	source, err := parseStsd(sr, stsdAtom, file)
+	source, err := parseStsd(ctx, sr, stsdAtom, file)
 	if err != nil {
-		return nil
+		return fmt.Errorf("stsd: %w", err)
 	}
 
 	// The legacy 16.16 field cannot hold rates above 65535 Hz (writers store
 	// the timescale's low bits or 0 there), but the track's media header does.
 	if source == rateLegacyField {
-		applyMediaTimescale(sr, mdiaAtom, file)
+		applyMediaTimescale(ctx, sr, mdiaAtom, file)
 	}
 
 	// The esds avgBitrate, when the sample description declared one, is already
@@ -90,7 +95,7 @@ const stszChunk = 4096
 // unreadable, or claims more bytes than limit (the file size, when known):
 // a table no file could hold is not believed.
 func sampleBytes(ctx context.Context, sr *binary.SafeReader, stbl *Atom, limit int64) (int64, bool) {
-	stsz, err := findAtom(sr, stbl.DataOffset(), stbl.DataOffset()+stbl.DataSize(), "stsz")
+	stsz, err := stbl.child(ctx, sr, "stsz")
 	if err != nil || stsz.DataSize() < 12 {
 		return 0, false
 	}
@@ -145,16 +150,20 @@ const handlerSound = "soun"
 // selectAudioTrak returns the first trak under moov whose handler type is
 // "soun". Files whose first track is something else (a chapter text track, say)
 // would otherwise yield channels and sample rate from the wrong track. If no
-// track declares a sound handler, it falls back to the first trak.
-func selectAudioTrak(sr *binary.SafeReader, moovAtom *Atom) *Atom {
+// track declares a sound handler, it falls back to the first trak, and to nil
+// when there is none. A malformed header among moov's children is returned.
+func selectAudioTrak(ctx context.Context, sr *binary.SafeReader, moovAtom *Atom) (*Atom, error) {
 	offset := moovAtom.DataOffset()
 	end := offset + moovAtom.DataSize()
 
 	var first *Atom
-	for offset < end {
+	for i := 0; offset < end; i++ {
+		if err := binary.Canceled(ctx, i); err != nil {
+			return nil, err
+		}
 		atom, err := readAtomHeader(sr, offset, end)
 		if err != nil {
-			break
+			return nil, fmt.Errorf("moov: %w", err)
 		}
 		offset += atom.Size
 		if atom.Type != atomTrak {
@@ -163,29 +172,36 @@ func selectAudioTrak(sr *binary.SafeReader, moovAtom *Atom) *Atom {
 		if first == nil {
 			first = atom
 		}
-		if trakHandlerType(sr, atom) == handlerSound {
-			return atom
+		handler, err := trakHandlerType(ctx, sr, atom)
+		if err != nil {
+			return nil, err
+		}
+		if handler == handlerSound {
+			return atom, nil
 		}
 	}
-	return first
+	return first, nil
 }
 
 // trakHandlerType returns the trak's mdia/hdlr handler type, or "" if absent.
-func trakHandlerType(sr *binary.SafeReader, trak *Atom) string {
-	mdia, err := findAtom(sr, trak.DataOffset(), trak.DataOffset()+trak.DataSize(), "mdia")
-	if err != nil {
-		return ""
+// A corrupt mdia or hdlr is returned as an error.
+func trakHandlerType(ctx context.Context, sr *binary.SafeReader, trak *Atom) (string, error) {
+	hdlr, err := trak.path(ctx, sr, "mdia", "hdlr")
+	if errors.Is(err, errAtomNotFound) {
+		return "", nil
 	}
-	hdlr, err := findAtom(sr, mdia.DataOffset(), mdia.DataOffset()+mdia.DataSize(), "hdlr")
-	if err != nil || hdlr.DataSize() < 12 {
-		return ""
+	if err != nil {
+		return "", fmt.Errorf("hdlr: %w", err)
 	}
 	// hdlr: version/flags(4) pre_defined(4) handler_type(4)
+	if hdlr.DataSize() < 12 {
+		return "", corrupted(sr, hdlr.Offset, "hdlr atom too short")
+	}
 	buf := make([]byte, 4)
 	if err := sr.ReadAt(buf, hdlr.DataOffset()+8, "hdlr handler type"); err != nil {
-		return ""
+		return "", fmt.Errorf("hdlr: %w", err)
 	}
-	return string(buf)
+	return string(buf), nil
 }
 
 // parseMvhd parses the movie header atom for duration.
@@ -201,6 +217,15 @@ func parseMvhd(sr *binary.SafeReader, mvhdAtom *Atom, file *types.File) error {
 
 	// Skip flags (3 bytes)
 	offset += 3
+
+	// version/flags(4), creation, modification, timescale, duration.
+	minSize := int64(20)
+	if version == 1 {
+		minSize = 32
+	}
+	if mvhdAtom.DataSize() < minSize {
+		return corrupted(sr, mvhdAtom.Offset, fmt.Sprintf("mvhd atom too short (%d bytes, need %d)", mvhdAtom.DataSize(), minSize))
+	}
 
 	var timescale uint32
 	var duration uint64
@@ -281,8 +306,8 @@ const (
 
 // mdhdTimescale returns the timescale of mdia's media header, or false when
 // the mdhd atom is absent or unreadable.
-func mdhdTimescale(sr *binary.SafeReader, mdia *Atom) (uint32, bool) {
-	mdhd, err := findAtom(sr, mdia.DataOffset(), mdia.DataOffset()+mdia.DataSize(), "mdhd")
+func mdhdTimescale(ctx context.Context, sr *binary.SafeReader, mdia *Atom) (uint32, bool) {
+	mdhd, err := mdia.child(ctx, sr, "mdhd")
 	if err != nil {
 		return 0, false
 	}
@@ -311,8 +336,8 @@ func mdhdTimescale(sr *binary.SafeReader, mdia *Atom) (uint32, bool) {
 // applyMediaTimescale replaces a sample rate read from the 16.16 field with
 // the media timescale when that field cannot have held the real rate: the
 // timescale is above 65535, or the field was 0.
-func applyMediaTimescale(sr *binary.SafeReader, mdia *Atom, file *types.File) {
-	timescale, ok := mdhdTimescale(sr, mdia)
+func applyMediaTimescale(ctx context.Context, sr *binary.SafeReader, mdia *Atom, file *types.File) {
+	timescale, ok := mdhdTimescale(ctx, sr, mdia)
 	if !ok || (timescale <= math.MaxUint16 && (file.Audio.SampleRate != 0 || timescale == 0)) {
 		return
 	}
@@ -321,7 +346,7 @@ func applyMediaTimescale(sr *binary.SafeReader, mdia *Atom, file *types.File) {
 
 // parseStsd parses the sample description atom for codec, sample rate, channels.
 // The result says where the sample rate came from.
-func parseStsd(sr *binary.SafeReader, stsdAtom *Atom, file *types.File) (rateSource, error) {
+func parseStsd(ctx context.Context, sr *binary.SafeReader, stsdAtom *Atom, file *types.File) (rateSource, error) {
 	offset := stsdAtom.DataOffset()
 
 	// stsd structure:
@@ -366,15 +391,15 @@ func parseStsd(sr *binary.SafeReader, stsdAtom *Atom, file *types.File) (rateSou
 	file.Audio.Codec = codec
 	file.Audio.Lossless = codec == codecALAC || codec == codecFLAC
 
-	// Parse enhanced codec details (non-fatal if it fails)
+	// Parse enhanced codec details (a failure adds a warning, not an error)
 	entry := offset - 8 // the offset of the entry's size field
-	_ = parseCodecDetails(sr, entry, entrySize, codec, file)
+	parseCodecDetails(sr, entry, entrySize, codec, file)
 
 	source, err := parseSoundSampleEntry(sr, entry, file)
 	if err != nil {
 		return rateUnknown, err
 	}
-	return applyLosslessConfig(sr, entry, entrySize, codec, file, source), nil
+	return applyLosslessConfig(ctx, sr, entry, entrySize, codec, file, source), nil
 }
 
 // losslessConfig holds the stream properties a lossless codec's configuration
@@ -420,7 +445,7 @@ func soundEntryChildren(version uint16) (offset int64, ok bool) {
 // for ALAC and FLAC. entry is the offset of the sample entry's size field. It
 // is best effort: whatever is missing or implausible leaves file untouched.
 // It returns source, or rateDeclared when the configuration supplied the rate.
-func applyLosslessConfig(sr *binary.SafeReader, entry int64, entrySize uint32, codec string, file *types.File, source rateSource) rateSource {
+func applyLosslessConfig(ctx context.Context, sr *binary.SafeReader, entry int64, entrySize uint32, codec string, file *types.File, source rateSource) rateSource {
 	var boxType string
 	var decode func(*binary.SafeReader, *Atom) (losslessConfig, bool)
 	switch codec {
@@ -440,7 +465,7 @@ func applyLosslessConfig(sr *binary.SafeReader, entry int64, entrySize uint32, c
 	if !ok || int64(entrySize) < children {
 		return source
 	}
-	box, err := findAtom(sr, entry+children, entry+int64(entrySize), boxType)
+	box, err := findAtom(ctx, sr, entry+children, entry+int64(entrySize), boxType)
 	if err != nil {
 		return source
 	}

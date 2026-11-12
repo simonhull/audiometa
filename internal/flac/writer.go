@@ -3,18 +3,17 @@ package flac
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"slices"
-	"unicode/utf8"
 
 	binutil "github.com/simonhull/audiometa/internal/binary"
+	"github.com/simonhull/audiometa/internal/picture"
 	"github.com/simonhull/audiometa/internal/registry"
 	"github.com/simonhull/audiometa/internal/trailer"
 	"github.com/simonhull/audiometa/internal/types"
+	"github.com/simonhull/audiometa/internal/vorbis"
 	"github.com/simonhull/audiometa/internal/writeutil"
 )
 
@@ -125,18 +124,18 @@ func (w *writer) PreservedDigest(ctx context.Context, src io.ReaderAt, size int6
 // InPlacePatch returns the new metadata blocks to write just after the "fLaC"
 // marker (offset 4, or 4 past a leading ID3v2 tag) when they fill exactly the space of the old ones (possibly with a resized PADDING
 // block). The patch is then exactly what WriteFile writes before the audio.
-func (w *writer) InPlacePatch(ctx context.Context, src io.ReaderAt, size int64, edits *types.EditSet) (int64, []byte, bool, error) {
+func (w *writer) InPlacePatch(ctx context.Context, src io.ReaderAt, size int64, edits *types.EditSet) (*registry.Patch, error) {
 	if err := ctx.Err(); err != nil {
-		return 0, nil, false, err
+		return nil, err
 	}
 	m, meta, err := buildMeta(ctx, binutil.NewSafeReader(src, size, ""), size, edits)
 	if err != nil {
-		return 0, nil, false, err
+		return nil, err
 	}
 	if int64(len(meta)) != m.oldMetaLen {
-		return 0, nil, false, nil
+		return nil, nil
 	}
-	return m.prefix + int64(len(flacMagic)), meta, true, nil
+	return &registry.Patch{Off: m.prefix + int64(len(flacMagic)), Data: meta}, nil
 }
 
 // buildMeta reads the source blocks, applies edits and serializes the new
@@ -146,7 +145,7 @@ func buildMeta(ctx context.Context, sr *binutil.SafeReader, size int64, edits *t
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := m.apply(edits); err != nil {
+	if err := m.apply(ctx, edits); err != nil {
 		return nil, nil, err
 	}
 	meta, err := m.serialize()
@@ -222,9 +221,9 @@ func readFMeta(ctx context.Context, sr *binutil.SafeReader, size int64) (*fmeta,
 
 // apply applies tag edits (when there are any) and then the artwork
 // operations. Without tag edits every VORBIS_COMMENT block stays verbatim.
-func (m *fmeta) apply(edits *types.EditSet) error {
+func (m *fmeta) apply(ctx context.Context, edits *types.EditSet) error {
 	if len(edits.Keys) > 0 || len(edits.Fields) > 0 {
-		if err := m.applyTags(edits); err != nil {
+		if err := m.applyTags(ctx, edits); err != nil {
 			return err
 		}
 	}
@@ -233,7 +232,7 @@ func (m *fmeta) apply(edits *types.EditSet) error {
 
 // applyTags applies the key and field edits to the file's VORBIS_COMMENT
 // block, creating one when the file has none.
-func (m *fmeta) applyTags(edits *types.EditSet) error {
+func (m *fmeta) applyTags(ctx context.Context, edits *types.EditSet) error {
 	var at []int
 	for i, b := range m.blocks {
 		if b.typ == blockTypeVorbisComment {
@@ -243,13 +242,17 @@ func (m *fmeta) applyTags(edits *types.EditSet) error {
 	if len(at) > 1 {
 		return fmt.Errorf("%w: file has %d VORBIS_COMMENT blocks", types.ErrUnsupportedWrite, len(at))
 	}
-	v := &vcomment{vendor: []byte("audiometa")}
+	v := &vcomment{vorbis.Comments{Vendor: []byte("audiometa")}}
 	if len(at) == 1 {
 		b := m.blocks[at[0]]
-		var err error
-		if v, err = parseVC(b.payload); err != nil {
+		c, err := vorbis.Split(ctx, b.payload)
+		if err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return ctxErr
+			}
 			return corrupted(m.path, b.off, "malformed VORBIS_COMMENT block: "+err.Error())
 		}
+		v = &vcomment{c}
 	}
 	for _, e := range edits.Keys {
 		if err := v.applyKey(e.Key, e.Values); err != nil {
@@ -262,11 +265,11 @@ func (m *fmeta) applyTags(edits *types.EditSet) error {
 		}
 	}
 	if len(at) == 1 {
-		m.blocks[at[0]].payload = v.bytes()
+		m.blocks[at[0]].payload = v.Encode()
 		return nil
 	}
-	if len(v.comments) > 0 {
-		m.blocks = slices.Insert(m.blocks, m.newCommentIndex(), fblock{typ: blockTypeVorbisComment, payload: v.bytes()})
+	if len(v.Entries) > 0 {
+		m.blocks = slices.Insert(m.blocks, m.newCommentIndex(), fblock{typ: blockTypeVorbisComment, payload: v.Encode()})
 	}
 	return nil
 }
@@ -285,14 +288,17 @@ func (m *fmeta) applyArtwork(ops []types.ArtworkOp) error {
 	for _, op := range ops {
 		switch op.Kind {
 		case types.ArtworkOpAdd:
-			payload, err := encodePicture(op.Art)
+			if err := checkBlockLen(picture.EncodedLen(op.Art)); err != nil {
+				return fmt.Errorf("%w: PICTURE block", err)
+			}
+			payload, err := picture.Encode(op.Art)
 			if err != nil {
 				return err
 			}
 			m.blocks = slices.Insert(m.blocks, m.pictureIndex(), fblock{typ: blockTypePicture, payload: payload})
 		case types.ArtworkOpRemove:
 			m.blocks = slices.DeleteFunc(m.blocks, func(b fblock) bool {
-				return b.typ == blockTypePicture && types.ArtworkTypeFromPictureType(pictureType(b.payload)) == op.Type
+				return b.typ == blockTypePicture && types.ArtworkTypeFromPictureType(picture.Type(b.payload)) == op.Type
 			})
 		case types.ArtworkOpRemoveAll:
 			m.blocks = slices.DeleteFunc(m.blocks, func(b fblock) bool { return b.typ == blockTypePicture })
@@ -320,55 +326,6 @@ func (m *fmeta) lastIndex(match func(fblock) bool) int {
 		}
 	}
 	return -1
-}
-
-// pictureType returns a PICTURE payload's picture type: its first four bytes,
-// big-endian. A payload too short to hold one reads as 0 (Other).
-func pictureType(payload []byte) uint32 {
-	if len(payload) < 4 {
-		return 0
-	}
-	return binary.BigEndian.Uint32(payload)
-}
-
-// encodePicture builds a PICTURE payload: type, MIME, description, width,
-// height, depth (0), colors (0) and data, with big-endian 32-bit lengths.
-func encodePicture(a types.Artwork) ([]byte, error) {
-	for _, c := range []byte(a.MIMEType) {
-		if c < 0x20 || c > 0x7E {
-			return nil, fmt.Errorf("%w: MIME type %q is not printable ASCII", types.ErrUnsupportedWrite, a.MIMEType)
-		}
-	}
-	if a.Type < types.ArtworkOther || a.Type > types.ArtworkPublisherLogotype {
-		return nil, fmt.Errorf("%w: picture type %d", types.ErrUnsupportedWrite, a.Type)
-	}
-	if !utf8.ValidString(a.Description) {
-		return nil, fmt.Errorf("%w: artwork description is not valid UTF-8", types.ErrUnsupportedWrite)
-	}
-	if err := checkBlockLen(32 + len(a.MIMEType) + len(a.Description) + len(a.Data)); err != nil {
-		return nil, fmt.Errorf("%w: PICTURE block", err)
-	}
-	out := make([]byte, 0, 32+len(a.MIMEType)+len(a.Description)+len(a.Data))
-	out = binary.BigEndian.AppendUint32(out, uint32(a.Type))
-	out = appendBytes(out, []byte(a.MIMEType))
-	out = appendBytes(out, []byte(a.Description))
-	out = binary.BigEndian.AppendUint32(out, dimension(a.Width))
-	out = binary.BigEndian.AppendUint32(out, dimension(a.Height))
-	out = binary.BigEndian.AppendUint32(out, 0) // color depth: unknown
-	out = binary.BigEndian.AppendUint32(out, 0) // colors used: not indexed
-	return appendBytes(out, a.Data), nil
-}
-
-// appendBytes appends b preceded by its big-endian 32-bit length. Callers
-// bound len(b) by maxBlockLen first.
-func appendBytes(out, b []byte) []byte {
-	out = binary.BigEndian.AppendUint32(out, uint32(len(b))) //nolint:gosec // G115: callers bound len(b) by maxBlockLen
-	return append(out, b...)
-}
-
-// dimension clamps an image dimension to the uint32 range (negative is 0).
-func dimension(n int) uint32 {
-	return uint32(min(max(int64(n), 0), math.MaxUint32))
 }
 
 // serialize encodes the blocks (without the "fLaC" marker), applying the

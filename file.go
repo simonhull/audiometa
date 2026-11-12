@@ -55,8 +55,8 @@ type File struct {
 	parser  FormatParser
 	artwork []Artwork
 
-	maxArtworkSize int  // from WithMaxArtworkSize; 0 = no limit
-	ignoreWarnings bool // from WithIgnoreWarnings; also suppresses artwork-stage warnings
+	maxArtworkSize int           // from WithMaxArtworkSize; 0 = no limit
+	warnings       warningPolicy // from the warning options; warnIgnore also suppresses artwork-stage warnings
 
 	artworkMu     sync.Mutex // guards artwork and artworkLoaded
 	artworkLoaded bool
@@ -124,18 +124,18 @@ func openWithContext(ctx context.Context, path string, opts ...Option) (*File, e
 		parser: typesFile.parser,
 
 		maxArtworkSize: options.maxArtworkSize,
-		ignoreWarnings: options.ignoreWarnings,
+		warnings:       options.warnings,
 	}
 
 	// Preload artwork if requested
 	if options.preloadArtwork {
-		if _, err := file.ExtractArtwork(); err != nil {
+		if _, err := file.ExtractArtworkContext(ctx); err != nil {
+			if ctx.Err() != nil {
+				_ = f.Close()
+				return nil, err
+			}
 			// Don't fail completely, just add warning
-			file.Warnings = types.AppendWarning(file.Warnings, Warning{
-				Stage:   StageArtwork,
-				Message: fmt.Sprintf("preload artwork failed: %v", err),
-				Err:     err,
-			})
+			types.Warn(&file.File, StageArtwork, 0, err, fmt.Sprintf("preload artwork failed: %v", err))
 		}
 	}
 
@@ -187,11 +187,17 @@ type strictParsingError struct {
 func (e *strictParsingError) Error() string   { return e.msg }
 func (e *strictParsingError) Unwrap() []error { return e.errs }
 
-// applyWarningPolicy enforces WithStrictParsing, then WithIgnoreWarnings.
-// Strict takes precedence: a file with any warning fails even when
-// warnings are also being ignored.
+// applyWarningPolicy enforces the warning policy: warnStrict fails a file with
+// any warning, warnIgnore drops the warnings. Strict wins over ignore when both
+// options were given (see openOptions.warnings).
 func applyWarningPolicy(file *types.File, options *openOptions) error {
-	if options.strictParsing && len(file.Warnings) > 0 {
+	switch options.warnings {
+	case warnIgnore:
+		file.Warnings = nil
+	case warnStrict:
+		if len(file.Warnings) == 0 {
+			return nil
+		}
 		msg := "strict parsing failed: " + file.Warnings[0].Message
 		if n := len(file.Warnings) - 1; n > 0 {
 			msg += fmt.Sprintf(" (and %d more warnings)", n)
@@ -203,9 +209,7 @@ func applyWarningPolicy(file *types.File, options *openOptions) error {
 			}
 		}
 		return &strictParsingError{msg: msg, errs: errs}
-	}
-	if options.ignoreWarnings {
-		file.Warnings = nil
+	case warnKeep:
 	}
 	return nil
 }
@@ -226,24 +230,15 @@ func panicError(path string, rec any) error {
 	return &types.CorruptedFileError{Path: path, Reason: "parser panic: " + detail}
 }
 
-// parseSafely calls p.Parse, converting a panic into a CorruptedFileError.
-func parseSafely(ctx context.Context, p FormatParser, r io.ReaderAt, size int64, path string) (file *types.File, err error) {
+// safely calls call, converting a panic into a CorruptedFileError for path.
+func safely[T any](path string, call func() (T, error)) (v T, err error) {
 	defer func() {
 		if rec := recover(); rec != nil {
-			file, err = nil, panicError(path, rec)
+			var zero T
+			v, err = zero, panicError(path, rec)
 		}
 	}()
-	return p.Parse(ctx, r, size, path)
-}
-
-// extractSafely calls e.ExtractArtwork, converting a panic into a CorruptedFileError.
-func extractSafely(ctx context.Context, e ArtworkExtractor, r io.ReaderAt, size int64, path string) (art []Artwork, err error) {
-	defer func() {
-		if rec := recover(); rec != nil {
-			art, err = nil, panicError(path, rec)
-		}
-	}()
-	return e.ExtractArtwork(ctx, r, size, path)
+	return call()
 }
 
 // parsedFile bundles the parsed data payload with the parser that produced it,
@@ -300,7 +295,7 @@ func openReader(ctx context.Context, r io.ReaderAt, size int64, path string) (*p
 	}
 
 	// Parse metadata; parsers check ctx at major boundaries.
-	file, err := parseSafely(ctx, parser, r, size, path)
+	file, err := safely(path, func() (*types.File, error) { return parser.Parse(ctx, r, size, path) })
 	if err != nil {
 		return nil, fmt.Errorf("parse %s: %w", format, err)
 	}
@@ -364,7 +359,7 @@ func (f *File) ExtractArtworkContext(ctx context.Context) ([]Artwork, error) {
 
 	artwork := []Artwork{}
 	if extractor, ok := f.parser.(ArtworkExtractor); ok {
-		extracted, err := extractSafely(ctx, extractor, f.reader, f.src.size, f.src.path)
+		extracted, err := safely(f.src.path, func() ([]Artwork, error) { return extractor.ExtractArtwork(ctx, f.reader, f.src.size, f.src.path) })
 		if err != nil {
 			return nil, fmt.Errorf("extract artwork: %w", err) // Not cached: a later call may retry.
 		}
@@ -420,11 +415,8 @@ func (f *File) filterOversized(artwork []Artwork) []Artwork {
 			kept = append(kept, a)
 			continue
 		}
-		if !f.ignoreWarnings {
-			f.Warnings = types.AppendWarning(f.Warnings, Warning{
-				Stage:   StageArtwork,
-				Message: fmt.Sprintf("artwork (%s, %d bytes) exceeds max size %d; skipped", a.MIMEType, len(a.Data), f.maxArtworkSize),
-			})
+		if f.warnings != warnIgnore {
+			types.Warn(&f.File, StageArtwork, 0, nil, fmt.Sprintf("artwork (%s, %d bytes) exceeds max size %d; skipped", a.MIMEType, len(a.Data), f.maxArtworkSize))
 		}
 	}
 	return kept
@@ -473,12 +465,7 @@ func OpenMany(ctx context.Context, paths ...string) ([]*File, error) {
 
 	for i, path := range paths {
 		g.Go(func() error {
-			defer func() {
-				if rec := recover(); rec != nil {
-					errs[i] = fmt.Errorf("%s: %w", path, panicError(path, rec))
-				}
-			}()
-			file, err := openWithContext(ctx, path)
+			file, err := safely(path, func() (*File, error) { return openWithContext(ctx, path) })
 			if err != nil {
 				errs[i] = fmt.Errorf("%s: %w", path, err)
 				return nil // Don't cancel siblings on individual file failure.

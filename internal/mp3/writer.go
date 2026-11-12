@@ -111,23 +111,23 @@ func (w *writer) PreservedDigest(ctx context.Context, src io.ReaderAt, size int6
 // InPlacePatch returns the new tag to write at offset 0 when the file has an
 // ID3v2 tag and the edited frames fit in its space. The patch is then
 // exactly what WriteFile writes before the audio.
-func (w *writer) InPlacePatch(ctx context.Context, src io.ReaderAt, size int64, edits *types.EditSet) (int64, []byte, bool, error) {
+func (w *writer) InPlacePatch(ctx context.Context, src io.ReaderAt, size int64, edits *types.EditSet) (*registry.Patch, error) {
 	if err := ctx.Err(); err != nil {
-		return 0, nil, false, err
+		return nil, err
 	}
 	sr := binutil.NewSafeReader(src, size, "")
 	edits, err := withID3v1Seed(ctx, sr, size, edits)
 	if err != nil {
-		return 0, nil, false, err
+		return nil, err
 	}
 	t, tag, err := buildTag(ctx, sr, size, edits)
 	if err != nil {
-		return 0, nil, false, err
+		return nil, err
 	}
 	if t.oldTotal == 0 || int64(len(tag)) != t.oldTotal {
-		return 0, nil, false, nil
+		return nil, nil
 	}
-	return 0, tag, true, nil
+	return &registry.Patch{Data: tag}, nil
 }
 
 // buildTag reads the source tag, refuses DRM, applies edits and serializes

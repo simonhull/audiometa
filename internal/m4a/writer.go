@@ -150,17 +150,17 @@ func (w *writer) AudioDigest(ctx context.Context, src io.ReaderAt, size int64) (
 
 // InPlacePatch returns the new moov and free atom to write over the old
 // moov and the free space after it, when the edited moov fits there.
-func (w *writer) InPlacePatch(ctx context.Context, src io.ReaderAt, size int64, edits *types.EditSet) (int64, []byte, bool, error) {
+func (w *writer) InPlacePatch(ctx context.Context, src io.ReaderAt, size int64, edits *types.EditSet) (*registry.Patch, error) {
 	if err := ctx.Err(); err != nil {
-		return 0, nil, false, err
+		return nil, err
 	}
 	l, err := planWrite(ctx, binutil.NewSafeReader(src, size, ""), size, edits)
 	if err != nil {
-		return 0, nil, false, err
+		return nil, err
 	}
 	region := l.rEnd - l.moovStart
 	if l.placement != placeFits || region > binutil.MaxAllocBytes {
-		return 0, nil, false, nil
+		return nil, nil
 	}
 	patch := make([]byte, 0, region)
 	patch = append(patch, l.moov...)
@@ -168,7 +168,7 @@ func (w *writer) InPlacePatch(ctx context.Context, src io.ReaderAt, size int64, 
 		patch = appendFreeHeader(patch, l.free)
 		patch = append(patch, make([]byte, region-int64(len(patch)))...)
 	}
-	return l.moovStart, patch, true, nil
+	return &registry.Patch{Off: l.moovStart, Data: patch}, nil
 }
 
 // planWrite reads the file's structure, refuses what cannot be written,
@@ -335,22 +335,8 @@ func readTopLevel(ctx context.Context, sr *binutil.SafeReader, size int64) (*top
 		if err := binutil.Canceled(ctx, i); err != nil {
 			return nil, err
 		}
-		var a *Atom
-		size32, err := sr.Read[uint32](off, "atom size")
+		a, err := readTopAtomHeader(sr, off, size)
 		if err != nil {
-			return nil, err
-		}
-		if size32 == 0 {
-			a = &Atom{Offset: off, Size: size - off}
-			if a.Size < 8 {
-				return nil, corrupted(sr, off, "truncated atom header")
-			}
-			var typ [4]byte
-			if err := sr.ReadAt(typ[:], off+4, "atom type"); err != nil {
-				return nil, err
-			}
-			a.Type = string(typ[:])
-		} else if a, err = readAtomHeader(sr, off, size); err != nil {
 			return nil, err
 		}
 		top.atoms = append(top.atoms, a)
@@ -415,12 +401,15 @@ func sampleEntryTypes(p []byte) ([]string, error) {
 		if len(p)-off < 8 {
 			return nil, fmt.Errorf("stsd entry %d overruns the atom", i)
 		}
-		size := binary.BigEndian.Uint32(p[off:])
-		if size < 8 || uint64(size) > uint64(len(p)-off) { //nolint:gosec // G115: off <= len(p) by the check above
-			return nil, fmt.Errorf("stsd entry %d has invalid size %d", i, size)
+		h, err := DecodeAtomHeader(p[off:], int64(len(p)-off), SizeZeroInvalid)
+		if err != nil {
+			if sizeErr, ok := errors.AsType[*AtomSizeError](err); ok {
+				return nil, fmt.Errorf("stsd entry %d has invalid size %d", i, sizeErr.Size)
+			}
+			return nil, fmt.Errorf("stsd entry %d overruns the atom", i)
 		}
-		out = append(out, string(p[off+4:off+8]))
-		off += int(size)
+		out = append(out, h.Type)
+		off += int(h.Size)
 	}
 	return out, nil
 }

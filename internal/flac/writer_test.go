@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"maps"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"github.com/simonhull/audiometa/internal/registry"
 	"github.com/simonhull/audiometa/internal/testbudget"
 	"github.com/simonhull/audiometa/internal/types"
+	"github.com/simonhull/audiometa/internal/vorbis"
 )
 
 func TestWriter_Registered(t *testing.T) {
@@ -78,12 +80,12 @@ func TestFBlock_CorpusVerbatim(t *testing.T) {
 func grow(t *testing.T, m *fmeta, n int) {
 	t.Helper()
 	i := slices.IndexFunc(m.blocks, func(b fblock) bool { return b.typ == blockTypeVorbisComment })
-	v, err := parseVC(m.blocks[i].payload)
+	c, err := vorbis.Split(t.Context(), m.blocks[i].payload)
 	if err != nil {
 		t.Fatal(err)
 	}
-	v.comments = append(v.comments, []byte("X="+strings.Repeat("x", n-2)))
-	m.blocks[i].payload = v.bytes()
+	c.Entries = append(c.Entries, []byte("X="+strings.Repeat("x", n-2)))
+	m.blocks[i].payload = c.Encode()
 }
 
 func TestFBlock_PaddingAbsorbsGrowth(t *testing.T) {
@@ -313,8 +315,8 @@ func TestVC_CreatedWhenMissing(t *testing.T) {
 			t.Errorf("%s: blocks %v, want %v", name, got, tc.want)
 		}
 		v := commentsOf(t, out)
-		if string(v.vendor) != "audiometa" || !slices.Equal(strs(v.comments), []string{"TITLE=New"}) {
-			t.Errorf("%s: vendor %q, comments %q", name, v.vendor, strs(v.comments))
+		if string(v.Vendor) != "audiometa" || !slices.Equal(strs(v.Entries), []string{"TITLE=New"}) {
+			t.Errorf("%s: vendor %q, comments %q", name, v.Vendor, strs(v.Entries))
 		}
 		if f := parseBytes(t, out); f.Tags.Title != "New" {
 			t.Errorf("%s: Title = %q", name, f.Tags.Title)
@@ -384,15 +386,15 @@ func TestWriter_InPlaceEqualsFullRewrite(t *testing.T) {
 	edits := editsFor(t, src, func(tg *types.Tags) { tg.Title = "Another title" }, types.ArtworkOp{Kind: types.ArtworkOpRemoveAll})
 	full := writeBytes(t, src, edits)
 
-	off, patch, ok, err := (&writer{}).InPlacePatch(context.Background(), bytes.NewReader(src), int64(len(src)), edits)
-	if err != nil || !ok {
-		t.Fatalf("InPlacePatch: ok %v, err %v", ok, err)
+	p, err := (&writer{}).InPlacePatch(context.Background(), bytes.NewReader(src), int64(len(src)), edits)
+	if err != nil || p == nil {
+		t.Fatalf("InPlacePatch = %+v, err %v; want a patch", p, err)
 	}
-	if off != 4 {
-		t.Errorf("off = %d, want 4", off)
+	if p.Off != 4 {
+		t.Errorf("off = %d, want 4", p.Off)
 	}
 	patched := slices.Clone(src)
-	copy(patched[off:], patch)
+	copy(patched[p.Off:], p.Data)
 	if !bytes.Equal(patched, full) {
 		t.Error("in-place result differs from WriteFile")
 	}
@@ -401,9 +403,9 @@ func TestWriter_InPlaceEqualsFullRewrite(t *testing.T) {
 func TestWriter_InPlaceNotOK(t *testing.T) {
 	src := simpleFLAC(8, "TITLE=T")
 	edits := editsFor(t, src, func(tg *types.Tags) { tg.Title = "A title that does not fit in the padding" })
-	_, _, ok, err := (&writer{}).InPlacePatch(context.Background(), bytes.NewReader(src), int64(len(src)), edits)
-	if ok || err != nil {
-		t.Errorf("ok %v, err %v; want false, nil", ok, err)
+	p, err := (&writer{}).InPlacePatch(context.Background(), bytes.NewReader(src), int64(len(src)), edits)
+	if p != nil || err != nil {
+		t.Errorf("InPlacePatch = %+v, err %v; want nil, nil", p, err)
 	}
 }
 
@@ -462,7 +464,7 @@ func TestWriter_Corpus(t *testing.T) {
 				t.Errorf("%s: blocks of type %d changed", name, typ)
 			}
 		}
-		if string(commentsOf(t, out).vendor) != string(commentsOf(t, src).vendor) {
+		if string(commentsOf(t, out).Vendor) != string(commentsOf(t, src).Vendor) {
 			t.Errorf("%s: vendor changed", name)
 		}
 		if n.audioStart != m.audioStart {
@@ -482,25 +484,50 @@ func TestWriter_DeleteEveryKey(t *testing.T) {
 	})
 	out := writeBytes(t, src, edits)
 	v := commentsOf(t, out)
-	if len(v.comments) != 0 || string(v.vendor) != "reference libFLAC 1.5.0 20250211" {
-		t.Errorf("vendor %q, comments %q; want the vendor only", v.vendor, strs(v.comments))
+	if len(v.Entries) != 0 || string(v.Vendor) != "reference libFLAC 1.5.0 20250211" {
+		t.Errorf("vendor %q, comments %q; want the vendor only", v.Vendor, strs(v.Entries))
 	}
 	if f := parseBytes(t, out); len(maps.Collect(f.Tags.All())) != 0 {
 		t.Errorf("raw tags left: %v", maps.Collect(f.Tags.All()))
 	}
 }
 
-func FuzzWriteFLAC(f *testing.F) {
-	f.Add(richFLAC())
-	f.Add(pictureFLAC())
-	f.Add(simpleFLAC(8, "TITLE=T"))
-	edits := &types.EditSet{
+// fuzzEdits is the edit FuzzWriteFLAC applies to every input.
+func fuzzEdits() *types.EditSet {
+	return &types.EditSet{
 		Keys:    []types.KeyEdit{{Key: "TITLE", Values: []string{"Fuzz"}}},
 		Fields:  []types.FieldEdit{{Field: types.FieldYear, Values: []string{"1999"}}},
 		Artwork: []types.ArtworkOp{{Kind: types.ArtworkOpRemove, Type: types.ArtworkFrontCover}, {Kind: types.ArtworkOpAdd, Art: types.Artwork{MIMEType: "image/png", Data: []byte("img"), Type: types.ArtworkFrontCover}}},
 		Orig:    &types.Tags{},
 		Final:   &types.Tags{},
 	}
+}
+
+// mustHex decodes s, which must be valid hex.
+func mustHex(s string) []byte {
+	b, err := hex.DecodeString(s)
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
+
+// TestWriteFile_ZeroLengthLastBlockAtEnd writes a file whose edit shrinks the last
+// PADDING block to nothing at the end of the file, then reads and writes the output again.
+func TestWriteFile_ZeroLengthLastBlockAtEnd(t *testing.T) {
+	src := mustHex("664c614300000000040000210e000000303030303030303030303030303001000000070000005449544c453d308100004030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030")
+	out := writeBytes(t, src, fuzzEdits())
+	metaOf(t, out)
+	writeBytes(t, out, fuzzEdits())
+}
+
+func FuzzWriteFLAC(f *testing.F) {
+	f.Add(richFLAC())
+	f.Add(pictureFLAC())
+	f.Add(simpleFLAC(8, "TITLE=T"))
+	// A write that leaves a zero-length last block at the end of an audio-less file.
+	f.Add(mustHex("664c614300000000040000210e000000303030303030303030303030303001000000070000005449544c453d308100004030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030"))
+	edits := fuzzEdits()
 	w := &writer{}
 	f.Fuzz(func(t *testing.T, data []byte) {
 		var out []byte
@@ -513,14 +540,14 @@ func FuzzWriteFLAC(f *testing.F) {
 		}
 		// A successful write is a well-formed FLAC with the same audio.
 		ctx := context.Background()
-		if off, patch, ok, err := w.InPlacePatch(ctx, bytes.NewReader(data), int64(len(data)), edits); err != nil {
+		if p, err := w.InPlacePatch(ctx, bytes.NewReader(data), int64(len(data)), edits); err != nil {
 			t.Fatalf("InPlacePatch failed after WriteFile succeeded: %v", err)
-		} else if ok {
-			if off < 0 || off+int64(len(patch)) > int64(len(data)) {
-				t.Fatalf("InPlacePatch at %d of %d bytes does not fit in %d bytes", off, len(patch), len(data))
+		} else if p != nil {
+			if p.Off < 0 || p.Off+int64(len(p.Data)) > int64(len(data)) {
+				t.Fatalf("InPlacePatch at %d of %d bytes does not fit in %d bytes", p.Off, len(p.Data), len(data))
 			}
 			patched := slices.Clone(data)
-			copy(patched[off:], patch)
+			copy(patched[p.Off:], p.Data)
 			if !bytes.Equal(patched, out) {
 				t.Fatal("in-place result differs from WriteFile")
 			}

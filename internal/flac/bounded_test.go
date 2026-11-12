@@ -27,8 +27,8 @@ func TestParse_CommentPastBlockIsNotRead(t *testing.T) {
 	if file.Tags.Title != "" {
 		t.Errorf("Title = %q, read from past the end of the block", file.Tags.Title)
 	}
-	if len(file.Warnings) != 1 || !strings.Contains(file.Warnings[0].Message, "runs past the end of the block") {
-		t.Errorf("warnings = %+v, want one saying the length runs past the end of the block", file.Warnings)
+	if len(file.Warnings) != 1 || !strings.Contains(file.Warnings[0].Message, "runs past the end of the data") {
+		t.Errorf("warnings = %+v, want one saying the length runs past the end of the data", file.Warnings)
 	}
 }
 
@@ -96,23 +96,5 @@ func TestExtractArtwork_PictureDataPastBlockIsNotRead(t *testing.T) {
 	parts = append(parts, make([]byte, claimed))
 	if art := extractTestArtwork(t, buildFLAC(parts...)); len(art) != 0 {
 		t.Errorf("got %d artworks of %d bytes, want 0", len(art), len(art[0].Data))
-	}
-}
-
-func TestDecodePicture(t *testing.T) {
-	payload := picturePayload(3, "image/png", []byte{1, 2, 3})
-	payload = append(payload, 9, 9) // bytes after the data are ignored
-	got, err := decodePicture(payload)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.MIMEType != "image/png" || got.Type != types.ArtworkFrontCover || got.Width != 1 || got.Height != 1 ||
-		string(got.Data) != "\x01\x02\x03" || got.Description != "" {
-		t.Errorf("decodePicture = %+v", got)
-	}
-	for cut := range len(payload) - 2 { // every truncation before the end of the data fails
-		if _, err := decodePicture(payload[:cut]); err == nil {
-			t.Errorf("cut at %d: no error", cut)
-		}
 	}
 }

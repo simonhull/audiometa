@@ -7,23 +7,24 @@ import (
 	"testing"
 
 	"github.com/simonhull/audiometa/internal/types"
+	"github.com/simonhull/audiometa/internal/vorbis"
 )
 
 func TestVC_VerbatimRoundTrip(t *testing.T) {
 	payload := vorbisCommentPayload("title=x", "Artist=A", "ARTIST=B", "no separator", "EMPTY=")
-	v, err := parseVC(payload)
+	v, err := vorbis.Split(t.Context(), payload)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(v.vendor) != "audiometa-test" || len(v.comments) != 5 {
-		t.Fatalf("vendor %q, %d comments", v.vendor, len(v.comments))
+	if string(v.Vendor) != "audiometa-test" || len(v.Entries) != 5 {
+		t.Fatalf("vendor %q, %d comments", v.Vendor, len(v.Entries))
 	}
-	if !bytes.Equal(v.bytes(), payload) {
-		t.Error("bytes() differs from the source payload")
+	if !bytes.Equal(v.Encode(), payload) {
+		t.Error("Encode() differs from the source payload")
 	}
 
 	withTail := append(slices.Clone(payload), 1, 2, 3)
-	if v, err := parseVC(withTail); err != nil || !bytes.Equal(v.bytes(), withTail) {
+	if v, err := vorbis.Split(t.Context(), withTail); err != nil || !bytes.Equal(v.Encode(), withTail) {
 		t.Errorf("trailing bytes not kept: err %v", err)
 	}
 }
@@ -37,8 +38,8 @@ func TestVC_Malformed(t *testing.T) {
 		"count overruns":  append(good[:4+len("audiometa-test")], 0xFF, 0xFF, 0xFF, 0x0F),
 		"comment cut":     good[:len(good)-1],
 	} {
-		if _, err := parseVC(p); err == nil {
-			t.Errorf("%s: no error", name)
+		if _, err := vorbis.Split(t.Context(), p); !errors.Is(err, vorbis.ErrTruncated) {
+			t.Errorf("%s: err = %v, want vorbis.ErrTruncated", name, err)
 		}
 	}
 }
@@ -48,7 +49,7 @@ func TestVC_Malformed(t *testing.T) {
 func writeComments(t *testing.T, mutate func(*types.Tags), comments ...string) []string {
 	t.Helper()
 	src := simpleFLAC(1024, comments...)
-	return strs(commentsOf(t, writeBytes(t, src, editsFor(t, src, mutate))).comments)
+	return strs(commentsOf(t, writeBytes(t, src, editsFor(t, src, mutate))).Entries)
 }
 
 func TestVC_KeyEditPreservesOriginalKeyCase(t *testing.T) {
@@ -145,8 +146,8 @@ func TestVC_EveryFieldWritable(t *testing.T) {
 	for f := range types.AllFields() {
 		v := &vcomment{}
 		edits := &types.EditSet{Orig: &types.Tags{}, Final: &types.Tags{Artist: "a", Artists: []string{"a"}}}
-		if err := v.applyField(types.FieldEdit{Field: f, Values: []string{"1"}}, edits); err != nil || len(v.comments) == 0 {
-			t.Errorf("%s: err %v, %d comments", f, err, len(v.comments))
+		if err := v.applyField(types.FieldEdit{Field: f, Values: []string{"1"}}, edits); err != nil || len(v.Entries) == 0 {
+			t.Errorf("%s: err %v, %d comments", f, err, len(v.Entries))
 		}
 	}
 }
@@ -212,8 +213,8 @@ func TestVC_VendorPreserved(t *testing.T) {
 		tg.Title = ""
 		tg.Set("NEW", "x")
 	}))
-	if v := commentsOf(t, out); string(v.vendor) != "audiometa-test" {
-		t.Errorf("vendor = %q", v.vendor)
+	if v := commentsOf(t, out); string(v.Vendor) != "audiometa-test" {
+		t.Errorf("vendor = %q", v.Vendor)
 	}
 }
 
@@ -238,14 +239,14 @@ func TestVC_NoCrossFieldWrites(t *testing.T) {
 
 func TestVC_PartialOnError(t *testing.T) {
 	good := vorbisCommentPayload("TITLE=A", "ARTIST=B")
-	v, err := parseVC(good[:len(good)-1]) // the second comment is cut
+	v, err := vorbis.Split(t.Context(), good[:len(good)-1]) // the second comment is cut
 	if err == nil {
 		t.Fatal("no error")
 	}
-	if v == nil || string(v.vendor) != "audiometa-test" || len(v.comments) != 1 || string(v.comments[0]) != "TITLE=A" {
+	if string(v.Vendor) != "audiometa-test" || len(v.Entries) != 1 || string(v.Entries[0]) != "TITLE=A" {
 		t.Errorf("partial result = %+v, want the vendor and the first comment", v)
 	}
-	if v, err := parseVC(nil); err == nil || v == nil {
-		t.Errorf("empty payload: v %v, err %v; want a non-nil empty result and an error", v, err)
+	if v, err := vorbis.Split(t.Context(), nil); err == nil || v.Vendor != nil || v.Entries != nil {
+		t.Errorf("empty payload: v %+v, err %v; want an empty result and an error", v, err)
 	}
 }

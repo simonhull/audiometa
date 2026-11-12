@@ -101,25 +101,3 @@ func TestArtworkExtractorInterface(t *testing.T) {
 		t.Errorf("ExtractArtwork() returned %d artworks, want 1", len(artworks))
 	}
 }
-
-func TestRealParsersRegistered(t *testing.T) {
-	// Verify that the real parsers are registered for known formats.
-	// Note: This test depends on init() functions in other packages.
-	// In a standalone test run, parsers may not be registered.
-	// This test validates the interface, not the registrations.
-
-	formats := []types.Format{
-		types.FormatFLAC,
-		types.FormatMP3,
-		types.FormatM4A,
-		types.FormatM4B,
-		types.FormatOgg,
-	}
-
-	for _, format := range formats {
-		parser := Get(format)
-		// parser may be nil if tests run in isolation without init()
-		// If registered, the type is guaranteed to be FormatParser by the interface
-		_ = parser
-	}
-}

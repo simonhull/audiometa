@@ -481,11 +481,11 @@ func boundTags(format Format) *Tags {
 	return t
 }
 
-// snapshotFields returns fieldValues for every field, keyed by field.
+// snapshotFields returns valuesOf for every field, keyed by field.
 func snapshotFields(t *Tags) map[Field][]string {
 	out := map[Field][]string{}
 	for f := range AllFields() {
-		out[f] = fieldValues(t, f)
+		out[f] = valuesOf(t, f)
 	}
 	return out
 }
@@ -745,7 +745,7 @@ func TestMerge_NeverConflicts(t *testing.T) {
 						if !held {
 							want.Set(key, mergeValue(b.Field, 2))
 						}
-						if got, w := fieldValues(tags, b.Field), fieldValues(want, b.Field); !slices.Equal(got, w) {
+						if got, w := valuesOf(tags, b.Field), valuesOf(want, b.Field); !slices.Equal(got, w) {
 							t.Errorf("held=%v: %s = %q, want %q", held, b.Field, got, w)
 						}
 					}

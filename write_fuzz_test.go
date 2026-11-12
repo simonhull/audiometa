@@ -225,25 +225,25 @@ func checkInPlace(ctx context.Context, t *testing.T, tw registry.TagWriter, file
 		return
 	}
 	var (
-		off   int64
-		patch []byte
-		fits  bool
-		err   error
+		p   *registry.Patch
+		err error
 	)
 	testbudget.Check(t, testbudget.For(testbudget.Write, file.Format), len(data), "InPlacePatch", func() {
-		off, patch, fits, err = patchSafely(ctx, ip, bytes.NewReader(data), int64(len(data)), "fuzz", edits)
+		p, err = safely("fuzz", func() (*registry.Patch, error) {
+			return ip.InPlacePatch(ctx, bytes.NewReader(data), int64(len(data)), edits)
+		})
 	})
 	if err != nil {
 		t.Fatalf("%v: InPlacePatch failed after WriteToContext succeeded: %v", file.Format, err)
 	}
-	if !fits {
+	if p == nil {
 		return
 	}
-	if off < 0 || off+int64(len(patch)) > int64(len(data)) {
-		t.Fatalf("%v: InPlacePatch at %d of %d bytes does not fit in %d bytes", file.Format, off, len(patch), len(data))
+	if p.Off < 0 || p.Off+int64(len(p.Data)) > int64(len(data)) {
+		t.Fatalf("%v: InPlacePatch at %d of %d bytes does not fit in %d bytes", file.Format, p.Off, len(p.Data), len(data))
 	}
 	patched := slices.Clone(data)
-	copy(patched[off:], patch)
+	copy(patched[p.Off:], p.Data)
 	if !bytes.Equal(patched, out) {
 		t.Fatalf("%v: patching in place differs from the full rewrite", file.Format)
 	}
