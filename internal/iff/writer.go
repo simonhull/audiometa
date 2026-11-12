@@ -317,12 +317,7 @@ func (rw *rewrite) pieces() ([]piece, int, error) {
 			}
 		case rw.isDS64(i):
 			ds64At = len(pieces)
-			b := make([]byte, chunkHeaderSize+8)
-			copyHeader(b, ch, rw.c.order)
-			pieces = append(pieces, piece{b: b}, piece{off: ch.data() + 8, n: ch.size - 8})
-			if ch.size%2 == 1 {
-				pieces = append(pieces, piece{b: []byte{0}})
-			}
+			pieces = append(pieces, rw.ds64Pieces(ch)...)
 		default:
 			pieces = append(pieces, verbatim(ch)...)
 		}
@@ -339,6 +334,18 @@ func (rw *rewrite) pieces() ([]piece, int, error) {
 		}
 	}
 	return pieces, ds64At, nil
+}
+
+// ds64Pieces is the ds64 chunk of an RF64 file: a rewritten header, which emit fills in,
+// then the payload after the size fields, copied verbatim.
+func (rw *rewrite) ds64Pieces(ch chunk) []piece {
+	b := make([]byte, chunkHeaderSize+8)
+	copyHeader(b, ch, rw.c.order)
+	pieces := []piece{{b: b}, {off: ch.data() + 8, n: ch.size - 8}}
+	if ch.size%2 == 1 {
+		pieces = append(pieces, piece{b: []byte{0}})
+	}
+	return pieces
 }
 
 // id3Pieces is the ID3 chunk of the new form: the old one, the new tag, or

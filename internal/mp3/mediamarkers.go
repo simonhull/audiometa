@@ -75,6 +75,25 @@ func parseMediaMarkers(doc string) ([]types.Chapter, error) {
 	return chapters, nil
 }
 
+// parseMillis converts a 1-3 digit fraction of a second to milliseconds ("5" is 500). A
+// missing fraction is 0.
+func parseMillis(frac string, present bool) (int, error) {
+	if !present {
+		return 0, nil
+	}
+	if len(frac) < 1 || len(frac) > 3 {
+		return 0, errNotDigits
+	}
+	millis, err := parseDigits(frac, len(frac))
+	if err != nil {
+		return 0, err
+	}
+	for range 3 - len(frac) {
+		millis *= 10
+	}
+	return millis, nil
+}
+
 // parseMarkerTime parses "M:SS[.f]" or "H:MM:SS[.f]" (1-3 fraction digits)
 // using integer arithmetic only. Minutes (or hours) may exceed 59.
 func parseMarkerTime(s string) (time.Duration, error) {
@@ -107,17 +126,9 @@ func parseMarkerTime(s string) (time.Duration, error) {
 	if err != nil || secs > 59 {
 		return bad()
 	}
-	var millis int
-	if hasFrac {
-		if len(frac) < 1 || len(frac) > 3 {
-			return bad()
-		}
-		if millis, err = parseDigits(frac, len(frac)); err != nil {
-			return bad()
-		}
-		for range 3 - len(frac) {
-			millis *= 10
-		}
+	millis, err := parseMillis(frac, hasFrac)
+	if err != nil {
+		return bad()
 	}
 
 	total := time.Duration(secs)*time.Second + time.Duration(millis)*time.Millisecond

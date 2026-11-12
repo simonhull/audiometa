@@ -8,25 +8,23 @@ const (
 )
 
 // MIMEType detects the image MIME type from magic bytes, or returns "" when unrecognized.
-//
-//nolint:gocyclo // Flat dispatch on image magic bytes; complexity = number of supported formats.
 func MIMEType(data []byte) string {
-	switch {
-	case len(data) < 4:
-		return ""
-	case data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF:
-		return MIMEJPEG
-	case data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4E && data[3] == 0x47:
-		return MIMEPNG
-	case data[0] == 0x47 && data[1] == 0x49 && data[2] == 0x46:
-		return "image/gif"
-	case data[0] == 0x42 && data[1] == 0x4D:
-		return "image/bmp"
-	case len(data) >= 12 && string(data[0:4]) == "RIFF" && string(data[8:12]) == "WEBP":
-		return "image/webp"
-	default:
+	if len(data) < 4 {
 		return ""
 	}
+	switch head := string(data[:4]); {
+	case head[:3] == "\xff\xd8\xff":
+		return MIMEJPEG
+	case head == "\x89PNG":
+		return MIMEPNG
+	case head[:3] == "GIF":
+		return "image/gif"
+	case head[:2] == "BM":
+		return "image/bmp"
+	case head == "RIFF" && len(data) >= 12 && string(data[8:12]) == "WEBP":
+		return "image/webp"
+	}
+	return ""
 }
 
 // Dimensions extracts width and height from image data of the given MIME type.

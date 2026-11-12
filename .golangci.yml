@@ -223,7 +223,7 @@ linters:
         path: ^internal/(flac|m4a|mp3|ogg|iff)/
         source: '^func init\(\)'
       # The examples are linear demos read top to bottom; splitting main hides the walkthrough.
-      - linters: [funlen, gocognit]
+      - linters: [funlen, gocognit, cyclop]
         path: ^examples/
       # The examples are CLI demos whose output is fmt.Print*.
       - linters: [forbidigo]
