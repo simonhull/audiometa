@@ -141,12 +141,13 @@ func encodeID3v1(tags *types.Tags, old [id3v1Size]byte) [id3v1Size]byte {
 	return b
 }
 
-// putLatin1 writes s into dst as ISO-8859-1, cut to len(dst); the rest of dst
-// is left as it is (NUL). A rune above U+00FF is written as '?'.
+// putLatin1 writes s into dst as ISO-8859-1, cut to len(dst) and at the first
+// NUL, which ends a field; the rest of dst is left as it is (NUL). A rune above
+// U+00FF is written as '?'.
 func putLatin1(dst []byte, s string) {
 	i := 0
 	for _, r := range s {
-		if i == len(dst) {
+		if i == len(dst) || r == 0 {
 			return
 		}
 		if r > 0xFF {

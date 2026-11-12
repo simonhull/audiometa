@@ -53,6 +53,11 @@ func TestEncodeID3v1(t *testing.T) {
 			want: id3v1Tag{Title: "??"},
 		},
 		{
+			name: "a NUL ends the field",
+			tags: types.Tags{Title: "ab\x00cd"},
+			want: id3v1Tag{Title: "ab"},
+		},
+		{
 			name: "a cut never splits a character",
 			tags: types.Tags{Album: strings.Repeat("é", 31)},
 			want: id3v1Tag{Album: strings.Repeat("é", 30)},

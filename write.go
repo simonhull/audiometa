@@ -37,7 +37,8 @@ var lookupWriter = registry.GetWriter
 // The original file is never modified and f is unchanged: the edits stay
 // pending, and calling WriteTo again writes identical bytes. With no pending
 // edits the output is byte-identical to the input. To replace the file on
-// disk, use [Write].
+// disk, use [Write]. WriteTo always keeps an MP3's ID3v1 trailer; use [Write]
+// with [WithID3v1] to update or remove it.
 //
 // WriteTo reads f.Tags and f.Chapters without synchronization; do not modify
 // them while it runs. The artwork edit methods may be called concurrently.
@@ -90,7 +91,8 @@ func (f *File) WriteToContext(ctx context.Context, w io.Writer) (int64, error) {
 // [File.WriteTo]: through f.Tags and the artwork edit methods. Because the
 // file is read inside Write, the edits always apply to what is on disk now,
 // not to a copy read earlier. If edit leaves no pending edits, Write returns
-// nil and does not touch the file. The File passed to edit is only valid
+// nil and does not touch the file, unless [WithID3v1] asks for an MP3's ID3v1
+// trailer to change. The File passed to edit is only valid
 // during the call; do not keep it.
 //
 // The replacement is atomic: the new contents are written to a temporary
@@ -173,9 +175,7 @@ func WriteContext(ctx context.Context, path string, edit func(f *File) error, op
 	if err != nil {
 		return err
 	}
-	if c, ok := tw.(registry.ID3v1Configurer); ok {
-		tw = c.WithID3v1(o.id3v1)
-	}
+	tw = withID3v1Mode(tw, o.id3v1)
 	if err := edit(f); err != nil {
 		return err
 	}
@@ -183,16 +183,8 @@ func WriteContext(ctx context.Context, path string, edit func(f *File) error, op
 	if err != nil {
 		return err
 	}
-	if edits.Empty() {
-		// A trailer mode can still have work to do.
-		tc, ok := tw.(registry.TrailerChanger)
-		if !ok {
-			return nil
-		}
-		changed, err := safely(target, func() (bool, error) { return tc.ChangesTrailer(ctx, f.reader, f.src.size, edits) })
-		if err != nil || !changed {
-			return err
-		}
+	if idle, err := f.leavesFileAsIs(ctx, tw, edits); idle || err != nil {
+		return err
 	}
 
 	job := &writeJob{
@@ -208,6 +200,30 @@ func WriteContext(ctx context.Context, path string, edit func(f *File) error, op
 		}
 	}
 	return job.writeAtomic(ctx)
+}
+
+// withID3v1Mode returns tw set to apply mode to an ID3v1 trailer, or tw itself
+// when its format has none.
+func withID3v1Mode(tw registry.TagWriter, mode ID3v1Mode) registry.TagWriter {
+	if c, ok := tw.(registry.ID3v1Configurer); ok {
+		return c.WithID3v1(mode)
+	}
+	return tw
+}
+
+// leavesFileAsIs reports whether a write of edits would change nothing: there
+// are no tag edits and the writer, if it handles an ID3v1 trailer mode, would
+// not change the trailer either.
+func (f *File) leavesFileAsIs(ctx context.Context, tw registry.TagWriter, edits *types.EditSet) (bool, error) {
+	if !edits.Empty() {
+		return false, nil
+	}
+	tc, ok := tw.(registry.TrailerChanger)
+	if !ok {
+		return true, nil
+	}
+	changed, err := safely(f.src.path, func() (bool, error) { return tc.ChangesTrailer(ctx, f.reader, f.src.size, edits) })
+	return !changed, err
 }
 
 // writeJob is one Write call after the edits have been collected.
