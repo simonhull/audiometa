@@ -33,7 +33,7 @@ func noHang(t *testing.T, fifo string, fn func() error) error {
 		if w, err := os.OpenFile(fifo, os.O_WRONLY|syscall.O_NONBLOCK, 0); err == nil {
 			_ = w.Close()
 		}
-		<-done
+		_ = <-done
 		t.Fatal("blocked opening a FIFO")
 		return nil
 	}

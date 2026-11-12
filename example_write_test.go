@@ -48,7 +48,7 @@ func ExampleWrite() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 	path := filepath.Join(dir, "book.mp3")
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		log.Fatal(err)
@@ -87,7 +87,7 @@ func ExampleFile_ReplaceArtwork() {
 	}
 
 	path := copyToTemp("testdata/sample.flac")
-	defer os.RemoveAll(filepath.Dir(path))
+	defer func() { _ = os.RemoveAll(filepath.Dir(path)) }()
 
 	err = audiometa.Write(path, func(f *audiometa.File) error {
 		return f.ReplaceArtwork(audiometa.Artwork{
@@ -132,7 +132,7 @@ func ExampleTags_SetNamed() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 	path := filepath.Join(dir, "song.mp3")
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		log.Fatal(err)
@@ -164,7 +164,7 @@ func ExampleTags_SetNamed() {
 // from the edited tags instead.
 func ExampleWithID3v1() {
 	path := copyToTemp("testdata/sample_v24.mp3")
-	defer os.RemoveAll(filepath.Dir(path))
+	defer func() { _ = os.RemoveAll(filepath.Dir(path)) }()
 	before, err := os.Stat(path)
 	if err != nil {
 		log.Fatal(err)
@@ -190,7 +190,7 @@ func ExampleWithID3v1() {
 // canceled leaves the original file untouched.
 func ExampleWriteContext() {
 	path := copyToTemp("testdata/sample.flac")
-	defer os.RemoveAll(filepath.Dir(path))
+	defer func() { _ = os.RemoveAll(filepath.Dir(path)) }()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -226,7 +226,7 @@ func ExampleWriteContext() {
 // instead of being replaced by a rewritten copy.
 func ExampleWithInPlace() {
 	path := copyToTemp("testdata/sample.flac")
-	defer os.RemoveAll(filepath.Dir(path))
+	defer func() { _ = os.RemoveAll(filepath.Dir(path)) }()
 	before, err := os.Stat(path)
 	if err != nil {
 		log.Fatal(err)
@@ -258,7 +258,7 @@ func ExampleWithInPlace() {
 // Write otherwise sets to the time of the write.
 func ExampleWithPreserveModTime() {
 	path := copyToTemp("testdata/sample.mp3")
-	defer os.RemoveAll(filepath.Dir(path))
+	defer func() { _ = os.RemoveAll(filepath.Dir(path)) }()
 	old := time.Date(2020, time.January, 2, 3, 4, 5, 0, time.UTC)
 	if err := os.Chtimes(path, old, old); err != nil {
 		log.Fatal(err)
@@ -312,7 +312,7 @@ func ExampleFile_AddArtwork() {
 	}
 
 	path := copyToTemp("testdata/sample.flac")
-	defer os.RemoveAll(filepath.Dir(path))
+	defer func() { _ = os.RemoveAll(filepath.Dir(path)) }()
 	err = audiometa.Write(path, func(f *audiometa.File) error {
 		return f.AddArtwork(audiometa.Artwork{
 			Data:        covers[0].Data,
@@ -345,7 +345,7 @@ func ExampleFile_AddArtwork() {
 // others.
 func ExampleFile_RemoveArtwork() {
 	path := copyToTemp("testdata/sample.flac")
-	defer os.RemoveAll(filepath.Dir(path))
+	defer func() { _ = os.RemoveAll(filepath.Dir(path)) }()
 
 	err := audiometa.Write(path, func(f *audiometa.File) error {
 		f.RemoveArtwork(audiometa.ArtworkFrontCover) // not in the file: not an error
@@ -370,7 +370,7 @@ func ExampleFile_RemoveArtwork() {
 // ExampleFile_RemoveAllArtwork removes every picture, whatever its type.
 func ExampleFile_RemoveAllArtwork() {
 	path := copyToTemp("testdata/sample.mp3")
-	defer os.RemoveAll(filepath.Dir(path))
+	defer func() { _ = os.RemoveAll(filepath.Dir(path)) }()
 
 	err := audiometa.Write(path, func(f *audiometa.File) error {
 		f.RemoveAllArtwork()
@@ -416,7 +416,7 @@ func ExampleTags_Set() {
 // cleared with them.
 func ExampleTags_Delete() {
 	path := copyToTemp("testdata/sample.flac")
-	defer os.RemoveAll(filepath.Dir(path))
+	defer func() { _ = os.RemoveAll(filepath.Dir(path)) }()
 
 	err := audiometa.Write(path, func(f *audiometa.File) error {
 		f.Tags.Delete("TITLE", "ENCODER")

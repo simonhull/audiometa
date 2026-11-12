@@ -63,7 +63,6 @@ func TestParse_Success(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpFile.Name())
 
 	if _, err := tmpFile.Write(data); err != nil {
 		t.Fatal(err)
@@ -130,9 +129,10 @@ func TestParse_UnknownBrand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpFile.Name())
 
-	tmpFile.Write(data)
+	if _, err := tmpFile.Write(data); err != nil {
+		t.Fatal(err)
+	}
 	tmpFile.Close()
 
 	// Open file for parsing
@@ -169,9 +169,10 @@ func TestParse_NoMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpFile.Name())
 
-	tmpFile.Write(data)
+	if _, err := tmpFile.Write(data); err != nil {
+		t.Fatal(err)
+	}
 	tmpFile.Close()
 
 	// Open file for parsing
@@ -214,9 +215,10 @@ func TestParse_WithArtwork_Integration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpFile.Name())
 
-	tmpFile.Write(fileData)
+	if _, err := tmpFile.Write(fileData); err != nil {
+		t.Fatal(err)
+	}
 	tmpFile.Close()
 
 	// Use high-level audiometa API

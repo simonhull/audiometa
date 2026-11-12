@@ -244,7 +244,6 @@ func TestParse_Success(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpFile.Name())
 
 	if _, err := tmpFile.Write(data); err != nil {
 		t.Fatal(err)
@@ -338,7 +337,6 @@ func TestParse_InvalidMagic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpFile.Name())
 
 	if _, err := tmpFile.Write(data); err != nil {
 		t.Fatal(err)
@@ -379,7 +377,6 @@ func TestParse_EmptyTags(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpFile.Name())
 
 	if _, err := tmpFile.Write(data); err != nil {
 		t.Fatal(err)
@@ -427,7 +424,6 @@ func TestParseOpus_Success(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpFile.Name())
 
 	if _, err := tmpFile.Write(data); err != nil {
 		t.Fatal(err)
@@ -517,7 +513,6 @@ func TestParseOpus_BitrateEstimation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpFile.Name())
 
 	if _, err := tmpFile.Write(data); err != nil {
 		t.Fatal(err)
@@ -578,7 +573,6 @@ func TestOggParser_BothCodecs(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer os.Remove(tmpFile.Name())
 
 			if _, err := tmpFile.Write(tt.data); err != nil {
 				t.Fatal(err)

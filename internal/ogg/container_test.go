@@ -145,7 +145,7 @@ func readPage(sr *binutil.SafeReader, offset int64) (*oggPage, int64, error) {
 
 	page := &oggPage{
 		HeaderType:      headerType,
-		GranulePosition: int64(granule), //nolint:gosec // G115: RFC 3533 granule position is a signed field; all-ones (-1) means no packet ends on the page
+		GranulePosition: int64(granule),
 		SerialNumber:    serial,
 		SequenceNumber:  sequence,
 		Data:            data,

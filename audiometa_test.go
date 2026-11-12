@@ -44,9 +44,10 @@ func TestParse_M4B(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpFile.Name())
 
-	tmpFile.Write(data)
+	if _, err := tmpFile.Write(data); err != nil {
+		t.Fatal(err)
+	}
 	tmpFile.Close()
 
 	// Use the new public API
@@ -74,10 +75,11 @@ func TestParse_UnsupportedFormat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpFile.Name())
 
 	// Write some random data
-	tmpFile.WriteString("not a valid audio file")
+	if _, err := tmpFile.WriteString("not a valid audio file"); err != nil {
+		t.Fatal(err)
+	}
 	tmpFile.Close()
 
 	_, err = audiometa.Open(tmpFile.Name())

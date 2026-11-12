@@ -171,6 +171,18 @@ linters:
       - path: _test\.go
         linters: [gosec]
         text: "G304"
+      # More gosec findings that are about production code and do not apply to tests: fixture
+      # builders narrow small known constants (G115); the oracle tests run fixed external tools
+      # (G204) and open repository fixture paths (G703, as for G304); the permission tests chmod
+      # on purpose (G302); seeded fixtures need no CSPRNG (G404); and G602 flags fixed-size
+      # fixture arrays.
+      - path: _test\.go
+        linters: [gosec]
+        text: "G115|G204|G302|G404|G602|G703"
+      # Fixtures encode with binary.Write into a bytes.Buffer, which cannot fail.
+      - path: _test\.go
+        linters: [errcheck]
+        text: "binary\\.Write"
       - path: _test\.go
         linters:
           - staticcheck

@@ -26,7 +26,6 @@ func TestExtractArtwork_WithJPEGCover(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpFile.Name())
 
 	if _, err := tmpFile.Write(fileData); err != nil {
 		t.Fatal(err)
@@ -143,7 +142,6 @@ func TestExtractArtwork_WithPNGCover(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpFile.Name())
 
 	if _, err := tmpFile.Write(fileData); err != nil {
 		t.Fatal(err)
@@ -198,9 +196,10 @@ func TestExtractArtwork_MultipleImages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpFile.Name())
 
-	tmpFile.Write(fileData)
+	if _, err := tmpFile.Write(fileData); err != nil {
+		t.Fatal(err)
+	}
 	tmpFile.Close()
 
 	f, err := os.Open(tmpFile.Name())
@@ -281,9 +280,10 @@ func TestExtractArtwork_NoArtwork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpFile.Name())
 
-	tmpFile.Write(fileData)
+	if _, err := tmpFile.Write(fileData); err != nil {
+		t.Fatal(err)
+	}
 	tmpFile.Close()
 
 	f, err := os.Open(tmpFile.Name())
@@ -316,9 +316,10 @@ func TestExtractArtwork_NoMoovAtom(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpFile.Name())
 
-	tmpFile.Write(fileData)
+	if _, err := tmpFile.Write(fileData); err != nil {
+		t.Fatal(err)
+	}
 	tmpFile.Close()
 
 	f, err := os.Open(tmpFile.Name())
@@ -354,9 +355,10 @@ func TestExtractArtwork_CorruptedImageData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpFile.Name())
 
-	tmpFile.Write(fileData)
+	if _, err := tmpFile.Write(fileData); err != nil {
+		t.Fatal(err)
+	}
 	tmpFile.Close()
 
 	f, err := os.Open(tmpFile.Name())

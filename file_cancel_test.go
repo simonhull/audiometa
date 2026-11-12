@@ -80,7 +80,6 @@ func TestOpenMany_Cancellation(t *testing.T) {
 // alongside errors for the failed ones.
 func TestOpenMany_PartialFailure(t *testing.T) {
 	validPath := createTestM4BFile(t)
-	defer os.Remove(validPath)
 
 	paths := []string{
 		validPath,

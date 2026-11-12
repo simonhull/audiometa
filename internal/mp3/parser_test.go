@@ -18,9 +18,10 @@ func TestParse_ValidMP3(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpFile.Name())
 
-	tmpFile.Write(data)
+	if _, err := tmpFile.Write(data); err != nil {
+		t.Fatal(err)
+	}
 	tmpFile.Close()
 
 	// Open file for parsing
@@ -71,7 +72,6 @@ func TestParse_EmptyFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpFile.Name())
 	tmpFile.Close()
 
 	// Open file for parsing
