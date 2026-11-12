@@ -206,6 +206,12 @@ linters:
       # an upper bound, not a length guarantee.
       - linters: [makezero]
         path: _test\.go
+      # Internal packages and the CLI describe malformed input and misuse with one-off
+      # messages that carry the offsets and sizes involved; nothing outside matches them
+      # (the root package's exported sentinels and typed errors are the contract), so a
+      # sentinel per message would add names without adding a way to handle the error.
+      - linters: [err113]
+        path: ^(internal|cmd)/
       # The CLI is the program edge: it prints the error it receives, and wrapping would change
       # the text users and scripts see.
       - linters: [wrapcheck]

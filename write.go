@@ -328,7 +328,7 @@ func (j *writeJob) writeInPlace(ctx context.Context) (done bool, err error) {
 		return false, nil
 	}
 	if p.Off < 0 || p.Off+int64(len(p.Data)) > j.f.src.size {
-		return true, fmt.Errorf("in-place patch [%d, %d) outside file of %d bytes", p.Off, p.Off+int64(len(p.Data)), j.f.src.size)
+		return true, fmt.Errorf("in-place patch [%d, %d) outside file of %d bytes", p.Off, p.Off+int64(len(p.Data)), j.f.src.size) //nolint:err113 // a registered writer that breaks its contract is a bug, not an error callers match
 	}
 	verify, err := j.inPlaceVerifier(ctx, p)
 	if err != nil {
