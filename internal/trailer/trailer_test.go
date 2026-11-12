@@ -54,7 +54,7 @@ func id3v2WithFooter() []byte {
 	synchsafe := []byte{byte(n >> 21 & 0x7F), byte(n >> 14 & 0x7F), byte(n >> 7 & 0x7F), byte(n & 0x7F)}
 	header := append([]byte{'I', 'D', '3', 4, 0, 0x10}, synchsafe...)
 	footer := append([]byte{'3', 'D', 'I', 4, 0, 0x10}, synchsafe...)
-	return slices.Concat(header, bytes.Repeat([]byte{0}, n), footer)
+	return slices.Concat(header, make([]byte, n), footer)
 }
 
 func TestStart(t *testing.T) {

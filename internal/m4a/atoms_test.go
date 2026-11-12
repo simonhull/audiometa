@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -123,8 +124,7 @@ func TestFindAtom_Found(t *testing.T) {
 	atom2 := createMockAtom("moov", []byte{0x01, 0x02, 0x03})
 	atom3 := createMockAtom("mdat", []byte{0x04, 0x05})
 
-	data := append(atom1, atom2...)
-	data = append(data, atom3...)
+	data := slices.Concat(atom1, atom2, atom3)
 
 	sr := audiobinary.NewSafeReader(bytes.NewReader(data), int64(len(data)), "test.m4b")
 
@@ -147,7 +147,7 @@ func TestFindAtom_NotFound(t *testing.T) {
 	atom1 := createMockAtom("free", []byte{0x00})
 	atom2 := createMockAtom("mdat", []byte{0x01})
 
-	data := append(atom1, atom2...)
+	data := slices.Concat(atom1, atom2)
 
 	sr := audiobinary.NewSafeReader(bytes.NewReader(data), int64(len(data)), "test.m4b")
 

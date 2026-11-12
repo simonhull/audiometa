@@ -121,7 +121,7 @@ func TestWTag_V22ConvertsToV24(t *testing.T) {
 	if tag[3] != 4 {
 		t.Errorf("version byte = %d, want 4", tag[3])
 	}
-	out := append(tag, src[wt.oldTotal:]...)
+	out := slices.Concat(tag, src[wt.oldTotal:])
 	before, after := parseBytes(t, src).Tags, parseBytes(t, out).Tags
 	if after.Title != before.Title || after.Artist != before.Artist || after.Album != before.Album {
 		t.Errorf("tags %q/%q/%q, want %q/%q/%q", after.Title, after.Artist, after.Album, before.Title, before.Artist, before.Album)

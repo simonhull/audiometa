@@ -46,7 +46,7 @@ func TestParse_ITunesTextFrames(t *testing.T) {
 
 func TestParse_ChapterTitles(t *testing.T) {
 	long := strings.Repeat("x", 200)
-	sub := func(v byte, id string, payload []byte) []byte { return id3Frame(v, id, payload) }
+	sub := id3Frame
 	chap := func(v byte, id string, subs ...[]byte) []byte {
 		return id3Frame(v, "CHAP", chapFrameBody(id, subs...))
 	}

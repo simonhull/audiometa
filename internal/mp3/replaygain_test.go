@@ -2,6 +2,7 @@ package mp3
 
 import (
 	"bytes"
+	"slices"
 	"testing"
 
 	"github.com/simonhull/audiometa/internal/types"
@@ -25,7 +26,7 @@ func TestParse_ReplayGainFromTXXX(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			data := append(tt.tag, bytes.Repeat(mpegFrame, 4)...)
+			data := slices.Concat(tt.tag, bytes.Repeat(mpegFrame, 4))
 			f, err := (&parser{}).Parse(t.Context(), bytes.NewReader(data), int64(len(data)), "x.mp3")
 			if err != nil {
 				t.Fatal(err)

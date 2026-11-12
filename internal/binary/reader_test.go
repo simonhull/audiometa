@@ -1,6 +1,7 @@
 package binary
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -227,7 +228,7 @@ func TestSafeReader_Window_MissRefills(t *testing.T) {
 	if cr.calls != 2 {
 		t.Errorf("calls = %d, want 2", cr.calls)
 	}
-	if string(buf) != string(data[off:off+4]) {
+	if !bytes.Equal(buf, data[off:off+4]) {
 		t.Errorf("wrong bytes after refill")
 	}
 }
@@ -247,7 +248,7 @@ func TestSafeReader_Window_LargeReadBypasses(t *testing.T) {
 	if cr.calls != 2 {
 		t.Fatalf("calls after big read = %d, want 2", cr.calls)
 	}
-	if string(big) != string(data[10:10+len(big)]) {
+	if !bytes.Equal(big, data[10:10+len(big)]) {
 		t.Error("big read returned wrong bytes")
 	}
 	if err := sr.ReadAt(small, 100, "small again"); err != nil {
@@ -320,7 +321,7 @@ func TestSafeReader_Window_NearEOF(t *testing.T) {
 	if err := sr.ReadAt(buf, off, "tail"); err != nil {
 		t.Fatal(err)
 	}
-	if string(buf) != string(data[off:]) {
+	if !bytes.Equal(buf, data[off:]) {
 		t.Error("tail bytes wrong")
 	}
 	if err := sr.ReadAt(buf[:4], off+2, "tail2"); err != nil {
@@ -364,7 +365,7 @@ func TestPrefetched(t *testing.T) {
 		if err != nil || n != tt.n {
 			t.Fatalf("%s: ReadAt = %d, %v", tt.name, n, err)
 		}
-		if string(buf) != string(data[tt.off:tt.off+int64(tt.n)]) {
+		if !bytes.Equal(buf, data[tt.off:tt.off+int64(tt.n)]) {
 			t.Errorf("%s: wrong bytes", tt.name)
 		}
 		if got := cr.calls - before; got != tt.wantCalls {

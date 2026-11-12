@@ -1,6 +1,7 @@
 package picture
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"math"
@@ -102,7 +103,7 @@ func TestEncodeRoundTrip(t *testing.T) {
 			t.Fatalf("Decode: %v", err)
 		}
 		if got.Type != a.Type || got.MIMEType != a.MIMEType || got.Description != a.Description ||
-			got.Width != a.Width || got.Height != a.Height || string(got.Data) != string(a.Data) {
+			got.Width != a.Width || got.Height != a.Height || !bytes.Equal(got.Data, a.Data) {
 			t.Errorf("round trip = %+v, want %+v", got, a)
 		}
 	}

@@ -29,8 +29,8 @@ func TestFieldParity(t *testing.T) {
 	artists := func(tg *types.Tags) any { return tg.Artists }
 	genres := func(tg *types.Tags) any { return tg.Genres }
 
-	text1 := func(typ string, v ...string) []byte { return ilstText(typ, v...) }
-	free := func(name string, v ...string) []byte { return ilstFreeform(name, v...) }
+	text1 := ilstText
+	free := ilstFreeform
 
 	tests := []struct {
 		name  string

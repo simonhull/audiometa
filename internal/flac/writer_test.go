@@ -464,7 +464,7 @@ func TestWriter_Corpus(t *testing.T) {
 				t.Errorf("%s: blocks of type %d changed", name, typ)
 			}
 		}
-		if string(commentsOf(t, out).Vendor) != string(commentsOf(t, src).Vendor) {
+		if !bytes.Equal(commentsOf(t, out).Vendor, commentsOf(t, src).Vendor) {
 			t.Errorf("%s: vendor changed", name)
 		}
 		if n.audioStart != m.audioStart {

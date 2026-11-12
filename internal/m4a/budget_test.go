@@ -47,7 +47,7 @@ func TestParseChunkOffsets_BoundedByAtomAndSamples(t *testing.T) {
 	} {
 		stbl := createMockAtom("stbl", fullAtom(tc.typ, []byte(tc.body)))
 		// Zeros after the atom let a table that claims 1<<20 entries fit in the file.
-		data := append(stbl, make([]byte, 9<<20)...)
+		data := slices.Concat(stbl, make([]byte, 9<<20))
 		sr := audiobinary.NewSafeReader(bytes.NewReader(data), int64(len(data)), "t.m4b")
 		atom, err := readAtomHeader(sr, 0, int64(len(stbl)))
 		if err != nil {

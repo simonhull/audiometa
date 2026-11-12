@@ -193,7 +193,7 @@ linters:
       # Examples are simple demos; they can use log.Fatalf and don't need
       # the same complexity gates as library code.
       - linters: [gocritic]
-        path: examples/
+        path: ^examples/|example[a-z_]*_test\.go$
         text: "exitAfterDefer"
       - linters: [gocyclo]
         path: examples/

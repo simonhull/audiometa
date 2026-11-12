@@ -54,7 +54,6 @@ func TestOpenMany_Cancellation(t *testing.T) {
 	paths := make([]string, 5)
 	for i := range paths {
 		paths[i] = createTestM4BFile(t)
-		defer os.Remove(paths[i])
 	}
 
 	// Create a context that's already canceled

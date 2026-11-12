@@ -128,8 +128,7 @@ func TestMvhdDuration(t *testing.T) {
 
 func sampleEntryV01(version uint16, channels uint16, rate uint32) []byte {
 	b := binary.BigEndian.AppendUint16(nil, version) // version
-	b = append(b, 0, 0)                              // revision
-	b = append(b, 0, 0, 0, 0)                        // vendor
+	b = append(b, 0, 0, 0, 0, 0, 0)                  // revision, vendor
 	b = binary.BigEndian.AppendUint16(b, channels)
 	b = append(b, 0, 16, 0, 0, 0, 0)               // sample size, compression id, packet size
 	b = binary.BigEndian.AppendUint32(b, rate<<16) // 16.16 rate
@@ -282,10 +281,9 @@ func TestParseTechnicalInfo_Lossless(t *testing.T) {
 
 // alacCookie is an "alac" child box: FullBox header plus ALACSpecificConfig.
 func alacCookie(bitDepth, channels byte, rate uint32) []byte {
-	cfg := u32be(4096)                                   // frameLength
-	cfg = append(cfg, 0, bitDepth, 40, 10, 14, channels) // compatibleVersion, bitDepth, pb, mb, kb, numChannels
-	cfg = append(cfg, 0, 0)                              // maxRun
-	cfg = append(cfg, u32be(0, 0, rate)...)              // maxFrameBytes, avgBitRate, sampleRate
+	cfg := u32be(4096)                                         // frameLength
+	cfg = append(cfg, 0, bitDepth, 40, 10, 14, channels, 0, 0) // compatibleVersion, bitDepth, pb, mb, kb, numChannels, maxRun
+	cfg = append(cfg, u32be(0, 0, rate)...)                    // maxFrameBytes, avgBitRate, sampleRate
 	return fullAtom("alac", cfg)
 }
 

@@ -144,7 +144,7 @@ func TestReadEndian(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ReadEndian failed: %v", err)
 		}
-		// 0x01020304 = 16909060
+		// The bytes 01 02 03 04 read as 16909060.
 		if val != 16909060 {
 			t.Errorf("ReadEndian(BigEndian) = %d, want 16909060", val)
 		}
@@ -155,7 +155,7 @@ func TestReadEndian(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ReadEndian failed: %v", err)
 		}
-		// 0x04030201 = 67305985
+		// The bytes 04 03 02 01 read as 67305985.
 		if val != 67305985 {
 			t.Errorf("ReadEndian(LittleEndian) = %d, want 67305985", val)
 		}
