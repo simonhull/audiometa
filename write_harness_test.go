@@ -209,7 +209,9 @@ func audioDigest(t *testing.T, format audiometa.Format, data []byte) [32]byte {
 		return m4aAudioDigest(t, data)
 	case audiometa.FormatWAV, audiometa.FormatAIFF:
 		return iffAudioDigest(t, data)
-	case audiometa.FormatUnknown, audiometa.FormatOgg, audiometa.FormatOpus:
+	case audiometa.FormatOgg, audiometa.FormatOpus:
+		return oggAudioDigest(t, data)
+	case audiometa.FormatUnknown:
 		t.Fatalf("no audio oracle for %s", format)
 		return [32]byte{}
 	default:

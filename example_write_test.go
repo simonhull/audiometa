@@ -14,9 +14,9 @@ import (
 	"github.com/simonhull/audiometa"
 )
 
-// ExampleFile_WriteTo shows the error a format without a writer returns.
-// WriteTo streams the edited file to any io.Writer; the original is never
-// modified.
+// ExampleFile_WriteTo streams the edited file to any io.Writer; the original
+// is never modified. Chapters are read-only: an edit to them is refused with
+// ErrUnsupportedWrite.
 func ExampleFile_WriteTo() {
 	f, err := audiometa.Open("testdata/sample.ogg")
 	if err != nil {
@@ -25,9 +25,16 @@ func ExampleFile_WriteTo() {
 	defer f.Close()
 
 	f.Tags.Title = "New Title"
+	var buf bytes.Buffer
+	n, err := f.WriteTo(&buf)
+	fmt.Println(err == nil, n == int64(buf.Len()))
+
+	f.Chapters = append(f.Chapters, audiometa.Chapter{Title: "Extra"})
 	_, err = f.WriteTo(io.Discard)
 	fmt.Println(errors.Is(err, audiometa.ErrUnsupportedWrite))
-	// Output: true
+	// Output:
+	// true true
+	// true
 }
 
 // ExampleWrite sets the title of an MP3 file and replaces the file

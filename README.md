@@ -7,7 +7,7 @@
 audiometa is a fast, format-agnostic audio metadata library for Go. One call reads tags,
 technical audio properties, chapters and embedded artwork from FLAC, MP3, M4A/M4B,
 Ogg Vorbis, Opus, WAV and AIFF files, and it writes tags and artwork back to every one of
-those formats except Ogg Vorbis and Opus, with first-class support for audiobooks.
+those formats, with first-class support for audiobooks.
 
 ## Why audiometa?
 There are several really great tagging libraries for Go. With special thanks to David Howden and his excellent [Tag](https://github.com/dhowden/tag) Library.
@@ -257,13 +257,13 @@ and structure, not the audio. A nil result does not cover edit-specific failures
 | MP3         | ✓    | ✓     | ✓       | ✓        | ✓              |
 | M4A         | ✓    | ✓     | ✓       | ✓        | ✓              |
 | M4B         | ✓    | ✓     | ✓       | ✓        | ✓              |
-| Ogg Vorbis  | ✓    | -     | ✓       | ✓        | ✓              |
-| Opus        | ✓    | -     | ✓       | ✓        | ✓              |
+| Ogg Vorbis  | ✓    | ✓     | ✓       | ✓        | ✓              |
+| Opus        | ✓    | ✓     | ✓       | ✓        | ✓              |
 | WAV         | ✓    | ✓     | ✓       | ✓        | ✓              |
 | AIFF        | ✓    | ✓     | ✓       | ✓        | ✓              |
 
-Ogg Vorbis and Opus writing is not supported yet: their comment header shares pages with the codec
-setup header, so a writer must re-page the stream. WAV covers
+Ogg Vorbis and Opus writing replaces the comment header and re-pages it; chained and multiplexed
+files (more than one logical stream) are refused. WAV covers
 RIFF, its big-endian twin RIFX, and RF64; AIFF covers AIFF and AIFF-C. Their artwork and
 chapters come from the ID3v2 chunk. See [Writing metadata](#writing-metadata) for what writing does
 and does not touch.
@@ -309,7 +309,7 @@ for _, chapter := range file.Chapters {
 
 ## Writing metadata
 
-MP3, FLAC and M4A/M4B files can be edited. `Write` opens the file, hands it to your
+Every supported format can be edited. `Write` opens the file, hands it to your
 callback, and atomically replaces it:
 
 ```go
@@ -349,7 +349,7 @@ Match these with `errors.Is`; they are always wrapped with detail.
 
 | Error | When |
 |-------|------|
-| `ErrUnsupportedWrite` | the format has no writer (Ogg Vorbis, Opus), an edit cannot be represented in the format, or chapters were changed |
+| `ErrUnsupportedWrite` | an edit cannot be represented in the format, chapters were changed, or the file cannot be rewritten (a chained or multiplexed Ogg file, a fragmented MP4) |
 | `ErrDRMProtected` | the file is encrypted or DRM-protected; such files are never rewritten |
 | `ErrTagTooLarge` | the metadata would exceed a limit of the format (16 MiB for a FLAC metadata block, 256 MiB for an ID3v2 tag) |
 | `ErrConflictingEdits` | a typed field and the raw key it is read from were changed to different values, `Artist` disagrees with the first of `Artists`, or `Year` disagrees with the year of `Date` |
@@ -414,8 +414,17 @@ Match these with `errors.Is`; they are always wrapped with detail.
   M4A cover art has no picture type (only front cover or other).
 - **DRM.** Encrypted files (FairPlay, CENC, AAX, ID3 encrypted frames) return
   `ErrDRMProtected`.
-- **Not writable yet:** Ogg Vorbis and Opus return `ErrUnsupportedWrite`, as do fragmented
-  MP4 and faststart M4A files whose chunk offsets would pass 4 GiB.
+- **Ogg Vorbis and Opus.** Edits go to the comment header (the `OpusTags` or Vorbis comment
+  packet), which is laid out on fresh pages together with the unchanged Vorbis setup packet.
+  Every audio page keeps its payload, granule position and flags byte for byte; when the header
+  takes a different number of pages the later pages are renumbered and checksummed, nothing else.
+  The vendor string and the data after the comments (Opus padding and binary data) are kept, and no
+  padding is added. Pictures are `METADATA_BLOCK_PICTURE` comments. An edit that leaves the comment
+  packet the same length (including Opus edits absorbed by existing padding) is a candidate for
+  `WithInPlace`: only the header pages are rewritten, in place. A file that holds more than one
+  logical stream (chained or multiplexed) returns `ErrUnsupportedWrite`.
+- **Not writable:** fragmented MP4 and faststart M4A files whose chunk offsets would pass 4 GiB
+  return `ErrUnsupportedWrite`.
 
 Typed fields a format has no native place for return `ErrUnsupportedWrite`:
 
@@ -544,8 +553,8 @@ audiometa/
 │   ├── mp3/          # MP3 parser and writer (ID3v2, ID3v1, MPEG frames)
 │   ├── iff/          # WAV and AIFF parser and writer
 │   ├── m4a/          # M4A/M4B parser and writer
-│   ├── ogg/          # Ogg Vorbis/Opus parser
-│   ├── vorbis/       # Shared Vorbis comment and chapter parsing
+│   ├── ogg/          # Ogg Vorbis/Opus parser and writer
+│   ├── vorbis/       # Shared Vorbis comment parsing, editing and chapters
 │   ├── imagemeta/    # Image type and dimension sniffing
 │   ├── picture/      # FLAC PICTURE block encoding and decoding
 │   ├── replaygain/   # ReplayGain values from raw tags
@@ -588,7 +597,7 @@ mise install
 # Fast gate: build, race and 32-bit tests, lint, vet, gofmt, tidy, generated code
 mise run check
 
-# Everything CI runs (needs network, ffmpeg, ffprobe and flac)
+# Everything CI runs (needs network, ffmpeg, ffprobe and flac; CI also installs ogginfo and opusinfo)
 mise run ci
 
 # Run all tests (including the godoc examples)

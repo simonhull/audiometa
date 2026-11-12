@@ -566,5 +566,5 @@ func FuzzWriteFLAC(f *testing.F) {
 // commentValue returns the first value of key in data's only VORBIS_COMMENT block.
 func commentValue(t *testing.T, data []byte, key string) (string, bool) {
 	t.Helper()
-	return commentsOf(t, data).first(key)
+	return commentsOf(t, data).First(key)
 }

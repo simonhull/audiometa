@@ -20,6 +20,7 @@ type codec struct {
 	headerPackets int    // header packets before the audio (Vorbis I §4.2, RFC 7845 §3)
 	idName        string // names the identification header in errors
 	commentName   string // names the comment header in warnings
+	commentMagic  string // starts the comment packet, before the Vorbis comment body
 	parseID       func(packet []byte, file *types.File) error
 	parseComments func(ctx context.Context, packet []byte, file *types.File) error
 }
@@ -30,6 +31,7 @@ var (
 		headerPackets: 3, // identification, comment and setup
 		idName:        "Vorbis identification header",
 		commentName:   "Vorbis comment header",
+		commentMagic:  "\x03" + vorbisMagic,
 		parseID:       parseVorbisIdentification,
 		parseComments: parseVorbisComment,
 	}
@@ -38,6 +40,7 @@ var (
 		headerPackets: 2, // OpusHead and OpusTags
 		idName:        "OpusHead header",
 		commentName:   "OpusTags header",
+		commentMagic:  "OpusTags",
 		parseID:       parseOpusHead,
 		parseComments: parseOpusTags,
 	}

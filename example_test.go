@@ -1,6 +1,7 @@
 package audiometa_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -510,7 +511,7 @@ func ExampleCanWrite() {
 	fmt.Println(audiometa.CanWrite(audiometa.FormatOpus))
 	// Output:
 	// true
-	// false
+	// true
 }
 
 // Ask whether Write would accept this file, before the user has edited it.
@@ -526,15 +527,30 @@ func ExampleFile_Writable() {
 	// Output: <nil>
 }
 
-// Writable names the reason a file is refused. Ogg Vorbis has no writer.
+// Writable names the reason a file is refused. This copy of an M4A file is
+// marked as encrypted.
 func ExampleFile_WritableContext() {
-	file, err := audiometa.Open("testdata/sample.ogg")
+	data, err := os.ReadFile("testdata/sample.m4a")
+	if err != nil {
+		log.Fatal(err)
+	}
+	dir, err := os.MkdirTemp("", "audiometa-example")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	path := filepath.Join(dir, "protected.m4a")
+	if err := os.WriteFile(path, bytes.ReplaceAll(data, []byte("mp4a"), []byte("enca")), 0o600); err != nil {
+		log.Fatal(err)
+	}
+
+	file, err := audiometa.Open(path)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer file.Close()
 
 	err = file.WritableContext(context.Background())
-	fmt.Println(errors.Is(err, audiometa.ErrUnsupportedWrite))
+	fmt.Println(errors.Is(err, audiometa.ErrDRMProtected))
 	// Output: true
 }

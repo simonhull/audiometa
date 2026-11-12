@@ -11,8 +11,8 @@ import (
 // no file: a file of a writable format can still be refused by
 // [File.WriteTo] and [Write], and [File.Writable] says whether one will be.
 //
-// Today FLAC, MP3, M4A, M4B, WAV and AIFF are writable; Ogg Vorbis, Opus and
-// [FormatUnknown] are not.
+// Today FLAC, MP3, M4A, M4B, Ogg Vorbis, Opus, WAV and AIFF are writable;
+// [FormatUnknown] is not.
 func CanWrite(format Format) bool {
 	return lookupWriter(format) != nil
 }

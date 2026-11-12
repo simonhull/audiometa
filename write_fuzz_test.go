@@ -48,6 +48,11 @@ var fuzzWritablePaths = []string{
 	"testdata/sample.aifc",
 	"testdata/sample_ext.wav",
 	"testdata/sample_float.wav",
+	"testdata/sample.ogg",
+	"testdata/sample_retagged.ogg",
+	"testdata/sample.opus",
+	"testdata/sample_retagged.opus",
+	"testdata/bench/book.opus",
 }
 
 // fuzzPNG is a 1x1 PNG for the artwork operations.
@@ -304,6 +309,9 @@ func checkLanded(t *testing.T, format Format, data []byte, orig, final *Tags, ed
 	}
 
 	touched := map[string]bool{}
+	if len(edits.Artwork) > 0 {
+		touched["METADATA_BLOCK_PICTURE"] = true // Ogg Vorbis and Opus store pictures as a comment
+	}
 	for _, e := range edits.Keys {
 		touched[e.Key] = true
 		touched[landedKey(format, data, e.Key)] = true

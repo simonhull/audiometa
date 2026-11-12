@@ -1,10 +1,11 @@
-// Package ogg parses Ogg Vorbis and Opus files.
+// Package ogg parses and rewrites the tags of Ogg Vorbis and Opus files.
 //
 // It walks Ogg pages, reassembles the identification and comment header
 // packets, reads Vorbis comments (including CHAPTER comments and
 // METADATA_BLOCK_PICTURE artwork) and derives duration from the last granule
 // position of the first logical stream. It registers itself for
-// [types.FormatOgg] and [types.FormatOpus].
+// [types.FormatOgg] and [types.FormatOpus], as a parser, an audio digester and
+// a tag writer that replaces the comment header and re-pages it.
 package ogg
 
 import (
@@ -64,8 +65,17 @@ const pageStreamBuffer = 16 << 10
 // shared is true, the page next returns and its Data and Lacing are only valid
 // until the following call.
 func newPageStream(r io.ReaderAt, size int64, path string, shared bool) *pageStream {
+	return newPageStreamAt(r, size, path, shared, 0)
+}
+
+// newPageStreamAt is like [newPageStream] for the pages that start at offset
+// off, which must be a page boundary. Offsets in errors and in the stream's
+// own position stay file offsets.
+func newPageStreamAt(r io.ReaderAt, size int64, path string, shared bool, off int64) *pageStream {
+	off = min(max(off, 0), size)
 	return &pageStream{
-		br:     bufio.NewReaderSize(io.NewSectionReader(r, 0, size), pageStreamBuffer),
+		br:     bufio.NewReaderSize(io.NewSectionReader(r, off, size-off), pageStreamBuffer),
+		off:    off,
 		size:   size,
 		path:   path,
 		shared: shared,

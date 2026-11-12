@@ -180,6 +180,8 @@ func TestAudioDigest_UnchangedByWrite(t *testing.T) {
 		"testdata/sample.mp3", "testdata/sample_v24.mp3", "testdata/sample.flac",
 		"testdata/sample.m4a", "testdata/sample.m4b", "testdata/sample_faststart.m4a",
 		"testdata/sample.wav", "testdata/sample_id3.wav", "testdata/sample_rf64.wav", "testdata/sample.aiff",
+		"testdata/sample.ogg", "testdata/sample_retagged.ogg",
+		"testdata/sample.opus", "testdata/sample_retagged.opus", "testdata/bench/book.opus",
 	} {
 		t.Run(path, func(t *testing.T) {
 			t.Parallel()

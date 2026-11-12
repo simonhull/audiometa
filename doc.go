@@ -5,7 +5,7 @@
 // from FLAC, MP3, M4A/M4B, Ogg Vorbis, Opus, WAV and AIFF files. The format is
 // detected from the file's contents, so callers never pick a parser.
 // [File.WriteTo], [Write] and [WriteContext] save edited tags and artwork;
-// every format but Ogg Vorbis and Opus is writable.
+// every supported format is writable.
 //
 // # Quick Start
 //
@@ -68,7 +68,12 @@
 //     chunk offset is shifted; fragmented and DRM-protected files are
 //     refused.
 //   - Ogg Vorbis and Opus: Vorbis comments, METADATA_BLOCK_PICTURE artwork
-//     and CHAPTER comments.
+//     and CHAPTER comments. Writing replaces the comment header and lays it
+//     out on new pages (for Vorbis together with the unchanged setup header);
+//     every audio page keeps its payload, and the pages after the header are
+//     renumbered only when the header takes a different number of pages.
+//     Chapters are not edited, and a file with more than one logical stream
+//     (chained or multiplexed) is refused.
 //   - WAV (RIFF, RIFX and RF64) and AIFF (AIFF and AIFF-C): an ID3v2 chunk,
 //     read as an MP3's tag is, with its APIC artwork and CHAP chapters, and
 //     the format's own text, the WAV LIST/INFO chunk or the AIFF NAME, AUTH,
@@ -96,10 +101,11 @@
 // [File.WriteToContext] stop early when a [context.Context] is done. By default
 // the file is replaced atomically; [WithInPlace] patches the metadata region in
 // place when the edit fits, and [WithPreserveModTime] keeps the modification
-// time. Ogg Vorbis and Opus files cannot be written yet: both return
+// time. Ogg Vorbis and Opus files are written by replacing their comment
+// header; a chained or multiplexed Ogg file is refused with
 // [ErrUnsupportedWrite]. [CanWrite] tells whether a format has a writer, and
 // [File.Writable] whether a particular file would be refused (encrypted,
-// fragmented, damaged), without writing.
+// fragmented, chained, damaged), without writing.
 //
 // # Artwork
 //

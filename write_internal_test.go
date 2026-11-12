@@ -215,7 +215,10 @@ func tinyPNG(t *testing.T) []byte {
 }
 
 func TestWriteTo_NoWriterIsUnsupported(t *testing.T) {
-	const sampleOgg = "testdata/sample.ogg" // Ogg Vorbis has no writer
+	const sampleOgg = "testdata/sample.ogg"
+	prev := lookupWriter
+	lookupWriter = func(Format) registry.TagWriter { return nil } // a format without a writer
+	t.Cleanup(func() { lookupWriter = prev })
 	f := openSample(t, sampleOgg)
 	n, err := f.WriteTo(io.Discard)
 	if !errors.Is(err, ErrUnsupportedWrite) || n != 0 {
