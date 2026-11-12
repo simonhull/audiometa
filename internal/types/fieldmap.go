@@ -235,6 +235,41 @@ func NativeTextBindings(format Format) []FieldBinding {
 	return out
 }
 
+// DeriveFields sets every typed field of t that format binds from the raw tags
+// of t, the single rule by which a parser fills them: a single-valued field
+// takes the first non-empty value of the highest-precedence key (the order of
+// [FieldBindings]) whose values decode, and a slice field takes all values of
+// that one key. A value that does not decode (a year outside the format's
+// range, an M4A movement index of 0, a total the number key does not carry)
+// falls through to the next key. A field no key yields keeps its value, so
+// fields that a parser fills from outside the raw tags (ID3v1, the comment
+// frames) survive.
+//
+// A parser records raw tags only, then calls DeriveFields once.
+func DeriveFields(t *Tags, format Format) {
+	for _, b := range bindingsFor(format) {
+		deriveField(t, format, b)
+	}
+}
+
+// deriveField sets the field of b from the highest-precedence key of b that
+// decodes, skipping the empty values that lead a single-valued field's key. It
+// leaves the field alone when no key decodes.
+func deriveField(t *Tags, format Format, b FieldBinding) {
+	slice := sliceField(t, b.Field) != nil
+	for _, k := range b.Keys {
+		values := t.raw[k]
+		if !slice {
+			for len(values) > 0 && values[0] == "" {
+				values = values[1:]
+			}
+		}
+		if decodeField(t, format, b.Field, k, values) {
+			return
+		}
+	}
+}
+
 // decodeField sets field f of t from the raw values of key, decoding them the
 // way format's parser does. It reports whether the values yielded a field
 // value; when they do not (an out-of-range year, an M4A ©mvi of "0"), t is
@@ -266,16 +301,33 @@ func decodeField(t *Tags, format Format, f Field, key string, values []string) b
 	return true
 }
 
-// decodeYear sets Year from the leading four characters of value. MP3 accepts
-// only 1900-2100, as its parser does; other formats accept any positive year.
-// The range must match validID3Year in internal/mp3, which this package cannot
-// import and which the MP3 writer uses to refuse other years.
+// decodeYear sets Year from the leading four characters of value. ID3 formats
+// accept only 1900-2100, and M4A requires four leading digits; other formats
+// accept any positive year. The ID3 range must match validID3Year in
+// internal/mp3, which this package cannot import and which the MP3 writer uses
+// to refuse other years.
 func decodeYear(t *Tags, format Format, value string) bool {
+	if (format == FormatM4A || format == FormatM4B) && !startsWithFourDigits(value) {
+		return false
+	}
 	year := leadingYear(value)
 	if year <= 0 || (usesID3(format) && (year < 1900 || year > 2100)) {
 		return false
 	}
 	t.Year = year
+	return true
+}
+
+// startsWithFourDigits reports whether s begins with four ASCII digits.
+func startsWithFourDigits(s string) bool {
+	if len(s) < 4 {
+		return false
+	}
+	for i := range 4 {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
 	return true
 }
 
