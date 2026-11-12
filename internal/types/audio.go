@@ -26,6 +26,19 @@ type AudioInfo struct {
 	VBR        bool
 }
 
+const (
+	bitsPerByte = 8
+	perKilo     = 1000 // Hz per kHz and bit/s per kbit/s
+
+	channelsStereo     = 2
+	channelsQuad       = 4
+	channelsSurround51 = 6
+	channelsSurround71 = 8
+
+	decibelsPerDecade = 20 // a gain in dB is 20 times the base-10 logarithm of an amplitude ratio
+	logBase           = 10
+)
+
 // AverageBitrate returns the average bitrate, in bits per second, of n bytes
 // of audio lasting d. It returns 0 when n or d is not positive, or when the
 // result exceeds math.MaxInt32, which no audio stream reaches.
@@ -33,7 +46,7 @@ func AverageBitrate(n int64, d time.Duration) int {
 	if n <= 0 || d <= 0 {
 		return 0
 	}
-	bps := float64(n) * 8 / d.Seconds()
+	bps := float64(n) * bitsPerByte / d.Seconds()
 	if bps > math.MaxInt32 {
 		return 0
 	}
@@ -61,7 +74,7 @@ type ReplayGainInfo struct {
 // Example output: "FLAC 44.1kHz 16-bit stereo".
 func (a AudioInfo) String() string {
 	// Format sample rate
-	sampleRate := fmt.Sprintf("%.1fkHz", float64(a.SampleRate)/1000)
+	sampleRate := fmt.Sprintf("%.1fkHz", float64(a.SampleRate)/perKilo)
 
 	// Format bit depth
 	bitDepth := ""
@@ -77,7 +90,7 @@ func (a AudioInfo) String() string {
 	if a.Lossless {
 		quality = "lossless"
 	} else if a.Bitrate > 0 {
-		quality = fmt.Sprintf("%dkbps", a.Bitrate/1000)
+		quality = fmt.Sprintf("%dkbps", a.Bitrate/perKilo)
 		if a.VBR {
 			quality += " VBR"
 		}
@@ -108,13 +121,13 @@ func channelDescription(channels int) string {
 		return ""
 	case 1:
 		return "mono"
-	case 2:
+	case channelsStereo:
 		return "stereo"
-	case 4:
+	case channelsQuad:
 		return "quad"
-	case 6:
+	case channelsSurround51:
 		return "5.1"
-	case 8:
+	case channelsSurround71:
 		return "7.1"
 	default:
 		return fmt.Sprintf("%dch", channels)
@@ -178,7 +191,7 @@ func (a AudioInfo) ApplyReplayGain(amplitude float64, mode string) float64 {
 		gain, peak = a.ReplayGain.TrackGain, a.ReplayGain.TrackPeak
 	}
 
-	linearGain := pow10(gain / 20.0)
+	linearGain := pow10(gain / decibelsPerDecade)
 
 	// Limit the gain (not the sample) so the stream's peak cannot clip.
 	if peak > 0 && linearGain*peak > 1.0 {
@@ -190,7 +203,7 @@ func (a AudioInfo) ApplyReplayGain(amplitude float64, mode string) float64 {
 
 // pow10 returns 10^x.
 func pow10(x float64) float64 {
-	return math.Pow(10, x)
+	return math.Pow(logBase, x)
 }
 
 // ShortCodecName returns a short, human-readable codec name.

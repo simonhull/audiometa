@@ -95,12 +95,15 @@ func walkAtoms(sr *binary.SafeReader, offset, end int64, depth int, out *printer
 	}
 }
 
+// minAtomHeader is the size of the shortest atom header: a 4-byte size and a 4-byte type.
+const minAtomHeader = 8
+
 // decodeHeaderAt decodes the header of the atom at offset, whose container
 // ends at end, with the library's decoder.
 func decodeHeaderAt(sr *binary.SafeReader, offset, end int64, zero m4a.SizeZero) (m4a.AtomHeader, error) {
 	var buf [16]byte
 	n := int(min(end-offset, int64(len(buf))))
-	if n >= 8 { // anything shorter cannot hold a header, which the decoder reports
+	if n >= minAtomHeader { // anything shorter cannot hold a header, which the decoder reports
 		if err := sr.ReadAt(buf[:n], offset, "atom header"); err != nil {
 			return m4a.AtomHeader{}, err
 		}

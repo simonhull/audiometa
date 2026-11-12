@@ -104,6 +104,7 @@ linters:
       # specifications name; a constant per number reads worse than the spec table beside it.
       ignored-files:
         - internal/(flac|m4a|mp3|ogg|iff|vorbis|imagemeta|picture|trailer)/
+        - internal/types/format\.go
     nakedret:
       max-func-lines: 30
     nestif:
@@ -223,7 +224,7 @@ linters:
         path: ^internal/(flac|m4a|mp3|ogg|iff)/
         source: '^func init\(\)'
       # The examples are linear demos read top to bottom; splitting main hides the walkthrough.
-      - linters: [funlen, gocognit, cyclop]
+      - linters: [funlen, gocognit, cyclop, mnd]
         path: ^examples/
       # The examples are CLI demos whose output is fmt.Print*.
       - linters: [forbidigo]

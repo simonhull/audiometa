@@ -291,7 +291,7 @@ func (t *Tags) Delete(keys ...string) {
 func BindFormat(t *Tags, format Format) {
 	t.format = format
 	for _, b := range bindingsFor(format) {
-		if len(b.Keys) >= 2 {
+		if len(b.Keys) > 1 {
 			deriveField(t, format, b)
 		}
 	}

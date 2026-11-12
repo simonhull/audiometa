@@ -129,6 +129,6 @@ func tagRows(t *audiometa.Tags) []row {
 
 // formatTime renders d as HH:MM:SS.mmm.
 func formatTime(d time.Duration) string {
-	ms := max(d.Milliseconds(), 0)
-	return fmt.Sprintf("%02d:%02d:%02d.%03d", ms/3600000, ms/60000%60, ms/1000%60, ms%1000)
+	d = max(d, 0)
+	return fmt.Sprintf("%02d:%02d:%02d.%03d", d/time.Hour, d%time.Hour/time.Minute, d%time.Minute/time.Second, d%time.Second/time.Millisecond)
 }
