@@ -224,6 +224,10 @@ linters:
       # sentinel per message would add names without adding a way to handle the error.
       - linters: [err113]
         path: ^(internal|cmd)/
+      # Test data repeats literals (fixture names, tag values, frame IDs) on purpose: a table row
+      # reads best with its value inline, and a constant per literal hides the data.
+      - linters: [goconst]
+        path: _test\.go$
       # Table-driven tests repeat one shape over different data; extracting the shape would
       # hide the table.
       - linters: [dupl]
