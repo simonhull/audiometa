@@ -254,5 +254,6 @@ func writeLengthPrefixed(h hash.Hash, b []byte) {
 }
 
 func init() {
+	registry.RegisterWriter(types.FormatOgg, &writer{codec: vorbisCodec})
 	registry.RegisterWriter(types.FormatOpus, &writer{codec: opusCodec})
 }

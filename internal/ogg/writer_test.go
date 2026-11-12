@@ -24,10 +24,27 @@ func testWriter(t testing.TB) *writer {
 	return w
 }
 
+// writerFor returns the registered writer for the codec of src's first page:
+// Vorbis for a Vorbis stream, Opus for anything else.
+func writerFor(t testing.TB, src []byte) *writer {
+	t.Helper()
+	format := types.FormatOpus
+	if page, _, err := newPageStream(bytes.NewReader(src), int64(len(src)), "x", false).next(); err == nil {
+		if c := detectCodec(page.Data); c != nil {
+			format = c.format
+		}
+	}
+	w, ok := registry.GetWriter(format).(*writer)
+	if !ok {
+		t.Fatalf("no %s writer registered", format)
+	}
+	return w
+}
+
 func tryWrite(t testing.TB, src []byte, edits *types.EditSet) ([]byte, error) {
 	t.Helper()
 	var buf bytes.Buffer
-	n, err := testWriter(t).WriteFile(t.Context(), &buf, bytes.NewReader(src), int64(len(src)), edits)
+	n, err := writerFor(t, src).WriteFile(t.Context(), &buf, bytes.NewReader(src), int64(len(src)), edits)
 	if n != int64(buf.Len()) {
 		t.Fatalf("WriteFile reported %d bytes, wrote %d", n, buf.Len())
 	}
@@ -119,7 +136,7 @@ func checkStructure(t testing.TB, name string, data []byte) {
 // and the preserved digest are both unchanged.
 func preserved(t testing.TB, name string, src, out []byte) {
 	t.Helper()
-	w := testWriter(t)
+	w := writerFor(t, src)
 	ctx := t.Context()
 	for what, f := range map[string]func(context.Context, io.ReaderAt, int64) ([]byte, error){
 		"AudioDigest": w.AudioDigest, "PreservedDigest": w.PreservedDigest,
@@ -184,9 +201,9 @@ func TestWriter_Registered(t *testing.T) {
 // each path: a same-size page layout (verbatim copy of the audio pages), a
 // header that grows by a page (every later page renumbered) and one that
 // shrinks back.
-func TestWriteOpusCorpus(t *testing.T) {
+func TestWriteCorpus(t *testing.T) {
 	big := strings.Repeat("x", 70_000)
-	for _, name := range []string{"sample.opus", "sample_retagged.opus", "bench/book.opus"} {
+	for _, name := range []string{"sample.opus", "sample_retagged.opus", "bench/book.opus", "sample.ogg", "sample_retagged.ogg"} {
 		src := readCorpus(t, name)
 		layoutBefore, err := layoutOf(t, src)
 		if err != nil {
@@ -263,7 +280,7 @@ func TestWriteOpusTagsReadBack(t *testing.T) {
 }
 
 func TestWriteOpusNoOpIsByteIdentical(t *testing.T) {
-	for _, name := range []string{"sample.opus", "bench/book.opus"} {
+	for _, name := range []string{"sample.opus", "bench/book.opus", "sample.ogg"} {
 		src := readCorpus(t, name)
 		for label, edits := range map[string]*types.EditSet{
 			"empty":             {Orig: &types.Tags{}, Final: &types.Tags{}},

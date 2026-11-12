@@ -48,7 +48,7 @@ var roundTripCorpus = []roundTripCase{
 	{"testdata/sample.aiff", true}, // NAME, (c), ANNO and an ID3v2.4 chunk with a cover
 	{"testdata/sample.aifc", true},
 	{"testdata/bench/book.opus", true},
-	{"testdata/sample.ogg", false}, // deferred format: stays false
+	{"testdata/sample.ogg", true},
 	{"testdata/sample.opus", true},
 }
 
@@ -690,7 +690,8 @@ var customKeys = map[audiometa.Format]string{
 	audiometa.FormatM4B:  "AUDIOMETA_TEST",
 	audiometa.FormatWAV:  "AUDIOMETA_TEST", // TXXX description in the ID3 chunk
 	audiometa.FormatAIFF: "AUDIOMETA_TEST",
-	audiometa.FormatOpus: "AUDIOMETA_TEST", // Vorbis comment
+	audiometa.FormatOgg:  "AUDIOMETA_TEST", // Vorbis comment
+	audiometa.FormatOpus: "AUDIOMETA_TEST",
 }
 
 // titleKeys is the raw key Title is read from, per format family.
@@ -701,6 +702,7 @@ var titleKeys = map[audiometa.Format]string{
 	audiometa.FormatM4B:  "\xA9nam",
 	audiometa.FormatWAV:  "TIT2",
 	audiometa.FormatAIFF: "TIT2",
+	audiometa.FormatOgg:  "TITLE",
 	audiometa.FormatOpus: "TITLE",
 }
 

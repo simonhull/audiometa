@@ -48,6 +48,8 @@ var fuzzWritablePaths = []string{
 	"testdata/sample.aifc",
 	"testdata/sample_ext.wav",
 	"testdata/sample_float.wav",
+	"testdata/sample.ogg",
+	"testdata/sample_retagged.ogg",
 	"testdata/sample.opus",
 	"testdata/sample_retagged.opus",
 	"testdata/bench/book.opus",

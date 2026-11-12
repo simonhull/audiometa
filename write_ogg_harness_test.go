@@ -73,6 +73,20 @@ func oggCRC(page []byte) uint32 {
 	return crc
 }
 
+// chainedOgg returns the Ogg file at path followed by a copy of it with another
+// stream serial number: a chained file, which holds two logical streams.
+func chainedOgg(t *testing.T, path string) []byte {
+	t.Helper()
+	data := readTestdata(t, path)
+	second := bytes.Clone(data)
+	pages, _ := oggPages(second)
+	for _, p := range pages {
+		binary.LittleEndian.PutUint32(second[p.start+14:], 0xC0FFEE)
+		binary.LittleEndian.PutUint32(second[p.start+22:], oggCRC(second[p.start:p.end]))
+	}
+	return append(bytes.Clone(data), second...)
+}
+
 // oggAudioDigest hashes the packet bytes of the first logical stream after its
 // header packets (three for Vorbis, two for Opus).
 func oggAudioDigest(t *testing.T, data []byte) [32]byte {

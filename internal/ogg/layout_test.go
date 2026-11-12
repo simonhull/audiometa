@@ -103,6 +103,11 @@ func TestReadLayoutRefusals(t *testing.T) {
 			buildOgg(idPage, pageSpec{headerType: pageContinued, serial: 1, lacing: lacingFor(len(comment)), data: comment}),
 			true, false,
 		},
+		{
+			"stream ends on page 0",
+			buildOgg(pageSpec{headerType: 0x02 | pageEOS, serial: 1, lacing: lacingFor(len(head)), data: head}, pageOf(1, comment), audio),
+			true, false,
+		},
 		{"another stream among the headers", buildOgg(idPage, pageOf(2, comment), pageOf(1, comment), audio), false, true},
 		{"unknown codec", buildOgg(pageSpec{headerType: 0x02, serial: 1, lacing: lacingFor(len(id) - 1), data: id[1:]}, pageOf(1, comment)), false, false},
 	}

@@ -111,6 +111,9 @@ func (lr *layoutReader) add(i int, off, next int64, page *oggPage) error {
 		lr.headerPages++
 	}
 	lr.lastSeq, lr.eos, lr.audioStart = page.SequenceNumber, page.HeaderType&pageEOS != 0, next
+	if lr.eos && lr.complete < lr.want {
+		return corruptedAt(lr.path, off, "Ogg stream ends inside its header packets")
+	}
 	return nil
 }
 
