@@ -411,5 +411,12 @@
     "VBR": false
   },
   "Format": 2,
-  "Size": 43587
+  "Size": 43587,
+  "TagSources": [
+    {
+      "Kind": "id3v2",
+      "Version": 3,
+      "Used": true
+    }
+  ]
 }

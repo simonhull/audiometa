@@ -24,6 +24,11 @@ type File struct {
 	Format   Format
 	Size     int64
 
+	// TagSources lists the tag containers the file stores: those the reader
+	// consults, in precedence order, then those it does not read. It is nil
+	// for a file without any. See [TagSource].
+	TagSources []TagSource
+
 	// tagValues counts the tag values TakeValue has admitted; it reaches
 	// MaxTagValues+1 once the first refusal has been warned about.
 	tagValues int

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
 
 	binutil "github.com/simonhull/audiometa/internal/binary"
 	"github.com/simonhull/audiometa/internal/mp3"
@@ -64,6 +65,23 @@ func (c *container) text() ([]entry, string, error) {
 	return entries, keyICMT, err
 }
 
+// hasText reports whether the container holds native text tags: a LIST/INFO
+// chunk in WAV, a NAME, AUTH, (c) or ANNO chunk in AIFF.
+func (c *container) hasText() bool {
+	if c.magic != magicFORM {
+		return c.infoIndex() >= 0
+	}
+	return slices.ContainsFunc(c.chunks, func(ch chunk) bool { return isAIFFText(ch.id) })
+}
+
+// textKind is the kind of the native text tags of the parser's format.
+func (p *parser) textKind() types.TagKind {
+	if p.format == types.FormatAIFF {
+		return types.TagAIFFText
+	}
+	return types.TagRIFFInfo
+}
+
 // Parse reads the audio properties and the tags.
 func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path string) (*types.File, error) {
 	if err := ctx.Err(); err != nil {
@@ -90,6 +108,9 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		if err := mp3.ReadEmbeddedTag(ctx, tag, tag.Size(), path, file); err != nil {
 			return nil, err
 		}
+	}
+	if c.hasText() {
+		types.AddTagSource(file, types.TagSource{Kind: p.textKind(), Used: true})
 	}
 	addRaw(file, entries, commentID)
 	types.BindFormat(&file.Tags, p.format)

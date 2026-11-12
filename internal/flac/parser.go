@@ -68,7 +68,8 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	}
 
 	var vorbisComments []string
-	var audioStart int64 // first audio byte; 0 until the chain's last block is read
+	var vorbisSource types.TagSource // the first Vorbis comment block, when Kind is set
+	var audioStart int64             // first audio byte; 0 until the chain's last block is read
 	for b, err := range blocks(ctx, sr, start, size) {
 		if err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
@@ -87,6 +88,9 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		case blockTypeVorbisComment:
 			comments, err := parseVorbisComment(ctx, sr, b, size, file)
 			vorbisComments = append(vorbisComments, comments...)
+			if vorbisSource.Kind == "" {
+				vorbisSource = types.TagSource{Kind: types.TagVorbisComment, Used: err == nil}
+			}
 			if err != nil {
 				if ctxErr := ctx.Err(); ctxErr != nil {
 					return nil, ctxErr
@@ -127,15 +131,27 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		file.Chapters = chapters
 	}
 
+	// Tag containers: the Vorbis comment is the one read; a leading ID3v2 tag
+	// and the trailing blocks below are stored but ignored.
+	if vorbisSource.Kind != "" {
+		types.AddTagSource(file, vorbisSource)
+	}
+	if start > 0 {
+		types.AddTagSource(file, leadingID3v2Source(sr))
+	}
+
 	// Approximate bitrate from audio frames only (metadata such as cover art excluded).
 	// Unknown when the metadata chain never reached its last block.
 	// Trailing APEv2, Lyrics3v2 and ID3v1 tags are not audio either.
-	if audioStart > 0 && audioStart < size && file.Audio.Duration > 0 {
-		audioEnd, err := trailer.Start(ctx, sr, audioStart, size)
+	if audioStart > 0 && audioStart < size {
+		audioEnd, blocks, err := trailer.Scan(ctx, sr, audioStart, size)
 		if err != nil {
 			return nil, err
 		}
-		file.Audio.Bitrate = types.AverageBitrate(audioEnd-audioStart, file.Audio.Duration)
+		trailer.AddSources(file, blocks, false)
+		if file.Audio.Duration > 0 {
+			file.Audio.Bitrate = types.AverageBitrate(audioEnd-audioStart, file.Audio.Duration)
+		}
 	}
 
 	// Set container and codec
@@ -146,6 +162,16 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 	replaygain.Apply(file)
 
 	return file, nil
+}
+
+// leadingID3v2Source describes the ID3v2 tag in front of the FLAC stream. Its
+// frames are never read; the version is the major version byte as stored.
+func leadingID3v2Source(sr *binary.SafeReader) types.TagSource {
+	var version [1]byte
+	if sr.ReadAt(version[:], 3, "ID3v2 version") != nil {
+		version[0] = 0
+	}
+	return types.TagSource{Kind: types.TagID3v2, Version: int(version[0])}
 }
 
 // ExtractArtwork extracts embedded artwork from FLAC files.

@@ -91,13 +91,15 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 		file.Audio.Bitrate = types.AverageBitrate(audioBytes(h, size), file.Audio.Duration)
 	}
 
-	if err := c.parseComments(ctx, packets[1], file); err != nil {
+	err = c.parseComments(ctx, packets[1], file)
+	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, ctxErr
 		}
 		// Non-fatal - add warning
 		types.Warn(file, types.StageMetadata, 0, err, fmt.Sprintf("failed to parse %s: %v", c.commentName, err))
 	}
+	types.AddTagSource(file, types.TagSource{Kind: types.TagVorbisComment, Used: err == nil})
 
 	replaygain.Apply(file)
 

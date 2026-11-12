@@ -45,21 +45,23 @@ func (p *parser) Parse(ctx context.Context, r io.ReaderAt, size int64, path stri
 			}
 			types.Warn(file, types.StageMetadata, 0, err, fmt.Sprintf("ID3v2 parsing failed: %v", err))
 		}
+		types.AddTagSource(file, id3v2Source(sr, err))
 	}
 
 	// Trailing tags (APEv2, Lyrics3v2, ID3v1, ...) are never part of the audio.
 	// The ID3v1 trailer is also a fallback for tags, when it is the last block.
-	audioEnd, err := trailer.Start(ctx, sr, tagSize, size)
+	audioEnd, blocks, err := trailer.Scan(ctx, sr, tagSize, size)
 	if err != nil {
 		return nil, err
 	}
-	if last, err := trailer.EndsWithID3v1(sr, tagSize, size); err != nil {
-		return nil, err
-	} else if last && id3v1Fallback(&file.Tags) {
+	id3v1Used := false
+	if last := len(blocks) > 0 && blocks[len(blocks)-1].Kind == trailer.KindID3v1; last && id3v1Fallback(&file.Tags) {
 		if v1, ok := readID3v1(sr, size); ok {
+			id3v1Used = len(id3v1Fills(&file.Tags, v1)) > 0
 			applyID3v1(file, v1)
 		}
 	}
+	trailer.AddSources(file, blocks, id3v1Used)
 
 	// Parse MP3 frame headers for technical info (bitrate, duration, etc.)
 	if err := parseTechnicalInfo(ctx, sr, tagSize, audioEnd, file); err != nil {

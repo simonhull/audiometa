@@ -17,15 +17,17 @@ import (
 // ReadEmbeddedTag parses the ID3v2 tag at the start of r into file, exactly as
 // [types.FormatMP3] files are parsed: tags, raw frames and chapters. A tag
 // that cannot be read becomes a StageMetadata warning on file, never an
-// error; only ctx ending returns one.
+// error; only ctx ending returns one. The tag is recorded in file's TagSources.
 func ReadEmbeddedTag(ctx context.Context, r io.ReaderAt, size int64, path string, file *types.File) error {
 	sr := binutil.NewSafeReader(r, size, path)
-	if _, err := parseID3v2(ctx, sr, file); err != nil {
+	_, err := parseID3v2(ctx, sr, file)
+	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return ctxErr
 		}
 		types.Warn(file, types.StageMetadata, 0, err, "embedded ID3v2 tag parsing failed: "+err.Error())
 	}
+	types.AddTagSource(file, id3v2Source(sr, err))
 	return nil
 }
 

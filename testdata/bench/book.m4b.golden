@@ -411,5 +411,12 @@
     "VBR": false
   },
   "Format": 3,
-  "Size": 7638
+  "Size": 7638,
+  "TagSources": [
+    {
+      "Kind": "mp4",
+      "Version": 0,
+      "Used": true
+    }
+  ]
 }
