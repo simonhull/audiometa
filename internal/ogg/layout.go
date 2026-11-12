@@ -89,6 +89,7 @@ func readLayout(ctx context.Context, r io.ReaderAt, size int64, path string) (*l
 // layoutReader is the state of a [readLayout] pass.
 type layoutReader struct {
 	*layout
+
 	path     string
 	tracker  packetTracker
 	cur      []byte // the packet being assembled

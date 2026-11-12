@@ -397,10 +397,10 @@ func TestIlstNewFields(t *testing.T) {
 	file := runIlst(t,
 		createMetadataItem([]byte("aART"), "Album Artist"),
 		createMetadataItem([]byte("cprt"), "(c) Someone"),
-		createMetadataItem([]byte{0xA9, 'l', 'y', 'r'}, "la la"),
+		createMetadataItem([]byte{0xA9, 'l', 'y', 'r'}, "sing song"),
 		createTypedMetadataItem([]byte("disk"), 0, []byte{0, 0, 0, 2, 0, 3}),
 	)
-	if file.Tags.AlbumArtist != "Album Artist" || file.Tags.Copyright != "(c) Someone" || file.Tags.Lyrics != "la la" {
+	if file.Tags.AlbumArtist != "Album Artist" || file.Tags.Copyright != "(c) Someone" || file.Tags.Lyrics != "sing song" {
 		t.Errorf("unexpected tags: %+v", file.Tags)
 	}
 	if file.Tags.DiscNumber != 2 || file.Tags.DiscTotal != 3 {

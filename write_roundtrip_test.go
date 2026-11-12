@@ -185,11 +185,11 @@ var roundTripMP3Edits = []tagEdit{
 	{
 		name:    "set lyrics",
 		fields:  []string{"Lyrics"},
-		apply:   func(f *audiometa.File) error { f.Tags.Lyrics = "la la"; return nil },
+		apply:   func(f *audiometa.File) error { f.Tags.Lyrics = "sing song"; return nil },
 		formats: []audiometa.Format{audiometa.FormatMP3},
 		check: func(t *testing.T, f *audiometa.File) {
-			if f.Tags.Lyrics != "la la" {
-				t.Errorf("Lyrics = %q, want la la", f.Tags.Lyrics)
+			if f.Tags.Lyrics != "sing song" {
+				t.Errorf("Lyrics = %q, want sing song", f.Tags.Lyrics)
 			}
 		},
 	},
@@ -231,11 +231,11 @@ var roundTripIFFEdits = []tagEdit{
 	{
 		name:    "set lyrics",
 		fields:  []string{"Lyrics"},
-		apply:   func(f *audiometa.File) error { f.Tags.Lyrics = "la la"; return nil },
+		apply:   func(f *audiometa.File) error { f.Tags.Lyrics = "sing song"; return nil },
 		formats: iffFormats,
 		check: func(t *testing.T, f *audiometa.File) {
-			if f.Tags.Lyrics != "la la" {
-				t.Errorf("Lyrics = %q, want la la", f.Tags.Lyrics)
+			if f.Tags.Lyrics != "sing song" {
+				t.Errorf("Lyrics = %q, want sing song", f.Tags.Lyrics)
 			}
 		},
 	},
@@ -310,11 +310,11 @@ var roundTripFLACEdits = []tagEdit{
 	{
 		name:    "set lyrics",
 		fields:  []string{"Lyrics"},
-		apply:   func(f *audiometa.File) error { f.Tags.Lyrics = "la la"; return nil },
+		apply:   func(f *audiometa.File) error { f.Tags.Lyrics = "sing song"; return nil },
 		formats: []audiometa.Format{audiometa.FormatFLAC},
 		check: func(t *testing.T, f *audiometa.File) {
-			if f.Tags.Lyrics != "la la" {
-				t.Errorf("Lyrics = %q, want la la", f.Tags.Lyrics)
+			if f.Tags.Lyrics != "sing song" {
+				t.Errorf("Lyrics = %q, want sing song", f.Tags.Lyrics)
 			}
 		},
 	},
@@ -1080,7 +1080,7 @@ func TestWriteRoundTrip_M4AFaststartGrowth(t *testing.T) {
 func pcm(t *testing.T, path string) [32]byte {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	cmd := exec.Command("ffmpeg", "-v", "error", "-i", path, "-map", "0:a", "-f", "s16le", "-")
+	cmd := exec.CommandContext(t.Context(), "ffmpeg", "-v", "error", "-i", path, "-map", "0:a", "-f", "s16le", "-")
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil || stderr.Len() > 0 {
 		t.Fatalf("ffmpeg decode of %s: %v %s", path, err, stderr.String())

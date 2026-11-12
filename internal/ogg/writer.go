@@ -45,6 +45,7 @@ import (
 // never parses it and carries it from memory to its new pages.
 type writer struct {
 	digester
+
 	codec *codec
 }
 

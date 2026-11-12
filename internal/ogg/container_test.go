@@ -188,7 +188,7 @@ func TestPageStreamMatchesReadPage(t *testing.T) {
 			pageSpec{serial: 1}, pageSpec{serial: 1, lacing: []byte{0}}, pageSpec{serial: 1, lacing: lacingFor(300), data: make([]byte, 300)}),
 		"leading empty page": buildOgg(pageSpec{serial: 1}, pageSpec{serial: 1, lacing: []byte{2}, data: []byte("ab")}),
 		"bad version":        append(buildOgg(pageSpec{serial: 1, lacing: []byte{1}, data: []byte{1}}), append([]byte("OggS\x01"), make([]byte, 40)...)...),
-		"bad magic":          append(buildOgg(pageSpec{serial: 1, lacing: []byte{1}, data: []byte{1}}), []byte("junk junk junk junk junk junk junk junk")...),
+		"bad magic":          append(buildOgg(pageSpec{serial: 1, lacing: []byte{1}, data: []byte{1}}), []byte("junk-junk-junk-junk-junk-junk-junk-junk")...),
 		"trailing tag":       append(buildOgg(pageSpec{serial: 1, lacing: []byte{1}, data: []byte{1}}), []byte("TAG")...),
 	}
 	for _, name := range []string{"sample.ogg", "sample.opus", "sample_retagged.ogg", "sample_retagged.opus"} {

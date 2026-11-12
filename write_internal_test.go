@@ -86,6 +86,7 @@ func (w *fakeWriter) callCount() int {
 // inPlaceFake is a fakeWriter that can also patch in place.
 type inPlaceFake struct {
 	fakeWriter
+
 	off     int64
 	patch   []byte
 	fits    bool
@@ -763,6 +764,7 @@ func TestWrite_InPlace(t *testing.T) {
 // its digest calls.
 type rangedFake struct {
 	inPlaceFake
+
 	ranges      [][]registry.Range // returned by successive PreservedRanges calls; the last repeats
 	rangeCalls  int
 	digestCalls int

@@ -113,7 +113,7 @@ func TestVC_FieldEdits(t *testing.T) {
 		{"disc total in the suffix", []string{"DISCNUMBER=1/2"}, func(tg *types.Tags) { tg.DiscTotal = 3 }, []string{"DISCNUMBER=1/3"}},
 		{"series added", []string{"TITLE=T"}, func(tg *types.Tags) { tg.Series = "S" }, []string{"TITLE=T", "SERIES=S"}},
 		{"series via MVNM", []string{"MVNM=Old"}, func(tg *types.Tags) { tg.Series = "S" }, []string{"MVNM=S"}},
-		{"lyrics", nil, func(tg *types.Tags) { tg.Lyrics = "la la" }, []string{"LYRICS=la la"}},
+		{"lyrics", nil, func(tg *types.Tags) { tg.Lyrics = "sing song" }, []string{"LYRICS=sing song"}},
 		{"comment", nil, func(tg *types.Tags) { tg.Comment = "c" }, []string{"COMMENT=c"}},
 		{"musicbrainz track", nil, func(tg *types.Tags) { tg.MusicBrainzTrackID = "id" }, []string{"MUSICBRAINZ_TRACKID=id"}},
 		{"genres", []string{"GENRE=Old"}, func(tg *types.Tags) { tg.Genres = []string{"A", "B"} }, []string{"GENRE=A", "GENRE=B"}},

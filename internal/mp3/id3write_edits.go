@@ -1,6 +1,7 @@
 package mp3
 
 import (
+	"bytes"
 	"fmt"
 	"slices"
 	"strconv"
@@ -48,6 +49,8 @@ var (
 // none of the field's keys, as a whitespace-separated "Field key" table
 // (keys with spaces use "_"). Year and OriginalDate are handled apart by applyYear
 // and applyOriginalDate (TDRC or TYER, TDOR or TORY, by version).
+//
+//nolint:dupword // "Field key" pairs: a key equal to the field name repeats it by design
 var canonicalKeys = func() map[types.Field]string {
 	byName := pairsOf(`
 		Title TIT2  Subtitle TIT3  Artist TPE1  Artists TPE1  Album TALB  AlbumArtist TPE2
@@ -720,7 +723,7 @@ func (t *wtag) pictureType(f wframe) (byte, bool) {
 	if skip != "" || len(body) < 2 {
 		return 0, true
 	}
-	nul := strings.IndexByte(string(body[1:]), 0)
+	nul := bytes.IndexByte(body[1:], 0)
 	if nul < 0 || 1+nul+1 >= len(body) {
 		return 0, true
 	}

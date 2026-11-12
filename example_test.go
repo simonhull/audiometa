@@ -455,13 +455,13 @@ func ExampleOutOfBoundsError() {
 
 // The version depends on how the binary was built, so GetVersion and
 // GetVersionInfo have no checked output.
-func ExampleGetVersion() {
+func ExampleGetVersion() { //nolint:testableexamples // the version depends on how the binary was built
 	fmt.Println(audiometa.GetVersion())
 }
 
 // GetVersionInfo adds the commit, build time and Go version when the build
 // recorded them.
-func ExampleGetVersionInfo() {
+func ExampleGetVersionInfo() { //nolint:testableexamples // the build details differ per build
 	info := audiometa.GetVersionInfo()
 	fmt.Println(info.Version, info.GitCommit, info.BuildTime, info.GoVersion)
 }

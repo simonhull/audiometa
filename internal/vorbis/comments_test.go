@@ -58,7 +58,7 @@ func TestParseComment(t *testing.T) {
 
 		// Text fields
 		{"comment", "COMMENT=Great album!", func(f *types.File) bool { return f.Tags.Comment == "Great album!" }},
-		{"lyrics", "LYRICS=La la la", func(f *types.File) bool { return f.Tags.Lyrics == "La la la" }},
+		{"lyrics", "LYRICS=Sing song", func(f *types.File) bool { return f.Tags.Lyrics == "Sing song" }},
 		{"description", "DESCRIPTION=A detailed description", func(f *types.File) bool { return f.Tags.Description == "A detailed description" }},
 
 		// Audiobook fields

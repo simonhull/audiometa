@@ -18,6 +18,7 @@ import (
 // table of the Editor's format.
 type Editor struct {
 	Comments
+
 	format types.Format
 }
 

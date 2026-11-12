@@ -14,7 +14,7 @@ func v1Only() []byte {
 	return append(audioBytes(4096), id3v1Trailer("Old Title", "Some Artist", "Some Album", "2001", "a comment", 3)...)
 }
 
-// wantFrame fails unless the first value of raw key key in f is want; an empty
+// wantFrame fails unless the first value of the raw key in f is want; an empty
 // want means the key must be absent.
 func wantFrame(t *testing.T, f *types.File, key, want string) {
 	t.Helper()

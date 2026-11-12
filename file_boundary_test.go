@@ -212,6 +212,7 @@ func TestExtractArtwork_RecoversPanic(t *testing.T) {
 
 type countingExtractor struct {
 	panicParser
+
 	calls atomic.Int32
 	fail  bool
 }

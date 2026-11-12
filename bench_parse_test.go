@@ -87,7 +87,7 @@ func TestBenchFixturesParse(t *testing.T) {
 			if got := len(pf.file.Chapters); got != wantChapters[name] {
 				t.Errorf("chapters = %d, want %d", got, wantChapters[name])
 			}
-			got, err := json.MarshalIndent(pf.file, "", "  ")
+			got, err := json.MarshalIndent(pf.file, "", "  ") //nolint:musttag // the golden files record the untagged Go field names
 			if err != nil {
 				t.Fatal(err)
 			}

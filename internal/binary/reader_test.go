@@ -177,6 +177,7 @@ func TestSafeReader_CheckLen(t *testing.T) {
 // countingReader counts calls to ReadAt on the wrapped mockReader.
 type countingReader struct {
 	mockReader
+
 	calls int
 }
 
