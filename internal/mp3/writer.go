@@ -151,7 +151,7 @@ func buildTag(ctx context.Context, sr *binutil.SafeReader, size int64, edits *ty
 }
 
 // audioRange returns the audio region [start, end): after the ID3v2 tag (and
-// its footer) and before an ID3v1 trailer. Any "ID3" header counts as a tag,
+// its footer) and before an ID3v1 trailer (one that is the last tag block, not a "TAG" inside an APEv2 or Lyrics3v2 tag). Any "ID3" header counts as a tag,
 // whatever its version, so the range matches what a write leaves untouched.
 func audioRange(sr *binutil.SafeReader, size int64) (start, end int64, hasV1 bool, err error) {
 	end = size
@@ -168,13 +168,12 @@ func audioRange(sr *binutil.SafeReader, size int64) (start, end int64, hasV1 boo
 		}
 	}
 	if end-start >= id3v1Size {
-		var magic [3]byte
-		if err := sr.ReadAt(magic[:], end-id3v1Size, "ID3v1 tag"); err != nil {
+		hasV1, err = trailer.EndsWithID3v1(sr, start, end)
+		if err != nil {
 			return 0, 0, false, err
 		}
-		if string(magic[:]) == "TAG" {
+		if hasV1 {
 			end -= id3v1Size
-			hasV1 = true
 		}
 	}
 	if start > end {

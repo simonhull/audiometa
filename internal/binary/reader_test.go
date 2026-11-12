@@ -24,6 +24,12 @@ func (m *mockReader) ReadAt(p []byte, off int64) (n int, err error) {
 	return n, nil
 }
 
+func TestSafeReader_Size(t *testing.T) {
+	if got := NewSafeReader(&mockReader{data: make([]byte, 7)}, 7, "t").Size(); got != 7 {
+		t.Errorf("Size() = %d, want 7", got)
+	}
+}
+
 func TestSafeReader_ReadAt_Success(t *testing.T) {
 	data := []byte{0x01, 0x02, 0x03, 0x04}
 	mock := &mockReader{data: data}

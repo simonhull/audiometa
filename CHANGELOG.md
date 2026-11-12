@@ -20,6 +20,8 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- M4A/M4B: a QuickTime chapter track whose time table claims far more samples than the file holds no longer makes Open allocate tens of megabytes; the chapters are bounded by the samples the file actually contains.
+- MP3: a file ending in an APEv2 or Lyrics3 tag whose bytes happen to contain "TAG" 128 bytes before the end is no longer read as having an ID3v1 tag. Its title, artist and other fallback fields used to be filled from those bytes.
 - FLAC: a file with no audio whose last metadata block ends at the end of the file can be written again after an edit shrank that block to nothing. A zero-length read at the end of a file used to be refused, which also made a header-only Ogg page at the very end of a file unreadable by the digest's page reader.
 - MP3 and M4A: clearing a typed field in the same write that also sets one of its lower-precedence raw keys (for example clearing `Language` while setting the raw key `LANG` on a file that has `LANGUAGE`) now removes that key too, as FLAC already did; the field used to come back from that key on the next read.
 - Ogg: on 32-bit platforms, a `METADATA_BLOCK_PICTURE` with a length field close to 4 GiB made `ExtractArtwork` fail with a `*CorruptedFileError`; such a picture is now skipped like any other malformed one.

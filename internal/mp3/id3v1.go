@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	binutil "github.com/simonhull/audiometa/internal/binary"
+	"github.com/simonhull/audiometa/internal/trailer"
 	"github.com/simonhull/audiometa/internal/types"
 )
 
@@ -18,16 +19,17 @@ type id3v1Tag struct {
 }
 
 // readID3v1 reads the ID3v1 trailer from the last 128 bytes of the file. The
-// genre byte is ignored.
+// genre byte is ignored. The trailer must be the last tag block: a "TAG" inside
+// an APEv2 or Lyrics3v2 tag at the end does not count.
 func readID3v1(sr *binutil.SafeReader, size int64) (id3v1Tag, bool) {
 	if size < id3v1Size {
 		return id3v1Tag{}, false
 	}
-	buf := make([]byte, id3v1Size)
-	if err := sr.ReadAt(buf, size-id3v1Size, "ID3v1 tag"); err != nil {
+	if last, err := trailer.EndsWithID3v1(sr, 0, size); err != nil || !last {
 		return id3v1Tag{}, false
 	}
-	if !bytes.HasPrefix(buf, []byte("TAG")) {
+	buf := make([]byte, id3v1Size)
+	if err := sr.ReadAt(buf, size-id3v1Size, "ID3v1 tag"); err != nil {
 		return id3v1Tag{}, false
 	}
 
