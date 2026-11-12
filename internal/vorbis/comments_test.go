@@ -8,6 +8,14 @@ import (
 	"github.com/simonhull/audiometa/internal/types"
 )
 
+// parseDerived records comment with [ParseComment], then derives the typed
+// fields as [Apply] does after the whole list.
+func parseDerived(comment string, file *types.File) error {
+	err := ParseComment(comment, file)
+	types.DeriveFields(&file.Tags, types.FormatFLAC)
+	return err
+}
+
 func TestParseComment(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -80,7 +88,7 @@ func TestParseComment(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			file := &types.File{}
-			err := ParseComment(tc.comment, file)
+			err := parseDerived(tc.comment, file)
 			if err != nil {
 				t.Fatalf("ParseComment() error = %v", err)
 			}
@@ -94,9 +102,9 @@ func TestParseComment(t *testing.T) {
 func TestParseComment_MultipleGenres(t *testing.T) {
 	file := &types.File{}
 
-	_ = ParseComment("GENRE=Rock", file)
-	_ = ParseComment("GENRE=Alternative", file)
-	_ = ParseComment("GENRE=Indie", file)
+	_ = parseDerived("GENRE=Rock", file)
+	_ = parseDerived("GENRE=Alternative", file)
+	_ = parseDerived("GENRE=Indie", file)
 
 	if len(file.Tags.Genres) != 3 {
 		t.Errorf("Genres = %v, want 3 genres", file.Tags.Genres)
@@ -109,8 +117,8 @@ func TestParseComment_MultipleGenres(t *testing.T) {
 func TestParseComment_MultipleArtists(t *testing.T) {
 	file := &types.File{}
 
-	_ = ParseComment("ARTIST=Artist One", file)
-	_ = ParseComment("ARTIST=Artist Two", file)
+	_ = parseDerived("ARTIST=Artist One", file)
+	_ = parseDerived("ARTIST=Artist Two", file)
 
 	// The first artist is the primary one, as in MP3.
 	if file.Tags.Artist != "Artist One" {
@@ -127,7 +135,7 @@ func TestParseComment_RepeatedSingleValuedFirstWins(t *testing.T) {
 		"TITLE=First", "TITLE=Second", "ALBUM=A1", "ALBUM=A2", "DATE=2001-01-01", "DATE=2002",
 		"TRACKNUMBER=3", "TRACKNUMBER=9", "COMMENT=c1", "COMMENT=c2",
 	} {
-		if err := ParseComment(c, file); err != nil {
+		if err := parseDerived(c, file); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -142,7 +150,7 @@ func TestParseComment_RepeatedSingleValuedFirstWins(t *testing.T) {
 
 func TestParseComment_InvalidFormat(t *testing.T) {
 	file := &types.File{}
-	err := ParseComment("NOEQUALSIGN", file)
+	err := parseDerived("NOEQUALSIGN", file)
 	if err == nil {
 		t.Error("ParseComment() should return error for comment without '='")
 	}
@@ -150,7 +158,7 @@ func TestParseComment_InvalidFormat(t *testing.T) {
 
 func TestParseComment_EmptyValue(t *testing.T) {
 	file := &types.File{}
-	err := ParseComment("TITLE=", file)
+	err := parseDerived("TITLE=", file)
 	if err != nil {
 		t.Errorf("ParseComment() error = %v, want nil for empty value", err)
 	}
@@ -161,7 +169,7 @@ func TestParseComment_EmptyValue(t *testing.T) {
 
 func TestParseComment_EmptyKey(t *testing.T) {
 	file := &types.File{}
-	err := ParseComment("=value", file)
+	err := parseDerived("=value", file)
 	if err != nil {
 		t.Errorf("ParseComment() error = %v", err)
 	}
@@ -173,7 +181,7 @@ func TestParseComment_EmptyKey(t *testing.T) {
 
 func TestParseComment_ValueWithEquals(t *testing.T) {
 	file := &types.File{}
-	err := ParseComment("COMMENT=x=y=z", file)
+	err := parseDerived("COMMENT=x=y=z", file)
 	if err != nil {
 		t.Errorf("ParseComment() error = %v", err)
 	}
@@ -184,7 +192,7 @@ func TestParseComment_ValueWithEquals(t *testing.T) {
 
 func TestParseComment_StoresRawTag(t *testing.T) {
 	file := &types.File{}
-	_ = ParseComment("TITLE=Test Song", file)
+	_ = parseDerived("TITLE=Test Song", file)
 
 	raw := file.Tags.Get("TITLE")
 	if len(raw) != 1 || raw[0] != "Test Song" {
@@ -194,7 +202,7 @@ func TestParseComment_StoresRawTag(t *testing.T) {
 
 func TestParseComment_UnknownTag(t *testing.T) {
 	file := &types.File{}
-	err := ParseComment("CUSTOMTAG=CustomValue", file)
+	err := parseDerived("CUSTOMTAG=CustomValue", file)
 	if err != nil {
 		t.Errorf("ParseComment() error = %v for unknown tag", err)
 	}
@@ -220,7 +228,7 @@ func TestParseComment_DateYearExtraction(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.date, func(t *testing.T) {
 			file := &types.File{}
-			_ = ParseComment("DATE="+tc.date, file)
+			_ = parseDerived("DATE="+tc.date, file)
 			if file.Tags.Year != tc.year {
 				t.Errorf("Year = %d for DATE=%s, want %d", file.Tags.Year, tc.date, tc.year)
 			}
@@ -230,8 +238,8 @@ func TestParseComment_DateYearExtraction(t *testing.T) {
 
 func TestParseComment_DescriptionNotOverwritten(t *testing.T) {
 	file := &types.File{}
-	file.Tags.Description = "Original"
-	_ = ParseComment("DESCRIPTION=New", file)
+	_ = parseDerived("DESCRIPTION=Original", file)
+	_ = parseDerived("DESCRIPTION=New", file)
 
 	if file.Tags.Description != "Original" {
 		t.Errorf("Description = %q, want %q (should not be overwritten)", file.Tags.Description, "Original")
@@ -241,12 +249,12 @@ func TestParseComment_DescriptionNotOverwritten(t *testing.T) {
 func TestParseComment_InvalidNumbers(t *testing.T) {
 	file := &types.File{}
 
-	_ = ParseComment("TRACKNUMBER=abc", file)
+	_ = parseDerived("TRACKNUMBER=abc", file)
 	if file.Tags.TrackNumber != 0 {
 		t.Errorf("TrackNumber = %d for invalid input, want 0", file.Tags.TrackNumber)
 	}
 
-	_ = ParseComment("DISCNUMBER=", file)
+	_ = parseDerived("DISCNUMBER=", file)
 	if file.Tags.DiscNumber != 0 {
 		t.Errorf("DiscNumber = %d for empty input, want 0", file.Tags.DiscNumber)
 	}
@@ -269,7 +277,7 @@ func TestParseComment_CaseInsensitiveKeys(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			file := &types.File{}
-			if err := ParseComment(tt.comment, file); err != nil {
+			if err := parseDerived(tt.comment, file); err != nil {
 				t.Fatal(err)
 			}
 			if !tt.check(file) {
@@ -289,7 +297,7 @@ func allKeys(f *types.File) []string {
 
 func TestParseComment_RawKeyCanonicalized(t *testing.T) {
 	file := &types.File{}
-	if err := ParseComment("title=Foo", file); err != nil {
+	if err := parseDerived("title=Foo", file); err != nil {
 		t.Fatal(err)
 	}
 	if got := file.Tags.Get("TITLE"); len(got) != 1 || got[0] != "Foo" {
@@ -306,7 +314,7 @@ func TestParseComment_RawKeyCanonicalized(t *testing.T) {
 func TestParseComment_MixedCaseSameKey(t *testing.T) {
 	file := &types.File{}
 	for _, c := range []string{"GENRE=Rock", "genre=Jazz"} {
-		if err := ParseComment(c, file); err != nil {
+		if err := parseDerived(c, file); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -322,7 +330,7 @@ func TestParseComment_NonSeriesTagsStayRaw(t *testing.T) {
 	for _, key := range []string{"SHOW", "EPISODE_ID", "PART"} {
 		t.Run(key, func(t *testing.T) {
 			file := &types.File{}
-			_ = ParseComment(key+"=Foo", file)
+			_ = parseDerived(key+"=Foo", file)
 			if file.Tags.Series != "" || file.Tags.SeriesPart != "" {
 				t.Errorf("Series=%q SeriesPart=%q, want both empty", file.Tags.Series, file.Tags.SeriesPart)
 			}
@@ -351,7 +359,7 @@ func TestPrecedence_BeatsFileOrder(t *testing.T) {
 					return "v" + strconv.Itoa(i)
 				}
 				for i, key := range slices.Backward(b.Keys) {
-					if err := ParseComment(key+"="+value(i), &file); err != nil {
+					if err := parseDerived(key+"="+value(i), &file); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -384,7 +392,7 @@ func TestParseComment_NumberWithTotal(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var file types.File
 			for _, c := range tt.comments {
-				if err := ParseComment(c, &file); err != nil {
+				if err := parseDerived(c, &file); err != nil {
 					t.Fatal(err)
 				}
 			}

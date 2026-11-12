@@ -243,7 +243,7 @@ func parseVorbisComment(ctx context.Context, sr *binary.SafeReader, b block, siz
 		return nil, err
 	}
 	c, err := vorbis.Split(ctx, payload)
-	return vorbis.Apply(c.Entries, file), err
+	return vorbis.Apply(c.Entries, file, types.FormatFLAC), err
 }
 
 // init registers the FLAC parser.

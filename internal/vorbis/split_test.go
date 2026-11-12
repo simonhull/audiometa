@@ -127,7 +127,7 @@ func TestSplitAllocationBound(t *testing.T) {
 func TestApply(t *testing.T) {
 	t.Parallel()
 	var file types.File
-	got := Apply([][]byte{[]byte("TITLE=Foo"), []byte("no equals"), []byte("ARTIST=Bar")}, &file)
+	got := Apply([][]byte{[]byte("TITLE=Foo"), []byte("no equals"), []byte("ARTIST=Bar")}, &file, types.FormatFLAC)
 	want := []string{"TITLE=Foo", "no equals", "ARTIST=Bar"}
 	if !slices.Equal(got, want) {
 		t.Errorf("strings = %q, want %q", got, want)
