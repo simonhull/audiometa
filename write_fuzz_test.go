@@ -144,6 +144,8 @@ func FuzzWriteRoundTrip(f *testing.F) {
 	f.Add([]byte("fLaC"), []byte{0})
 	// A raw TYER edit on an empty ID3v2.2 tag, which is rewritten as v2.4 (plan 085).
 	f.Add([]byte("ID3\x0200\x00\x00\x00\x00"), []byte("0000"))
+	// A raw TORY edit on an ID3v2.2 tag lands in TDOR (plan 077).
+	f.Add([]byte("ID3\x0200\x00\x00\x00\x000"), []byte("0X00"))
 	// An empty text chunk last in the file (plan 058).
 	f.Add([]byte("FORM0000AIFFCOMM\x00\x00\x00\x12000000000000000000"), []byte("00"))
 
@@ -363,14 +365,15 @@ func typedValues(t *Tags, f types.Field) []string {
 
 // v22Renames maps the raw keys an ID3v2.2 tag exposes to the ID3v2.4 frame
 // that holds the value once the tag is rewritten. The reader normalizes the
-// year frame to TYER and keeps the other 3-character text frames under their
-// ID3v2.2 IDs.
+// year frame to TYER and the original year frame to TORY, which are v2.3-only,
+// and keeps the other 3-character text frames under their ID3v2.2 IDs unless
+// it has an ID3v2.3 equivalent (TRC, TCR, TPB read as TSRC, TCOP, TPUB).
 var v22Renames = map[string]string{
-	"TYER": "TDRC",
-	"TBP":  "TBPM", "TCP": "TCMP", "TCR": "TCOP", "TDY": "TDLY", "TEN": "TENC",
+	"TYER": "TDRC", "TORY": "TDOR",
+	"TBP": "TBPM", "TCP": "TCMP", "TDY": "TDLY", "TEN": "TENC",
 	"TFT": "TFLT", "TKE": "TKEY", "TLA": "TLAN", "TLE": "TLEN", "TMT": "TMED",
-	"TOA": "TOPE", "TOF": "TOFN", "TOL": "TOLY", "TOR": "TDOR", "TOT": "TOAL",
-	"TP3": "TPE3", "TP4": "TPE4", "TPB": "TPUB", "TRC": "TSRC", "TS2": "TSO2",
+	"TOA": "TOPE", "TOF": "TOFN", "TOL": "TOLY", "TOT": "TOAL",
+	"TP3": "TPE3", "TP4": "TPE4", "TS2": "TSO2",
 	"TSA": "TSOA", "TSC": "TSOC", "TSP": "TSOP", "TSS": "TSSE", "TST": "TSOT",
 	"TXT": "TEXT",
 }
