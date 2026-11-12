@@ -28,15 +28,16 @@ const (
 	keyM4AMovement = "\xA9mvi"     // M4A movement index; "0" means unset
 )
 
-// The binding tables mirror the parsers. Keys are listed literally so each
-// table reads like the parser switch it mirrors.
+// The binding tables are the single source of which raw keys fill which typed
+// field: the parsers record raw keys only and derive every field from these
+// tables ([DeriveFields]), and the writers plan their edits by them. Keys are
+// listed literally so each table reads as data.
 //
 //nolint:goconst // native tag keys are table data, not magic strings
 var (
 	// MP3 raw keys: ID3v2 frame IDs (v2.2 IDs are normalized to v2.3), and TXXX
-	// frames by their upper-cased description. Mirrors internal/mp3 parseTextFrame
-	// and txxxFieldHandlers. COMM (Comment) is not in the raw map, so Comment has
-	// no binding.
+	// frames by their upper-cased description. COMM (Comment) is not in the raw
+	// map, so Comment has no binding.
 	mp3Bindings = []FieldBinding{
 		{FieldTitle, []string{"TIT2"}},
 		{FieldSubtitle, []string{"TIT3"}},
@@ -64,9 +65,9 @@ var (
 	}
 
 	// Vorbis comment raw keys (FLAC, Ogg Vorbis, Opus): the upper-cased field
-	// name. Mirrors internal/vorbis ParseComment. TRACKNUMBER and DISCNUMBER
-	// carry an optional "N/Total", so they are also the lowest-precedence keys
-	// of the total fields; an explicit total key wins.
+	// name. TRACKNUMBER and DISCNUMBER carry an optional "N/Total", so they are
+	// also the lowest-precedence keys of the total fields; an explicit total key
+	// wins.
 	vorbisBindings = []FieldBinding{
 		{FieldTitle, []string{"TITLE"}},
 		{FieldSubtitle, []string{"SUBTITLE"}},
@@ -106,9 +107,8 @@ var (
 	}
 
 	// M4A/M4B raw keys: the 4-byte ilst atom type, or the upper-cased name of a
-	// freeform (----) atom. Mirrors internal/m4a mapTagToField, mapAudiobookField
-	// and applyExplicitSeriesPart. trkn and disk are binary and not in the raw
-	// map, so track and disc fields have no binding.
+	// freeform (----) atom. trkn and disk are binary and not in the raw map, so
+	// track and disc fields have no binding.
 	m4aBindings = []FieldBinding{
 		{FieldTitle, []string{"\xA9nam"}},
 		{FieldArtist, []string{"\xA9ART"}},
@@ -159,8 +159,7 @@ var (
 )
 
 // WAV and AIFF raw keys: the ID3v2 chunk's, as for MP3, then the native text
-// tags that fill the same fields, which the ID3 frames outrank. Mirrors
-// internal/iff.
+// tags that fill the same fields, which the ID3 frames outrank.
 var (
 	wavBindings  = withNative(mp3Bindings, wavNative)
 	aiffBindings = withNative(mp3Bindings, aiffNative)
