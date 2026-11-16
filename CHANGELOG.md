@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here.
 
+## Unreleased
+
+### Added
+
+- `File.SetTrackReplayGain`, `File.SetAlbumReplayGain` and `File.RemoveReplayGain` write ReplayGain values the caller has measured, in each format's own scheme: `REPLAYGAIN_*` tags (Vorbis comments, ID3v2 TXXX frames, M4A freeform items), keeping a stored tag's spelling, or, on Opus, `R128_TRACK_GAIN`/`R128_ALBUM_GAIN`, removing the `REPLAYGAIN_*` tags RFC 7845 advises against. An invalid value fails with the new `ErrInvalidReplayGain`.
+
 ## v0.15.0 — 2026-11-12
 
 ### Added

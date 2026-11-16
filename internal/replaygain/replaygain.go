@@ -1,4 +1,5 @@
-// Package replaygain derives a file's ReplayGain values from its raw tags.
+// Package replaygain derives a file's ReplayGain values from its raw tags and
+// writes them back in each format's own scheme.
 //
 // Parsers record tags under upper-cased keys (REPLAYGAIN_TRACK_GAIN from a
 // Vorbis comment, an MP3 TXXX frame or an M4A freeform item alike), so one
@@ -37,18 +38,28 @@ func trackPeak(rg *types.ReplayGainInfo) *float64 { return &rg.TrackPeak }
 func albumGain(rg *types.ReplayGainInfo) *float64 { return &rg.AlbumGain }
 func albumPeak(rg *types.ReplayGainInfo) *float64 { return &rg.AlbumPeak }
 
+// The raw keys ReplayGain is read from and written to.
+const (
+	KeyTrackGain     = "REPLAYGAIN_TRACK_GAIN"
+	KeyTrackPeak     = "REPLAYGAIN_TRACK_PEAK"
+	KeyAlbumGain     = "REPLAYGAIN_ALBUM_GAIN"
+	KeyAlbumPeak     = "REPLAYGAIN_ALBUM_PEAK"
+	KeyR128TrackGain = "R128_TRACK_GAIN"
+	KeyR128AlbumGain = "R128_ALBUM_GAIN"
+)
+
 // replayGainFields are the REPLAYGAIN_* tags every format may carry.
 var replayGainFields = []field{
-	{"REPLAYGAIN_TRACK_GAIN", parseGain, trackGain},
-	{"REPLAYGAIN_TRACK_PEAK", parsePeak, trackPeak},
-	{"REPLAYGAIN_ALBUM_GAIN", parseGain, albumGain},
-	{"REPLAYGAIN_ALBUM_PEAK", parsePeak, albumPeak},
+	{KeyTrackGain, parseGain, trackGain},
+	{KeyTrackPeak, parsePeak, trackPeak},
+	{KeyAlbumGain, parseGain, albumGain},
+	{KeyAlbumPeak, parsePeak, albumPeak},
 }
 
 // r128Fields are the Opus gain tags of RFC 7845 section 5.2.1.
 var r128Fields = []field{
-	{"R128_TRACK_GAIN", parseR128, trackGain},
-	{"R128_ALBUM_GAIN", parseR128, albumGain},
+	{KeyR128TrackGain, parseR128, trackGain},
+	{KeyR128AlbumGain, parseR128, albumGain},
 }
 
 // maxQuoted bounds how much of an invalid value a warning quotes.

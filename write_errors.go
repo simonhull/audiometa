@@ -2,9 +2,9 @@ package audiometa
 
 import "github.com/simonhull/audiometa/internal/types"
 
-// Errors returned by the write API ([File.WriteTo], [Write] and the artwork
-// edit methods). They are always returned wrapped with detail, so test for
-// them with [errors.Is], never with ==.
+// Errors returned by the write API ([File.WriteTo], [Write], the artwork
+// edit methods and the ReplayGain setters). They are always returned wrapped
+// with detail, so test for them with [errors.Is], never with ==.
 var (
 	// ErrUnsupportedWrite is returned (wrapped) by [File.WriteTo] and [Write]
 	// when the file's format has no writer, when an edit cannot be represented
@@ -36,6 +36,12 @@ var (
 	// Type is not a valid [ArtworkType], its Description is not valid UTF-8,
 	// or its MIMEType is empty and cannot be detected from the data.
 	ErrInvalidArtwork = types.ErrInvalidArtwork
+
+	// ErrInvalidReplayGain is returned (wrapped) by [File.SetTrackReplayGain]
+	// and [File.SetAlbumReplayGain] when a value cannot be stored: a gain or
+	// peak that is NaN or infinite, a negative peak, or an Opus gain outside
+	// the range of an R128 tag.
+	ErrInvalidReplayGain = types.ErrInvalidReplayGain
 
 	// ErrConcurrentModification is returned (wrapped) by [Write] when the file
 	// was replaced or changed on disk (its identity, size, modification time

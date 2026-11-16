@@ -455,3 +455,46 @@ func copyToTemp(src string) string {
 	}
 	return path
 }
+
+// ExampleFile_SetTrackReplayGain stores a track gain and peak the caller has
+// measured. Each format gets its own scheme: REPLAYGAIN_* tags in FLAC, an
+// R128 gain relative to -23 LUFS in Opus (which stores no peaks). Reading
+// the file back reports both on the ReplayGain 2 scale. The edits apply to
+// copies so the samples stay unchanged.
+func ExampleFile_SetTrackReplayGain() {
+	dir, err := os.MkdirTemp("", "audiometa-example")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+
+	for _, name := range []string{"sample.flac", "sample.opus"} {
+		data, err := os.ReadFile(filepath.Join("testdata", name))
+		if err != nil {
+			log.Fatal(err)
+		}
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			log.Fatal(err)
+		}
+
+		err = audiometa.Write(path, func(f *audiometa.File) error {
+			return f.SetTrackReplayGain(-6.5, 0.988525)
+		})
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		f, err := audiometa.Open(path)
+		if err != nil {
+			log.Fatal(err)
+		}
+		rg := f.Audio.ReplayGain
+		fmt.Printf("%s: %q %q gain %.2f peak %.6f\n", name,
+			f.Tags.GetFirst("REPLAYGAIN_TRACK_GAIN"), f.Tags.GetFirst("R128_TRACK_GAIN"), rg.TrackGain, rg.TrackPeak)
+		_ = f.Close()
+	}
+	// Output:
+	// sample.flac: "-6.50 dB" "" gain -6.50 peak 0.988525
+	// sample.opus: "" "-2944" gain -6.50 peak 0.000000
+}
