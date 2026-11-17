@@ -24,7 +24,7 @@ AudioMeta includes the following:
 - **🔍 Complete Metadata**: tags, raw tags, technical info, artwork and chapters in every supported format
 - **✍️ Writing**: edit tags and artwork with `Write` (verified atomic replace, or in place with `WithInPlace`) or stream an edited copy with `File.WriteTo`
 - **🔐 Audio digest**: a SHA-256 of the audio alone that survives retagging and renames
-- **🔊 ReplayGain**: track and album gain and peak from every format's tags, including Opus R128
+- **🔊 ReplayGain**: track and album gain and peak read from every format's tags, including Opus R128, and written back in each format's own scheme
 
 ## Quick Start
 
@@ -354,6 +354,7 @@ Match these with `errors.Is`; they are always wrapped with detail.
 | `ErrTagTooLarge` | the metadata would exceed a limit of the format (16 MiB for a FLAC metadata block, 256 MiB for an ID3v2 tag) |
 | `ErrConflictingEdits` | a typed field and the raw key it is read from were changed to different values, `Artist` disagrees with the first of `Artists`, or `Year` disagrees with the year of `Date` |
 | `ErrInvalidArtwork` | `AddArtwork` or `ReplaceArtwork` got an image with no data, an invalid type or description, or an undetectable MIME type |
+| `ErrInvalidReplayGain` | `SetTrackReplayGain` or `SetAlbumReplayGain` got a NaN or infinite value, a negative peak, or an Opus gain outside the range of an R128 tag |
 | `ErrConcurrentModification` | the file changed on disk between `Write` opening it and replacing it |
 | `ErrVerifyFailed` | the new file did not pass verification (it must parse, with identical audio and chapters); the original is left as it was |
 
@@ -412,6 +413,13 @@ Match these with `errors.Is`; they are always wrapped with detail.
   refused with a `CorruptedFileError`.
 - **Artwork.** `AddArtwork`, `ReplaceArtwork`, `RemoveArtwork` and `RemoveAllArtwork`.
   M4A cover art has no picture type (only front cover or other).
+- **ReplayGain.** `SetTrackReplayGain(gain, peak)`, `SetAlbumReplayGain(gain, peak)` and
+  `RemoveReplayGain()` store values you have measured (audiometa never computes them), with gains
+  on the ReplayGain 2 scale that `Audio.ReplayGain` reports. FLAC, Vorbis, MP3, WAV, AIFF and M4A
+  get `REPLAYGAIN_*` tags (`"-6.50 dB"`, `"0.988525"`), keeping a stored tag's spelling. Opus gets
+  `R128_TRACK_GAIN`/`R128_ALBUM_GAIN` (Q7.8, relative to -23 LUFS), stores no peaks, and loses the
+  `REPLAYGAIN_*` tags RFC 7845 advises against. A NaN, infinite or negative-peak value, or an Opus
+  gain an R128 tag cannot hold, returns `ErrInvalidReplayGain`.
 - **DRM.** Encrypted files (FairPlay, CENC, AAX, ID3 encrypted frames) return
   `ErrDRMProtected`.
 - **Ogg Vorbis and Opus.** Edits go to the comment header (the `OpusTags` or Vorbis comment

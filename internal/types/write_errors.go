@@ -16,6 +16,8 @@ var (
 	ErrConflictingEdits = errors.New("audiometa: conflicting tag edits")
 	// ErrInvalidArtwork reports artwork rejected by AddArtwork or ReplaceArtwork.
 	ErrInvalidArtwork = errors.New("audiometa: invalid artwork")
+	// ErrInvalidReplayGain reports a ReplayGain value rejected by SetTrackReplayGain or SetAlbumReplayGain.
+	ErrInvalidReplayGain = errors.New("audiometa: invalid ReplayGain value")
 	// ErrConcurrentModification reports that the file changed on disk during Write.
 	ErrConcurrentModification = errors.New("audiometa: file changed during write")
 	// ErrVerifyFailed reports that a written file failed read-back verification.

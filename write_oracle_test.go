@@ -131,6 +131,9 @@ func TestWriteOracle(t *testing.T) { //nolint:cyclop,gocognit,gocyclo // one wal
 	}{
 		{"title", func(f *audiometa.File) error { f.Tags.Title = title; return nil }, true, false},
 		{"long comment", func(f *audiometa.File) error { f.Tags.Comment = longComment; return nil }, false, false},
+		{"replaygain", func(f *audiometa.File) error {
+			return errors.Join(f.SetTrackReplayGain(-6.5, 0.9), f.SetAlbumReplayGain(-7.25, 0.95))
+		}, false, false},
 		{"replace artwork", func(f *audiometa.File) error {
 			return f.ReplaceArtwork(audiometa.Artwork{Data: onePixelPNG(), Type: audiometa.ArtworkFrontCover})
 		}, false, true},

@@ -127,6 +127,26 @@ var roundTripEdits = []tagEdit{
 		},
 	},
 	{
+		name: "SetTrackReplayGain and SetAlbumReplayGain",
+		apply: func(f *audiometa.File) error {
+			return errors.Join(f.SetTrackReplayGain(-6.5, 0.9), f.SetAlbumReplayGain(-7.25, 0.95))
+		},
+		check: func(t *testing.T, f *audiometa.File) {
+			t.Helper()
+			checkReplayGain(t, f, -6.5, 0.9, -7.25, 0.95)
+		},
+	},
+	{
+		name:  "RemoveReplayGain",
+		apply: func(f *audiometa.File) error { f.RemoveReplayGain(); return nil },
+		check: func(t *testing.T, f *audiometa.File) {
+			t.Helper()
+			if rg := f.Audio.ReplayGain; rg != nil {
+				t.Errorf("ReplayGain = %+v, want nil", rg)
+			}
+		},
+	},
+	{
 		name:   "set title",
 		fields: []string{"Title"},
 		apply:  func(f *audiometa.File) error { f.Tags.Title = "Nouveau titre ✓ 日本語"; return nil },
